@@ -94,6 +94,32 @@ const (
 	DefaultRetentionBroadcastDays        = 90
 )
 
+// 渠道健康巡检（自动延迟刷新）的默认参数。
+const (
+	// DefaultHealthCheckEnabled 默认开启巡检。
+	//
+	// 默认开而不是让用户自己去发现：延迟数据只有在"一直在采"的时候才有价值，
+	// 关掉它等于把"这个渠道现在快不快"重新变回一个没人知道答案的问题。
+	DefaultHealthCheckEnabled = true
+	// DefaultHealthCheckIntervalMinutes 是相邻两轮巡检的间隔（分钟）。
+	//
+	// 取 15：一轮巡检要为每个渠道发一次真实上游请求（虽有 max_tokens=1 的成本控制），
+	// 太密会给上游添麻烦，也可能触发它们的速率限制；15 分钟既足以让后台的延迟数字
+	// "看起来是活的"，也把每天每个渠道的请求压到 96 次以内。
+	DefaultHealthCheckIntervalMinutes = 15
+	// DefaultHealthCheckConcurrency 是同时探测的渠道数。
+	//
+	// 取 2：巡检不能把自己变成一次针对上游的并发压测；串行又会让 30 个渠道
+	// 的站点一轮跑上几分钟（超过间隔），取一个温和的并行度最稳。
+	DefaultHealthCheckConcurrency = 2
+	// DefaultHealthCheckTimeoutSeconds 是单个渠道的最长等待时间（秒）。
+	//
+	// 取 30（远小于转发链路的 300 秒）：一次巡检的目标是"它还在不在、快不快"，
+	// 等 30 秒还没回来本身就说明这条链路不可用；若沿用转发的超时，
+	// 一个挂死的上游会把整轮巡检拖住，后面的渠道全都错过本轮。
+	DefaultHealthCheckTimeoutSeconds = 30
+)
+
 // Config 是程序运行所需的全部配置。
 //
 // 说明：结构体字段与 JSON 一一对应，便于配置文件书写与阅读。
@@ -115,6 +141,7 @@ type Config struct {
 
 	// Retention 是各类随时间线性增长数据的保留期（天）。
 	Retention RetentionConfig `json:"retention"` // 数据保留期相关
+	Health    HealthConfig    `json:"health"`    // 渠道健康巡检（自动延迟刷新）相关
 }
 
 // RetentionConfig 描述各只写表的保留天数（0 = 永不清理）。
@@ -133,6 +160,22 @@ type RetentionConfig struct {
 	CorpusSampleDays int `json:"corpus_sample_days"`
 	// BroadcastDays 是群发回执（email_broadcast_recipients）的保留天数。
 	BroadcastDays int `json:"broadcast_days"`
+}
+
+// HealthConfig 描述渠道健康巡检（自动延迟刷新）的运行方式。
+//
+// 为什么单独成段而不塞进 ServerConfig：巡检是一组会被单独调节的运维参数
+// （要不要跑、多久跑一次、一次并发几个），混进"监听地址/运行模式"里
+// 既不利于查找，也会让 server段的语义变得含糊。
+type HealthConfig struct {
+	// Enabled 为 true 时由后台协程周期性探测所有启用中的渠道。
+	Enabled bool `json:"enabled"`
+	// IntervalMinutes 是相邻两轮巡检的间隔（分钟）；<= 0 回退到默认值。
+	IntervalMinutes int `json:"interval_minutes"`
+	// Concurrency 是单轮内同时探测的渠道数；<= 0 回退到默认值。
+	Concurrency int `json:"concurrency"`
+	// TimeoutSeconds 是单个渠道的最长等待时间（秒）；<= 0 回退到默认值。
+	TimeoutSeconds int `json:"timeout_seconds"`
 }
 
 // ServerConfig 描述 HTTP 服务的监听与运行模式。
@@ -286,6 +329,14 @@ func Default() *Config {
 			CorpusSampleDays:     DefaultRetentionCorpusSampleDays,
 			BroadcastDays:        DefaultRetentionBroadcastDays,
 		},
+		// 健康巡检默认开启：零配置部署就应当能拿到渠道延迟，
+		// 否则"自动刷新延迟"这项能力对新站点等于不存在。
+		Health: HealthConfig{
+			Enabled:         DefaultHealthCheckEnabled,
+			IntervalMinutes: DefaultHealthCheckIntervalMinutes,
+			Concurrency:     DefaultHealthCheckConcurrency,
+			TimeoutSeconds:  DefaultHealthCheckTimeoutSeconds,
+		},
 		// 默认分组固定为 default：保证未显式配置时，路由行为与旧版本完全一致。
 		RelayGroup: DefaultRelayGroup,
 	}
@@ -392,6 +443,34 @@ func applyEnv(cfg *Config) {
 	setIfNotEmptyInt(&cfg.Retention.QuotaReservationDays, EnvPrefix+"RETENTION_QUOTA_RESERVATION_DAYS")
 	setIfNotEmptyInt(&cfg.Retention.CorpusSampleDays, EnvPrefix+"RETENTION_CORPUS_SAMPLE_DAYS")
 	setIfNotEmptyInt(&cfg.Retention.BroadcastDays, EnvPrefix+"RETENTION_BROADCAST_DAYS")
+	// 渠道健康巡检：允许 AQUA_HEALTH_ENABLED=false 完全关掉（例如上游按量计费且希望零取样）。
+	setIfNotEmptyBool(&cfg.Health.Enabled, EnvPrefix+"HEALTH_ENABLED")
+	setIfNotEmptyInt(&cfg.Health.IntervalMinutes, EnvPrefix+"HEALTH_INTERVAL_MINUTES")
+	setIfNotEmptyInt(&cfg.Health.Concurrency, EnvPrefix+"HEALTH_CONCURRENCY")
+	setIfNotEmptyInt(&cfg.Health.TimeoutSeconds, EnvPrefix+"HEALTH_TIMEOUT_SECONDS")
+}
+
+// setIfNotEmptyBool 是 setIfNotEmpty 的布尔版本：解析失败时保留原值。
+//
+// 认 true/1/yes/on 与 false/0/no/off（大小写与空格不敏感）；其它写法一律忽略。
+//
+// 为什么"其它写法一律忽略"而不是"非空即真"：开关类配置最常见的运维笔误
+// 就是把 AQUA_HEALTH_ENABLED=disable / enabled=0 之类写进来，
+// 按非空判断会让"写着关、实际在跑"，而这恰恰是最难察觉的一类线上行为
+// （上游还在收到取样请求、日志还在写）。忽略未知值 = 沿用默认值 + 明确无歧义。
+func setIfNotEmptyBool(dst *bool, key string) {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "":
+		return
+	case "true", "1", "yes", "on":
+		*dst = true
+	case "false", "0", "no", "off":
+		*dst = false
+	}
 }
 
 // setIfNotEmptyInt 是 setIfNotEmpty 的整数版本：解析失败时保留原值。

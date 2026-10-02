@@ -162,6 +162,35 @@ type Channel struct {
 	// 说明：这是"最近一次"的瞬时结果，不是健康状态本身——
 	// 渠道是否可用要看 Status（自动禁用由健康检查写入）。
 	LastTestOK bool
+	// LatencyMS 是最近一次测活的总耗时（毫秒）；0 表示从未拿到过响应。
+	//
+	// 留意它是一次测量而非平均值：单点到点抖动很大，因此展示层会同时给出
+	// 测量时间 LastTestAt 让管理员判断这个数字是否还新鲜。
+	LatencyMS int
+	// LastTestCode 是最近一次测活的上游 HTTP 状态码；0 表示请求没发出去或没拿到响应。
+	//
+	// 保留状态码而不是只留"成功与否"：401（密钥失效）、404（模型下架）、
+	// 429（上游限流）指向完全不同的处置动作，布尔量会让这三条线索一起丢掉。
+	LastTestCode int
+	// LastTestModel 是最近一次实际发到上游的模型名。
+	//
+	// 渠道配置多个模型时，测活会按清单顺序探测到第一个可用为止，
+	// 记录命中者才能解释"渠道到底还能用哪个模型"。
+	LastTestModel string
+}
+
+// ChannelProbeResult 是一次渠道测活要落库的完整结论。
+//
+// 为什么把它做成结构体而不是一串参数：调用方日后新增一个字段（例如上游返回的
+// 速率余量）时，一串 bool/int 参数会把"哪一个参数是状态码"变成猜谜，
+// 而结构体的字段名本身就是文档。
+type ChannelProbeResult struct {
+	ID         uint64    // 渠道主键
+	At         time.Time // 本次测活时刻
+	OK         bool      // 是否可用（至少有一个模型返回 2xx）
+	LatencyMS  int       // 本次测活耗时（毫秒）
+	StatusCode int       // 上游状态码；0 = 网络层失败
+	Model      string    // 实际探测命中的模型名（可能已被渠道映射改写）
 }
 
 // GroupList 返回渠道可服务的分组清单（去重、去空白）。
@@ -351,11 +380,14 @@ type ChannelRepository interface {
 	// StatusCounts 按状态分组统计渠道数量，用于仪表盘概览。
 	StatusCounts(ctx context.Context) (map[ChannelStatus]int, error)
 
-	// RecordTestResult 记录一次测活结果（时间与是否通过）。
+	// RecordProbeResult 记录一次测活的完整结论（时间、是否通过、延迟、状态码、命中的模型）。
 	//
-	// 之所以单独一个方法而不复用 Update：测活是高频的后台行为，
+	// 之所以单独一个方法而不复用 Update：测活是高频的后台行为（每轮巡检都会跑），
 	// 若走 Update 会把整行配置一并写回，存在"用陈旧副本覆盖管理员刚改的配置"的风险。
-	RecordTestResult(ctx context.Context, id uint64, at time.Time, ok bool) error
+	//
+	// 手动点「测活」与后台巡检共用这个方法：两者的结论应该落在同一个地方，
+	// 否则会出现"后台显示 200ms、点一下测活变成 1800ms"的自相矛盾。
+	RecordProbeResult(ctx context.Context, result ChannelProbeResult) error
 
 	// Update 按 ID 更新渠道（不修改创建时间），不存在时返回 ErrChannelNotFound。
 	Update(ctx context.Context, ch *Channel) error

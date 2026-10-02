@@ -528,6 +528,14 @@ func run() error {
 
 	logger.Info("HTTP 服务已就绪，等待请求", "addr", cfg.Server.Listen)
 
+	// ── 渠道健康巡检（自动延迟刷新）────────────────────────────
+	//
+	// 每个周期对所有启用中的渠道发一次最小请求（max_tokens=1），
+	// 把耗时、状态码与命中的模型写回渠道行。没有它，后台显示的延迟
+	// 永远是管理员上一次手点「测活」的陈旧值，也无从为"按延迟选渠道"提供依据。
+	// 可用 AQUA_HEALTH_ENABLED=false 完全关掉（例如上游严格按请求数计费）。
+	go srv.StartHealthProbe(ctx, logger)
+
 	// 续发上次进程退出时未完成的邮件群发（串行，不并发开多条 SMTP 连接）。
 	// 已发过的收件人在明细表里是 sent，不会被再取到——重启导致的重复投递由数据保证不会发生。
 	broadcastSender.ResumeAll(ctx)

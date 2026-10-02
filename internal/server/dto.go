@@ -153,8 +153,20 @@ type channelDTO struct {
 	StatusText      string                 `json:"status_text"`
 	LastTestAt      int64                  `json:"last_test_at"`
 	LastTestOK      bool                   `json:"last_test_ok"`
-	CreatedAt       int64                  `json:"created_at"`
-	UpdatedAt       int64                  `json:"updated_at"`
+	// LatencyMS 是最近一次测活（含后台自动巡检）的耗时；0 = 尚未拿到过响应。
+	//
+	// 前端必须连 LastTestAt 一起展示：它是一次测量而非均值，
+	// 单独显示一个毫秒数会让人误以为是稳定的性能指标。
+	LatencyMS int `json:"latency_ms"`
+	// LastTestCode 是最近一次测活的上游 HTTP 状态码；0 = 网络层失败。
+	//
+	// 给状态码是为了可处置：401 要换密钥、404 要清模型、429 要降频，
+	// 只有"失败/成功"两态会让这三条线索全部丢失。
+	LastTestCode int `json:"last_test_code"`
+	// LastTestModel 是最近一次实际探测命中的模型名。
+	LastTestModel string `json:"last_test_model"`
+	CreatedAt     int64  `json:"created_at"`
+	UpdatedAt     int64  `json:"updated_at"`
 	// KeyPool 是密钥池概览（渠道可挂多把上游密钥并轮询使用）。
 	// 零值表示该渠道没有配置密钥池，走"单密钥"模式。
 	KeyPool keyPoolDTO `json:"key_pool"`
@@ -375,6 +387,9 @@ func toChannelDTO(ch *model.Channel) channelDTO {
 		StatusText:       ch.Status.String(),
 		LastTestAt:       unixOrZero(ch.LastTestAt),
 		LastTestOK:       ch.LastTestOK,
+		LatencyMS:        ch.LatencyMS,
+		LastTestCode:     ch.LastTestCode,
+		LastTestModel:    ch.LastTestModel,
 		CreatedAt:        unixOrZero(ch.CreatedAt),
 		UpdatedAt:        unixOrZero(ch.UpdatedAt),
 		// 失败统计：列表接口恒为空数组（详情接口由处理器另行填充）。

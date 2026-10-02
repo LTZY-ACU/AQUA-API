@@ -757,7 +757,17 @@ func (s *Server) handleTestChannel(c *gin.Context) {
 	result := s.probeChannel(ctx, channel)
 
 	// 记录测活结果（失败不影响本次响应：测活结果本身就是"可能失败"的信息）
-	_ = s.deps.Channels.RecordTestResult(ctx, channel.ID, time.Now(), result.OK)
+	//
+	// 与后台巡检共用 RecordProbeResult：手动点出来的结论和自动巡检的结论落在同一组字段上，
+	// 页面才不会同时存在两个互相矛盾的延迟值。
+	_ = s.deps.Channels.RecordProbeResult(ctx, model.ChannelProbeResult{
+		ID:         channel.ID,
+		At:         time.Now(),
+		OK:         result.OK,
+		LatencyMS:  result.LatencyMS,
+		StatusCode: result.StatusCode,
+		Model:      result.Model,
+	})
 
 	c.JSON(http.StatusOK, result)
 }

@@ -46,7 +46,7 @@ const (
 // channelColumns 集中定义查询列，避免各处手写列名导致顺序错乱。
 //
 // 注意：列顺序必须与 scanChannel 的 Scan 参数顺序严格一致。
-const channelColumns = `id, name, type, type_key, extra_config, base_url, api_key_enc, models, group_name, group_names, priority, weight, status, created_at, updated_at, last_test_at, last_test_ok, key_strategy, key_failure_policy, key_cooldown_seconds, retry_enabled, retry_max_attempts, model_retry_rules`
+const channelColumns = `id, name, type, type_key, extra_config, base_url, api_key_enc, models, group_name, group_names, priority, weight, status, created_at, updated_at, last_test_at, last_test_ok, latency_ms, last_test_code, last_test_model, key_strategy, key_failure_policy, key_cooldown_seconds, retry_enabled, retry_max_attempts, model_retry_rules`
 
 // channelRepository 是 model.ChannelRepository 的 SQL 实现。
 //
@@ -315,16 +315,23 @@ func (r *channelRepository) StatusCounts(ctx context.Context) (map[model.Channel
 	return counts, nil
 }
 
-// RecordTestResult 记录一次测活结果。
+// RecordProbeResult 记录一次渠道测活的完整结论。
 //
-// 实现要点：只更新两个字段，不像 Update 那样把整行配置写回——
-// 测活是后台高频行为，若整行写回，会用陈旧副本覆盖管理员刚修改的配置。
-func (r *channelRepository) RecordTestResult(ctx context.Context, id uint64, at time.Time, ok bool) error {
-	res, err := r.db.ExecContext(ctx,
-		"UPDATE channels SET last_test_at = ?, last_test_ok = ? WHERE id = ?",
-		at.Unix(), boolToInt(ok), id)
+// 实现要点：只更新测活相关的几个字段，不像 Update 那样把整行配置写回——
+// 巡检是后台高频行为，若整行写回，会用巡检开始时读到的副本
+// 覆盖管理员在这几毫秒里刚保存的配置（例如刚改好的 base_url）。
+//
+// 手动点「测活」与后台巡检共用此实现，两者的结论落在同一行同一组字段上，
+// 页面才不会出现"巡检说 200ms、手动测活说 1800ms"的自相矛盾。
+func (r *channelRepository) RecordProbeResult(ctx context.Context, result model.ChannelProbeResult) error {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE channels SET last_test_at = ?, last_test_ok = ?,
+			latency_ms = ?, last_test_code = ?, last_test_model = ?
+		WHERE id = ?`,
+		result.At.Unix(), boolToInt(result.OK),
+		result.LatencyMS, result.StatusCode, result.Model, result.ID)
 	if err != nil {
-		return fmt.Errorf("store: 记录渠道 %d 测活结果失败: %w", id, err)
+		return fmt.Errorf("store: 记录渠道 %d 测活结果失败: %w", result.ID, err)
 	}
 
 	affected, err := res.RowsAffected()
@@ -349,24 +356,28 @@ type rowScanner interface {
 //   - 解密失败会包装为明确错误——通常意味着 AQUA_APP_KEY 被更换或数据被篡改。
 func (r *channelRepository) scanChannel(sc rowScanner) (*model.Channel, error) {
 	var (
-		id          uint64
-		name        string
-		channelTy   int
-		typeKey     string
-		extraJSON   string
-		baseURL     string
-		encoded     string
-		modelsCSV   string
-		group       string
-		groupNames  string
-		priority    int
-		weight      int
-		status      int
-		createdAt   int64
-		updatedAt   int64
-		lastTestAt  int64
-		lastTestOK  int
-		keyStrategy string
+		id         uint64
+		name       string
+		channelTy  int
+		typeKey    string
+		extraJSON  string
+		baseURL    string
+		encoded    string
+		modelsCSV  string
+		group      string
+		groupNames string
+		priority   int
+		weight     int
+		status     int
+		createdAt  int64
+		updatedAt  int64
+		lastTestAt int64
+		lastTestOK int
+		// 健康巡检（迁移 0044）：最近一次测活的耗时、状态码与命中的模型名
+		latencyMS     int
+		lastTestCode  int
+		lastTestModel string
+		keyStrategy   string
 		// 密钥失败策略（迁移 0024）：策略标识 + 统一冷却秒数
 		keyFailurePolicy   string
 		keyCooldownSeconds int
@@ -378,7 +389,7 @@ func (r *channelRepository) scanChannel(sc rowScanner) (*model.Channel, error) {
 
 	if err := sc.Scan(&id, &name, &channelTy, &typeKey, &extraJSON, &baseURL, &encoded, &modelsCSV,
 		&group, &groupNames, &priority, &weight, &status, &createdAt, &updatedAt,
-		&lastTestAt, &lastTestOK, &keyStrategy,
+		&lastTestAt, &lastTestOK, &latencyMS, &lastTestCode, &lastTestModel, &keyStrategy,
 		&keyFailurePolicy, &keyCooldownSeconds,
 		&retryEnabled, &retryMaxAttempts, &modelRetryRules); err != nil {
 		// sql.ErrNoRows 属于正常控制流，不额外包装，便于调用方用 errors.Is 判断
@@ -394,23 +405,26 @@ func (r *channelRepository) scanChannel(sc rowScanner) (*model.Channel, error) {
 	}
 
 	return &model.Channel{
-		ID:          id,
-		Name:        name,
-		Type:        channelTy,
-		TypeKey:     typeKey,
-		ExtraConfig: decodeExtraConfig(extraJSON),
-		BaseURL:     baseURL,
-		APIKey:      apiKey,
-		Models:      decodeModels(modelsCSV),
-		Group:       group,
-		Groups:      decodeModels(groupNames), // 与模型清单同为 CSV，解码规则一致故复用
-		Priority:    priority,
-		Weight:      weight,
-		Status:      model.ChannelStatus(status),
-		CreatedAt:   time.Unix(createdAt, 0),
-		UpdatedAt:   time.Unix(updatedAt, 0),
-		LastTestAt:  unixToExpiresAt(lastTestAt), // 复用"0 表示零值时间"的转换
-		LastTestOK:  lastTestOK != 0,
+		ID:            id,
+		Name:          name,
+		Type:          channelTy,
+		TypeKey:       typeKey,
+		ExtraConfig:   decodeExtraConfig(extraJSON),
+		BaseURL:       baseURL,
+		APIKey:        apiKey,
+		Models:        decodeModels(modelsCSV),
+		Group:         group,
+		Groups:        decodeModels(groupNames), // 与模型清单同为 CSV，解码规则一致故复用
+		Priority:      priority,
+		Weight:        weight,
+		Status:        model.ChannelStatus(status),
+		CreatedAt:     time.Unix(createdAt, 0),
+		UpdatedAt:     time.Unix(updatedAt, 0),
+		LastTestAt:    unixToExpiresAt(lastTestAt), // 复用"0 表示零值时间"的转换
+		LastTestOK:    lastTestOK != 0,
+		LatencyMS:     latencyMS,
+		LastTestCode:  lastTestCode,
+		LastTestModel: lastTestModel,
 
 		KeyStrategy: model.NormalizeKeyStrategy(keyStrategy),
 

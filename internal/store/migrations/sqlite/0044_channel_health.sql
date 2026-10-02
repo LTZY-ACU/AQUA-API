@@ -1,0 +1,33 @@
+-- 迁移 0044：渠道健康巡检字段（最近一次的延迟、状态码与实际探测的模型）
+--
+-- 意图（Why）：
+--   channels 此前只有 last_test_at / last_test_ok 两个布尔量级的字段，且只有管理员
+--   手工点「测活」才会更新——于是"这个渠道现在快不快"在系统里根本没有答案：
+--     1) 管理员看不见趋势：只知道上次通不通，不知道是 200ms 还是 8 秒；
+--     2) 路由选择拿不到依据： MapSelection 只能按顺序或权重选，无法避开慢渠道；
+--     3) 故障发现滞后：上游变慢往往是宕机的前兆，没人盯着后台就发现不了。
+--   本迁移把"一次测活的完整结论"落成渠道属性，随后由后台巡检周期刷新（见 health_probe.go）。
+--
+-- 取值语义：
+--   latency_ms       最近一次测活的总耗时（毫秒）；0 = 从未成功拿到过响应
+--   last_test_code   最近一次测活的 HTTP 状态码；0 = 请求未发出/未拿到响应（网络错误）
+--   last_test_model  最近一次实际探测的模型名；'' = 未知（映射改写前的平台名不记）
+--
+-- 为什么不新建一张 channel_probes 明细表：
+--   明细表是"时间序列"，而路由与后台要的是"当前值"；每次选择渠道都去明细表做一次
+--   最新值聚合太重。当前值留在渠道行上（延迟是这个渠道此刻的属性），
+--   一段时间序列的需求将来再追加明细表即可，两张表互不冲突。
+--
+-- 流转（Flow）：
+--   server.StartHealthProbe（后台周期）
+--     → probeChannel（逐个模型直到命中可用）
+--     → Channels.RecordProbeResult（写本迁移三个字段 + 既有的 last_test_at/ok）
+--   server.handleTestChannel（管理员手工点测活）同样走 RecordProbeResult
+--     → 后台渠道详情据此展示延迟，后续可用于"慢渠道降权"的路由策略。
+--
+-- 扩展（Extend）：
+--   想接入历史曲线：新增 channel_probe_logs 表并由巡检同时追加一行即可；
+--   调整巡检周期/并发：改 config.Health（不改表结构）。
+ALTER TABLE channels ADD COLUMN latency_ms      INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE channels ADD COLUMN last_test_code  INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE channels ADD COLUMN last_test_model TEXT    NOT NULL DEFAULT '';
