@@ -321,3 +321,43 @@ func TestInjectStreamUsageFor_渠道级开关优先(t *testing.T) {
 		t.Errorf("渠道为 nil 时应回退全局默认，实际 %v", got)
 	}
 }
+
+// TestUsageSniffer_纯分隔符流不撑内存 回归"内存有界"的承诺：
+// `"usage":` 之后只发冒号/空白/换行的异常上游，此前会绕过所有分支的上限
+// （分支各自判上限时，markerPos 一旦被裁到 0，discardBefore 就成了空操作），
+// tail 随流无限增长，而这个抓取器挂在每一个流式转发上。
+func TestUsageSniffer_纯分隔符流不撑内存(t *testing.T) {
+	u := newUsageSniffer()
+	// 先把标记送进来，让扫描停在"等取值"的分支
+	_, _ = u.Write([]byte(`{"id":"x","usage":`))
+
+	// 此后只发分隔符（冒号、空白、换行、制表），总计约 6 MiB
+	flood := bytes.Repeat([]byte(" \n\t:"), 16*1024) // 64 KiB
+	for i := 0; i < 96; i++ {
+		_, _ = u.Write(flood)
+		if len(u.tail) > usageTailMaxBytes+floodSizeCeiling {
+			t.Fatalf("尾部缓冲突破上限：第 %d 次写入后 tail=%d 字节（上限 %d）",
+				i+1, len(u.tail), usageTailMaxBytes)
+		}
+	}
+	if u.found {
+		t.Fatal("分隔符流不应解析出 usage")
+	}
+}
+
+// floodSizeCeiling 是判定"越界"时给单次 Write 留的余量：
+// 兜底裁剪发生在 scan 之后的下一次 Write 入口，允许短暂超出一个分片。
+const floodSizeCeiling = 128 * 1024
+
+// TestUsageSniffer_正常usage仍能解析 保证上一条修复没有误伤正常路径。
+func TestUsageSniffer_正常usage仍能解析(t *testing.T) {
+	u := newUsageSniffer()
+	_, _ = u.Write([]byte(`data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":9}}`))
+	got, ok := u.Usage()
+	if !ok {
+		t.Fatal("正常 usage 应被解析出来")
+	}
+	if got.PromptTokens != 7 || got.CompletionTokens != 9 {
+		t.Fatalf("usage 解析错误：prompt=%d completion=%d", got.PromptTokens, got.CompletionTokens)
+	}
+}

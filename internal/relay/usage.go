@@ -175,6 +175,12 @@ func (u *usageSniffer) Write(p []byte) (int, error) {
 		u.firstByteAt = time.Now()
 	}
 	u.tail = append(u.tail, p...)
+	// 兜底闸门：无论 scan 走到哪个分支，尾部都不许超过上限。
+	// 分支各自判上限容易漏（本次修复前"纯分隔符流"就是漏掉的那个），
+	// 在写入口统一兜一次，才能保证"内存有界"这条承诺不依赖某个分支的正确性。
+	if len(u.tail) > usageTailMaxBytes {
+		u.tail = u.tail[len(u.tail)-(len(usageMarker)-1):]
+	}
 	u.scan()
 	return len(p), nil
 }
@@ -213,7 +219,16 @@ func (u *usageSniffer) scan() {
 			i++
 		}
 		if i >= len(u.tail) {
-			// 字段名已到达但取值还没来：从头保留，等待后续写入
+			// 字段名已到达但取值还没来：从头保留，等待后续写入。
+			// 必须与"截断 JSON"分支一样带上限：若上游此后只发分隔符
+			//（冒号、空白、换行），上面的扫描每轮都会推进到行尾，
+			// markerPos 一度被裁到 0 之后 discardBefore(0) 等于空操作，
+			// tail 就会随流无限增长——而这里的分支此前完全没有兜底。
+			if len(u.tail)-markerPos > usageTailMaxBytes {
+				// 超过兜底上限：等不到取值，跳过该标记继续找
+				searchFrom = valueStart
+				continue
+			}
 			u.discardBefore(markerPos)
 			return
 		}

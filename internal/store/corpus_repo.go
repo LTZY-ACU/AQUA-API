@@ -299,7 +299,13 @@ func (r *corpusRepository) IterateCorpusSamples(ctx context.Context, q model.Cor
 		return nil
 	}
 	// 导出按时间正序（写入顺序），便于本地按会话顺序拼接。
-	const batch = 100
+	//
+	// batch 取 20 而非 100：本查询 SELECT 的是**正文全文**
+	// （request_body/response_body 各自上限 corpus.DefaultMaxBytes=16MiB），
+	// 单行最坏约 32MiB。批次越大，驱动侧一次持有的结果集就越可能被放大到
+	// 数百 MiB；20 行把最坏情况压到约 640MiB 量级，同时仍是主键区间扫描，
+	// 分页次数对导出吞吐影响可忽略（导出本就是边读边写的后台任务）。
+	const batch = 20
 
 	lastID := uint64(0)
 	for {

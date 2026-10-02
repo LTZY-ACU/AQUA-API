@@ -45,6 +45,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -398,7 +399,17 @@ func (s *streamModelRewriter) Read(p []byte) (int, error) {
 
 // fill 读取源流的一行（含行尾），必要时改写后放入输出缓冲。
 func (s *streamModelRewriter) fill() {
-	line, err := s.reader.ReadBytes('\n')
+	line, err := readBoundedSSELine(s.reader, maxSSELineBytes)
+	if errors.Is(err, errSSELineTooLong) {
+		// 行长超限说明上游在发异常数据（或根本不是 SSE）：
+		// 置错误终止读取，宁可让这条流被截断，也不能让这一行在内存里无限长。
+		// 注意本 rewriter 挂在直通路径的 resp.Body 上（见 openai.go 的
+		// applyResponseModelRewrite），不设限等于把直通路径也拖下水。
+		slog.Error("上游 SSE 单行超过上限，中止模型名改写",
+			"limit_bytes", maxSSELineBytes, "to", s.to)
+		s.err = err
+		return
+	}
 	if len(line) > 0 {
 		if !s.done {
 			line = s.rewriteLine(line)

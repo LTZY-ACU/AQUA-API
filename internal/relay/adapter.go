@@ -33,6 +33,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -320,7 +321,18 @@ func (r *Relay) writeAdapted(w http.ResponseWriter, req *http.Request, resp *htt
 
 	reader := bufio.NewReaderSize(resp.Body, adaptedReadBufferBytes)
 	for {
-		line, readErr := reader.ReadBytes('\n')
+		line, readErr := readBoundedSSELine(reader, maxSSELineBytes)
+		if errors.Is(readErr, errSSELineTooLong) {
+			// 响应头早已发出，改不了状态码：记日志后直接终止转发。
+			// 不写 encoder.End()——伪造一个"正常收尾"会让下游误以为完整，
+			// 宁可让流被截断，客户端才会识别为不完整响应。
+			slog.Error("上游 SSE 单行超过上限，终止转发",
+				"limit_bytes", maxSSELineBytes, "model", adapter.Name())
+			if recorder != nil {
+				recorder.MarkAborted()
+			}
+			return
+		}
 		if len(line) > 0 {
 			// 抓 usage 时必须喂原始 SSE 文本（含 data: 前缀），
 			// 与直通路径保持一致，这样 extractUsage 的解析逻辑无需分叉。
@@ -362,6 +374,45 @@ func (r *Relay) writeAdapted(w http.ResponseWriter, req *http.Request, resp *htt
 // 上限的作用：异常上游可能返回超大响应体，无限制读取会撑爆网关内存。
 func readAllLimited(reader io.Reader, limit int64) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(reader, limit))
+}
+
+// maxSSELineBytes 是单行 SSE 的字节上限（约 8 MiB）。
+//
+// 为什么必须自己设限：bufio.Reader.ReadBytes 在缓冲区满时会继续累积
+// （它的实现会把整段切片克隆后接着读），**从不把 ErrBufferFull 返回给调用方**，
+// 于是"一个始终不发换行的上游"能让单个并发请求持有一份与流等长的副本，
+// 直到把内存吃光。这是"无界资源消耗"里唯一还留在流式路径上的口子。
+//
+// 取 8 MiB：与 codex_responses 的 scanner 上限一致，足以容纳单个事件里
+// 内联的大图 base64（约 6 MB 原图），又把单请求峰值封死在可接受范围。
+const maxSSELineBytes = 8 << 20
+
+// errSSELineTooLong 表示上游单行超过 maxSSELineBytes。
+var errSSELineTooLong = errors.New("上游 SSE 单行超过上限")
+
+// readBoundedSSELine 读取一行（含行尾换行），累计超过 max 时返回 errSSELineTooLong。
+//
+// 为什么不用 ReadBytes：它替调用方无上限地累积，见 maxSSELineBytes 的说明。
+// 这里改用 ReadSlice —— 它会在缓冲区满时返回 bufio.ErrBufferFull，
+// 让调用方有机会在"继续累加之前"先检查总长度。
+func readBoundedSSELine(reader *bufio.Reader, max int) ([]byte, error) {
+	var buf []byte
+	for {
+		// ReadSlice 返回的切片指向 reader 内部缓冲区，下一次读取即失效，
+		// 因此每次都要先 append 到自己的 buf（上面的越界判断也在 append 之前）。
+		chunk, err := reader.ReadSlice('\n')
+		if len(chunk) > 0 {
+			if len(buf)+len(chunk) > max {
+				return nil, errSSELineTooLong
+			}
+			buf = append(buf, chunk...)
+		}
+		if errors.Is(err, bufio.ErrBufferFull) {
+			// 行还没结束：继续攒，但每段都会先过上面的上限检查
+			continue
+		}
+		return buf, err
+	}
 }
 
 // maxAdaptedBodyBytes 是非流式转换路径允许读取的响应体上限。
