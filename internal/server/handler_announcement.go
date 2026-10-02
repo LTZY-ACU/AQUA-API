@@ -23,6 +23,7 @@ package server
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -353,12 +354,16 @@ func (s *Server) handleAdminDeleteAnnouncement(c *gin.Context) {
 }
 
 // writeAnnouncementError 处理后台操作公告时的错误响应：不存在 → 404，其余 → 500。
+//
+// 未预期的失败要留痕：客户端只拿到通用 500，不记 error 就等于把原因丢掉。
 func writeAnnouncementError(c *gin.Context, err error) {
 	if errors.Is(err, model.ErrAnnouncementNotFound) {
 		oai.WriteError(c.Writer, http.StatusNotFound, "公告不存在",
 			oai.TypeInvalidRequest, "announcement_not_found")
 		return
 	}
+	slog.Error("操作公告失败", "error", err,
+		"method", c.Request.Method, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
 	oai.WriteError(c.Writer, http.StatusInternalServerError,
 		"网关内部错误", oai.TypeServer, oai.CodeInternal)
 }

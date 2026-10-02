@@ -22,6 +22,7 @@ package server
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -318,12 +319,16 @@ func (s *Server) handleAdminDeleteInvalidRedeemCodes(c *gin.Context) {
 }
 
 // writeRedeemAdminError 处理后台操作兑换码时的错误响应。
+//
+// 未预期的失败要留痕：兑换码是资产，500 却查无原因等于无法排障。
 func writeRedeemAdminError(c *gin.Context, err error) {
 	if errors.Is(err, model.ErrRedeemCodeNotFound) {
 		oai.WriteError(c.Writer, http.StatusNotFound, "兑换码不存在",
 			oai.TypeInvalidRequest, "redeem_code_not_found")
 		return
 	}
+	slog.Error("操作兑换码失败", "error", err,
+		"method", c.Request.Method, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
 	oai.WriteError(c.Writer, http.StatusInternalServerError,
 		"网关内部错误", oai.TypeServer, oai.CodeInternal)
 }

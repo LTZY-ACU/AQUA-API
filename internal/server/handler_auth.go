@@ -128,8 +128,7 @@ type siteStatusResponse struct {
 func (s *Server) handleSiteStatus(c *gin.Context) {
 	settings, err := model.LoadSiteSettings(c.Request.Context(), s.deps.Settings)
 	if err != nil {
-		oai.WriteError(c.Writer, http.StatusInternalServerError,
-			"读取站点设置失败", oai.TypeServer, oai.CodeInternal)
+		s.respondInternalError(c, "读取站点设置失败", err)
 		return
 	}
 
@@ -207,8 +206,7 @@ type registerRequest struct {
 func (s *Server) handleRegister(c *gin.Context) {
 	settings, err := model.LoadSiteSettings(c.Request.Context(), s.deps.Settings)
 	if err != nil {
-		oai.WriteError(c.Writer, http.StatusInternalServerError,
-			"读取站点设置失败", oai.TypeServer, oai.CodeInternal)
+		s.respondInternalError(c, "读取站点设置失败", err)
 		return
 	}
 	if !settings.RegistrationEnabled {
@@ -255,8 +253,7 @@ func (s *Server) handleRegister(c *gin.Context) {
 				"auth.username_taken", oai.TypeInvalidRequest, "username_taken")
 			return
 		} else if !errors.Is(err, model.ErrUserNotFound) {
-			oai.WriteError(c.Writer, http.StatusInternalServerError,
-				"网关内部错误", oai.TypeServer, oai.CodeInternal)
+			s.respondInternalError(c, "注册前查询用户名是否已存在失败", err)
 			return
 		}
 
@@ -285,8 +282,7 @@ func (s *Server) handleRegister(c *gin.Context) {
 
 	hash, err := crypto.HashPassword(req.Password)
 	if err != nil {
-		oai.WriteError(c.Writer, http.StatusInternalServerError,
-			"网关内部错误", oai.TypeServer, oai.CodeInternal)
+		s.respondInternalError(c, "计算口令哈希失败", err)
 		return
 	}
 
@@ -349,8 +345,7 @@ func (s *Server) ensureEmailAvailable(c *gin.Context, email string) bool {
 	case errors.Is(err, model.ErrUserNotFound):
 		return true
 	default:
-		oai.WriteError(c.Writer, http.StatusInternalServerError,
-			"网关内部错误", oai.TypeServer, oai.CodeInternal)
+		s.respondInternalError(c, "查询邮箱是否已存在失败", err)
 		return false
 	}
 }
@@ -461,8 +456,7 @@ func (s *Server) handleLogin(c *gin.Context) {
 				"auth.invalid_credentials", oai.TypeAuthentication, oai.CodeInvalidAPIKey)
 			return
 		}
-		oai.WriteError(c.Writer, http.StatusInternalServerError,
-			"网关内部错误", oai.TypeServer, oai.CodeInternal)
+		s.respondInternalError(c, "登录查询用户失败", err)
 		return
 	}
 
@@ -491,8 +485,7 @@ func (s *Server) handleLogout(c *gin.Context) {
 	// 从请求头重新取一次明文令牌：会话表里只有摘要，必须由请求头提供原文才能算出摘要
 	if rawToken := extractSessionToken(c); rawToken != "" {
 		if err := s.deps.Sessions.DeleteByTokenHash(c.Request.Context(), crypto.SHA256Hex(rawToken)); err != nil {
-			oai.WriteError(c.Writer, http.StatusInternalServerError,
-				"退出登录失败", oai.TypeServer, oai.CodeInternal)
+			s.respondInternalError(c, "退出登录删除会话失败", err)
 			return
 		}
 	}
@@ -528,8 +521,7 @@ func (s *Server) handleMe(c *gin.Context) {
 func (s *Server) issueSession(c *gin.Context, user *model.User, status int) {
 	token, err := model.GenerateSessionToken()
 	if err != nil {
-		oai.WriteError(c.Writer, http.StatusInternalServerError,
-			"网关内部错误", oai.TypeServer, oai.CodeInternal)
+		s.respondInternalError(c, "生成会话令牌失败", err)
 		return
 	}
 
@@ -540,8 +532,7 @@ func (s *Server) issueSession(c *gin.Context, user *model.User, status int) {
 		ExpiresAt: expiresAt,
 	}
 	if err := s.deps.Sessions.Create(c.Request.Context(), session); err != nil {
-		oai.WriteError(c.Writer, http.StatusInternalServerError,
-			"创建登录会话失败", oai.TypeServer, oai.CodeInternal)
+		s.respondInternalError(c, "创建登录会话失败", err)
 		return
 	}
 

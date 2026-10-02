@@ -34,6 +34,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -438,11 +439,15 @@ func writeTaskError(c *gin.Context, err error) {
 }
 
 // writeTaskLookupError 处理"按任务号查询失败"的统一响应。
+//
+// 未预期的查询失败（多为 DB 故障）要留痕：客户端只拿到通用 500。
 func writeTaskLookupError(c *gin.Context, err error) {
 	if errors.Is(err, model.ErrTaskNotFound) {
 		writeTaskNotFound(c)
 		return
 	}
+	slog.Error("查询任务失败", "error", err,
+		"method", c.Request.Method, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
 	oai.WriteError(c.Writer, http.StatusInternalServerError,
 		"网关内部错误", oai.TypeServer, oai.CodeInternal)
 }
