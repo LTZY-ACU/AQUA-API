@@ -74,6 +74,24 @@ const (
 	DefaultSMTPHost     = "smtpdm.aliyun.com" // 默认 SMTP 服务器
 	DefaultSMTPPort     = 465                 // 默认端口（SSL）
 	DefaultSMTPFromName = "AQUA-API"          // 默认发件人显示名
+
+	// 数据保留天数默认值，仅作用于「随时间线性增长」的表；0 = 永不清理。
+	//
+	// 为什么要有默认值：这些表（用量明细、审计日志、预留台账、语料样本、群发回执）
+	// 只写不删，站点跑得越久库越大，最终撑爆磁盘；给一个"够用又不冒进"的默认值，
+	// 让零配置部署也能长期运行，需要更长留痕的站点再用配置调高。
+	//
+	// 取值依据：
+	//   - usage_log：运营报表通常只看近半年，180 天后再冷备；
+	//   - audit_log：合规留痕一般要求至少一年，取 365 天；
+	//   - quota_reservation：在途预留最长十几分钟，结算/释放后台账留 7 天足够对账；
+	//   - corpus_sample：语料样本体积最大且含原始请求体，尽快回收，取 30 天；
+	//   - broadcast：群发回执只用于排查投递失败，90 天足够。
+	DefaultRetentionUsageLogDays         = 180
+	DefaultRetentionAuditLogDays         = 365
+	DefaultRetentionQuotaReservationDays = 7
+	DefaultRetentionCorpusSampleDays     = 30
+	DefaultRetentionBroadcastDays        = 90
 )
 
 // Config 是程序运行所需的全部配置。
@@ -94,6 +112,27 @@ type Config struct {
 	// （见文件头分层约定），故此处用普通字符串表达；两处口径必须保持一致
 	// （小写、非空、不含空格/逗号/斜杠、≤64 字符）。
 	RelayGroup string `json:"relay_group"`
+
+	// Retention 是各类随时间线性增长数据的保留期（天）。
+	Retention RetentionConfig `json:"retention"` // 数据保留期相关
+}
+
+// RetentionConfig 描述各只写表的保留天数（0 = 永不清理）。
+//
+// 每轮清理按「created_at < now − 天数」删除，并在日志里记录各表删除条数，
+// 便于站长确认清理确实在发生、以及评估自己的保留期是否合适。
+type RetentionConfig struct {
+	// UsageLogDays 是用量明细（usage_logs）的保留天数。
+	UsageLogDays int `json:"usage_log_days"`
+	// AuditLogDays 是审计日志（audit_logs）的保留天数。
+	AuditLogDays int `json:"audit_log_days"`
+	// QuotaReservationDays 是已结算/已释放的额度预留台账保留天数；
+	// 在途（未结算）记录不受此配置影响，始终保留（由过期回收流程负责释放）。
+	QuotaReservationDays int `json:"quota_reservation_days"`
+	// CorpusSampleDays 是语料样本（corpus_samples，含原始请求/响应）的保留天数。
+	CorpusSampleDays int `json:"corpus_sample_days"`
+	// BroadcastDays 是群发回执（email_broadcast_recipients）的保留天数。
+	BroadcastDays int `json:"broadcast_days"`
 }
 
 // ServerConfig 描述 HTTP 服务的监听与运行模式。
@@ -239,6 +278,14 @@ func Default() *Config {
 		// Security 刻意不提供默认值：加密主密钥必须由使用者显式提供，
 		// 若给出固定默认值等于"所有人都用同一把钥匙"，比没有加密更危险。
 		Security: SecurityConfig{},
+		// 保留期必须给出默认值：这些表只写不删，零配置部署若不清理会无限膨胀。
+		Retention: RetentionConfig{
+			UsageLogDays:         DefaultRetentionUsageLogDays,
+			AuditLogDays:         DefaultRetentionAuditLogDays,
+			QuotaReservationDays: DefaultRetentionQuotaReservationDays,
+			CorpusSampleDays:     DefaultRetentionCorpusSampleDays,
+			BroadcastDays:        DefaultRetentionBroadcastDays,
+		},
 		// 默认分组固定为 default：保证未显式配置时，路由行为与旧版本完全一致。
 		RelayGroup: DefaultRelayGroup,
 	}
@@ -338,6 +385,13 @@ func applyEnv(cfg *Config) {
 	setIfNotEmpty(&cfg.Payment.WeChatPayAPIv3Key, EnvPrefix+"WECHATPAY_APIV3_KEY")
 	setIfNotEmpty(&cfg.Payment.WeChatPayPrivateKey, EnvPrefix+"WECHATPAY_PRIVATE_KEY")
 	setIfNotEmpty(&cfg.Payment.WeChatPayPlatformPublicKey, EnvPrefix+"WECHATPAY_PLATFORM_PUBLIC_KEY")
+	// 数据保留天数：允许用 0 关闭某张表的清理（如法务要求永久留痕时把 audit 锁住）。
+	// setIfNotEmptyInt 只在变量非空时覆盖，因此"设为 0"是显式生效的。
+	setIfNotEmptyInt(&cfg.Retention.UsageLogDays, EnvPrefix+"RETENTION_USAGE_LOG_DAYS")
+	setIfNotEmptyInt(&cfg.Retention.AuditLogDays, EnvPrefix+"RETENTION_AUDIT_LOG_DAYS")
+	setIfNotEmptyInt(&cfg.Retention.QuotaReservationDays, EnvPrefix+"RETENTION_QUOTA_RESERVATION_DAYS")
+	setIfNotEmptyInt(&cfg.Retention.CorpusSampleDays, EnvPrefix+"RETENTION_CORPUS_SAMPLE_DAYS")
+	setIfNotEmptyInt(&cfg.Retention.BroadcastDays, EnvPrefix+"RETENTION_BROADCAST_DAYS")
 }
 
 // setIfNotEmptyInt 是 setIfNotEmpty 的整数版本：解析失败时保留原值。
@@ -416,6 +470,23 @@ func (c *Config) Validate() error {
 	if (c.SMTP.Username != "" || c.SMTP.Password != "") && !c.SMTP.Configured() {
 		return fmt.Errorf("配置错误：SMTP 配置不完整，需同时提供 host/port/username/password/from" +
 			"（口令只能通过环境变量 " + EnvPrefix + "SMTP_PASSWORD 注入）")
+	}
+
+	// 保留天数：负数会让 cutoff 落到未来，等于"把还没到期的数据全删了"，
+	// 属于最危险的一类误配置，必须在启动阶段拦住（0 合法 = 不清理）。
+	for _, d := range []struct {
+		name string
+		val  int
+	}{
+		{"retention.usage_log_days", c.Retention.UsageLogDays},
+		{"retention.audit_log_days", c.Retention.AuditLogDays},
+		{"retention.quota_reservation_days", c.Retention.QuotaReservationDays},
+		{"retention.corpus_sample_days", c.Retention.CorpusSampleDays},
+		{"retention.broadcast_days", c.Retention.BroadcastDays},
+	} {
+		if d.val < 0 {
+			return fmt.Errorf("配置错误：%s=%d 非法，必须 ≥ 0（0 表示不清理）", d.name, d.val)
+		}
 	}
 
 	// 加密主密钥必须存在：没有它无法解密已存的渠道密钥，也无法安全新增渠道

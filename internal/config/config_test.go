@@ -38,6 +38,9 @@ func neutralizeEnv(t *testing.T) {
 		"AQUA_DATABASE_DRIVER", "AQUA_DATABASE_DSN",
 		"AQUA_LOG_LEVEL", "AQUA_LOG_FORMAT",
 		"AQUA_RELAY_GROUP",
+		"AQUA_RETENTION_USAGE_LOG_DAYS", "AQUA_RETENTION_AUDIT_LOG_DAYS",
+		"AQUA_RETENTION_QUOTA_RESERVATION_DAYS", "AQUA_RETENTION_CORPUS_SAMPLE_DAYS",
+		"AQUA_RETENTION_BROADCAST_DAYS",
 		"AQUA_APP_KEY",
 	} {
 		t.Setenv(k, "")
@@ -360,6 +363,33 @@ func TestValidate_InvalidCases(t *testing.T) {
 			mutate:  func(c *Config) { c.RelayGroup = "free vip" },
 			wantErr: true,
 		},
+		// 保留天数为负会让 cutoff 落到未来（等于"把还没到期的数据全删了"），
+		// 五项全部逐一拦截：漏掉任何一项都等于给那张表留了一个误删入口。
+		{
+			name:    "保留天数为负（usage_log）",
+			mutate:  func(c *Config) { c.Retention.UsageLogDays = -1 },
+			wantErr: true,
+		},
+		{
+			name:    "保留天数为负（audit_log）",
+			mutate:  func(c *Config) { c.Retention.AuditLogDays = -1 },
+			wantErr: true,
+		},
+		{
+			name:    "保留天数为负（quota_reservation）",
+			mutate:  func(c *Config) { c.Retention.QuotaReservationDays = -1 },
+			wantErr: true,
+		},
+		{
+			name:    "保留天数为负（corpus_sample）",
+			mutate:  func(c *Config) { c.Retention.CorpusSampleDays = -1 },
+			wantErr: true,
+		},
+		{
+			name:    "保留天数为负（broadcast）",
+			mutate:  func(c *Config) { c.Retention.BroadcastDays = -1 },
+			wantErr: true,
+		},
 		{
 			name:    "合法配置（对照）",
 			mutate:  func(c *Config) {},
@@ -415,5 +445,57 @@ func TestSafeDSN_RedactsPassword(t *testing.T) {
 				t.Errorf("SafeDSN() = %q，期望 %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestRetention_DefaultsAndEnv 验证数据保留期的默认值、环境变量覆盖与"0 = 不清理"。
+//
+// 覆盖点刻意包含"设为 0"：保留期里 0 是有业务含义的值（关闭该表清理），
+// 而 applyEnv 的约定是"空字符串 = 未设置"，两者一旦混淆就会出现
+// "运维明明写了 0 却还在删数据"这种极难发现的故障。
+func TestRetention_DefaultsAndEnv(t *testing.T) {
+	neutralizeEnv(t)
+	setTestAppKey(t)
+
+	// 默认值：全部非负且为常量区声明的天数
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load 返回错误: %v", err)
+	}
+	defaults := []struct {
+		name string
+		got  int
+		want int
+	}{
+		{"usage_log", cfg.Retention.UsageLogDays, DefaultRetentionUsageLogDays},
+		{"audit_log", cfg.Retention.AuditLogDays, DefaultRetentionAuditLogDays},
+		{"quota_reservation", cfg.Retention.QuotaReservationDays, DefaultRetentionQuotaReservationDays},
+		{"corpus_sample", cfg.Retention.CorpusSampleDays, DefaultRetentionCorpusSampleDays},
+		{"broadcast", cfg.Retention.BroadcastDays, DefaultRetentionBroadcastDays},
+	}
+	for _, d := range defaults {
+		if d.got != d.want {
+			t.Errorf("%s 保留天数 = %d，期望默认 %d", d.name, d.got, d.want)
+		}
+	}
+
+	// 环境变量覆盖为 0：显式关闭清理必须生效
+	t.Setenv("AQUA_RETENTION_AUDIT_LOG_DAYS", "0")
+	cfg, err = Load("")
+	if err != nil {
+		t.Fatalf("Load 返回错误: %v", err)
+	}
+	if cfg.Retention.AuditLogDays != 0 {
+		t.Errorf("audit_log 保留天数 = %d，期望被环境变量覆盖为 0", cfg.Retention.AuditLogDays)
+	}
+	// 未被覆盖的项应保持默认值（局部覆盖语义）
+	if cfg.Retention.UsageLogDays != DefaultRetentionUsageLogDays {
+		t.Errorf("usage_log 保留天数 = %d，期望保持默认 %d", cfg.Retention.UsageLogDays, DefaultRetentionUsageLogDays)
+	}
+
+	// 负数由校验拦截，不能带着启动
+	t.Setenv("AQUA_RETENTION_USAGE_LOG_DAYS", "-3")
+	if _, err := Load(""); err == nil {
+		t.Error("保留天数为负时期望 Load 返回校验错误，实际通过")
 	}
 }

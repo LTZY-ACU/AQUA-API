@@ -91,6 +91,14 @@ const quotaCleanupInitialDelay = time.Minute
 //     2 分钟足以把"过期后还能用"的窗口压到可忽略。
 const trialReclaimInterval = 2 * time.Minute
 
+// retentionCleanupInterval 是后台按保留期清理只写表的间隔。
+//
+// 取 1 小时、且不做成配置项，原因：
+//  1. 清理对象是"早于几十天"的旧数据，晚一小时删除毫无影响；
+//  2. 每轮都是几条走索引的 DELETE，命中通常为 0 行，1 小时足以让磁盘
+//     增长速度远低于清理速度，再密只是白耗数据库。
+const retentionCleanupInterval = time.Hour
+
 func main() {
 	// 用 run() 承载全部逻辑并统一处理退出码：
 	// 既便于集中做 defer 收尾，也便于将来对 run 做集成测试。
@@ -277,6 +285,25 @@ func run() error {
 	// 后台周期回收到期试用额：试用额的到期时刻是精确的（如"24 小时后"），
 	// 间隔取 2 分钟是为了让"过期后仍能用"的窗口足够小，同时不至于频繁抢写锁。
 	go runTrialGrantReclaimer(ctx, trialGrants, logger)
+
+	// ── 数据保留期清理 ─────────────────────────────────────────
+	// usage_logs / audit_logs / 已终态预留 / corpus_samples / 群发回执这五张表只写不删，
+	// 不清理会无限膨胀；各表留多久由 config.Retention 决定（0 = 不清理）。
+	retention := store.NewRetention(st.DB(), auditLogs, corpusRepo)
+	retentionPolicy := retentionPolicyFrom(cfg.Retention)
+
+	// 启动时清一轮：解决"上次进程退出前已到期但还没轮到清理"的堆积，
+	// 也让"磁盘是不是在涨"在日志里立刻可见。失败不阻断启动（维护动作）。
+	if counts, err := retention.Purge(ctx, retentionPolicy, time.Now()); err != nil {
+		logger.Warn("启动时按保留期清理失败", "error", err)
+	} else if counts.Total() > 0 {
+		logger.Info("已按保留期清理过期数据", "usage_logs", counts.UsageLogs,
+			"audit_logs", counts.AuditLogs, "quota_reservations", counts.QuotaReservations,
+			"corpus_samples", counts.CorpusSamples, "broadcast_recipients", counts.Broadcasts)
+	}
+
+	// 后台周期清理：上面那一次只解决历史堆积，运行期新写入的数据到期后要靠它持续回收。
+	go runRetentionCleaner(ctx, retention, retentionPolicy, logger)
 
 	// ── 支付 / 充值 ─────────────────────────────────────────────
 	// 支付通道注册表：各通道的运营参数（网关地址、商户号、启用列表）从设置表实时读取，
@@ -587,6 +614,70 @@ func runTrialGrantReclaimer(ctx context.Context, repo model.TrialGrantRepository
 			logger.Warn("回收到期试用额失败，将在下一轮重试", "error", err)
 		case cleaned > 0:
 			logger.Info("已回收到期试用额", "count", cleaned)
+		}
+	}
+}
+
+// retentionPolicyFrom 把配置里的保留天数转换成清理策略。
+//
+// 单独抽一层是为了让"配置结构"与"清理器结构"保持解耦：
+// config 是底层包，不感知 store；将来增删表时只需改这里与 store.Purge。
+func retentionPolicyFrom(rc config.RetentionConfig) store.RetentionPolicy {
+	return store.RetentionPolicy{
+		UsageLogDays:         rc.UsageLogDays,
+		AuditLogDays:         rc.AuditLogDays,
+		QuotaReservationDays: rc.QuotaReservationDays,
+		CorpusSampleDays:     rc.CorpusSampleDays,
+		BroadcastDays:        rc.BroadcastDays,
+	}
+}
+
+// runRetentionCleaner 周期性按保留期清理只写表（数据保留策略）。
+//
+// 为什么必须常驻：这些表只写不删，只在启动时清一轮的话，
+// 运行期新写入的数据永远不会到期回收，磁盘照样一直涨。
+//
+// 行为约定（与其它后台协程保持一致）：
+//   - 随 ctx 取消（进程退出信号）立即返回，不阻塞关闭；
+//   - 每轮仅在实际删除发生时打 info，正常情况下不产生日志噪音；
+//   - 单轮失败只打 warn 并继续下一轮，绝不 panic、不退出进程。
+//
+// 多实例说明：删除条件只依赖时间，两个实例并发执行也只是重复扫描同一批数据，
+// 不会删多（幂等），因此不做互斥。
+func runRetentionCleaner(ctx context.Context, retention *store.Retention, policy store.RetentionPolicy, logger *slog.Logger) {
+	// 首轮延迟到下一个周期点：启动时已经同步清过一次，
+	// 这里既避开迁移与启动自检的写入高峰，也不与启动那一轮重复劳动。
+	delay := time.NewTimer(retentionCleanupInterval)
+	defer delay.Stop()
+	select {
+	case <-ctx.Done():
+		return
+	case <-delay.C:
+	}
+
+	ticker := time.NewTicker(retentionCleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		counts, err := retention.Purge(ctx, policy, time.Now())
+		switch {
+		case err != nil:
+			// 部分表失败时 Purge 仍返回已删除的部分，因此这里也顺带记下成功部分，
+			// 避免"其实删掉了一批，日志却只看到失败"造成重复排查。
+			logger.Warn("按保留期清理过期数据失败，将在下一轮重试",
+				"error", err, "usage_logs", counts.UsageLogs,
+				"audit_logs", counts.AuditLogs, "quota_reservations", counts.QuotaReservations,
+				"corpus_samples", counts.CorpusSamples, "broadcast_recipients", counts.Broadcasts)
+		case counts.Total() > 0:
+			logger.Info("已按保留期清理过期数据", "usage_logs", counts.UsageLogs,
+				"audit_logs", counts.AuditLogs, "quota_reservations", counts.QuotaReservations,
+				"corpus_samples", counts.CorpusSamples, "broadcast_recipients", counts.Broadcasts)
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
 		}
 	}
 }
