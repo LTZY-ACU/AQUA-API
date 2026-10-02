@@ -162,7 +162,19 @@ func (s *Server) registerRoutes() {
 	// 普通登录的配额会被瞬间打满；改挂独立的 qiuPollLimiter，
 	// 既容得下正常轮询节奏，又保持着每次请求都有配额消耗。
 	api.POST("/auth/qiu/start", authLimit, s.handleQIULoginStart)
-	api.GET("/auth/qiu/status/:task_id", s.qiuPollLimiter.Middleware(middleware.ClientIP),
+	//
+	// 状态查询挂在 SessionAuthOptional 之下只有一个目的：让处理器能分辨
+	// 「这次轮询是为了登录」还是「这次轮询是为了绑定」。
+	//
+	// 为什么非挂不可：已登录用户点"绑定第三方账号"时走的是同一条轮询链接，
+	// 若处理器认不出他已经登录，就会按登录流程处理——凭空给他建一个新号、
+	// 再下发一个属于那个新号的会话，结果是他被静默切走、而绑定根本没做成。
+	//
+	// 这里刻意用 Optional 而不是 SessionAuth：未登录的人才是本接口的主要用户，
+	// 他们不能被 401 挡在门外。
+	api.GET("/auth/qiu/status/:task_id",
+		middleware.SessionAuthOptional(s.deps.Sessions, s.deps.Users),
+		s.qiuPollLimiter.Middleware(middleware.ClientIP),
 		s.handleQIULoginStatus)
 
 	// ── 需登录（网站会话）────────────────────────────────────────
@@ -215,6 +227,8 @@ func (s *Server) registerRoutes() {
 
 	// 限时试用额：当前用户"还剩多少、几时过期"，供概览页横幅展示。
 	portal.GET("/trial", s.handleMyTrialGrant)
+	// 第三方账号绑定（QIU 科技账号）：查看自己已绑定哪些外部身份。
+	portal.GET("/external-accounts", s.handleMyExternalAccounts)
 
 	// ── 管理后台（需管理员）──────────────────────────────────────
 	admin := authed.Group("/admin")

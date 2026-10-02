@@ -42,6 +42,20 @@ func (p ExternalAccountProvider) String() string {
 	return string(p)
 }
 
+// DisplayName 返回面向用户的平台名称。
+//
+// 单独一个方法而不是让前端自己维护映射：平台称呼会在界面多处出现
+// （绑定卡片、登录按钮、绑定失败提示），三处各写一份迟早会出现
+// "按钮写 QIU、提示写秋科"这种不一致。
+func (p ExternalAccountProvider) DisplayName() string {
+	switch p {
+	case ExternalProviderQIU:
+		return "QIU 科技账号"
+	default:
+		return string(p)
+	}
+}
+
 // NormalizeExternalProvider 归一化平台标识：去空格转小写，不支持的值返回空串。
 //
 // 返回空串而非原样返回的意义：调用方用 err != nil 判断"不支持的平台"，

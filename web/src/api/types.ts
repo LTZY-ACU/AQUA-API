@@ -400,6 +400,17 @@ export interface Channel {
   status_text?: string
   last_test_at?: number
   last_test_ok?: boolean
+  /**
+   * 最近一次测活（含后台自动巡检）的耗时；0 = 尚未拿到过响应。
+   *
+   * 它是一次测量而非均值，展示时必须连 last_test_at 一起给出，
+   * 否则用户会把它当成稳定的性能指标。
+   */
+  latency_ms?: number
+  /** 最近一次测活的上游 HTTP 状态码；0 = 网络层失败（401 换密钥 / 404 清模型 / 429 降频） */
+  last_test_code?: number
+  /** 最近一次实际探测命中的模型名 */
+  last_test_model?: string
   created_at?: number
   updated_at?: number
   /** 密钥池概览；total 为 0 表示该渠道未配置密钥池（走单密钥模式） */

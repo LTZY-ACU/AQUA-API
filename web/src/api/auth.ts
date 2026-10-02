@@ -139,18 +139,37 @@ export function startQIULogin(): Promise<{ task_id: string; url: string }> {
   return api.post<{ task_id: string; url: string }>('/auth/qiu/start')
 }
 
+/** 对方平台返回的用户简介（绑定流程里用来让用户确认"绑的是这个号"） */
+export interface QIUProfile {
+  username: string
+  nickname: string
+}
+
+/** QIU 任务的查询结论。 */
+export interface QIUStatusResult {
+  status: QIULoginStatus
+  /**
+   * 会话令牌：仅【未登录】调用（登录流程）时才有。
+   *
+   * 已登录用户点「绑定第三方账号」时走的是同一条链接，后端认出会话后
+   * 只回报 status=ok 与 profile —— 绝不建号、绝不下发新会话，
+   * 否则用户会被静默切到另一个账号，而绑定其实一步都没做。
+   */
+  session_token?: string
+  expires_at?: number
+  user?: AuthUser
+  /** 仅【已登录】调用（绑定流程）时才有 */
+  profile?: QIUProfile
+}
+
 /**
  * GET /api/auth/qiu/status/{taskId}：查询任务结论。
  *
- * 只有 status === 'ok' 时才带 session_token / user —— 调用方必须严格按此判断，
+ * 只有 status === 'ok' 时才带后续字段 —— 调用方必须严格按此判断，
  * 不能只看"有没有 user"，否则 pending 会被误当成登录成功。
  */
-export function qiuLoginStatus(
-  taskId: string,
-): Promise<{ status: QIULoginStatus; session_token: string; expires_at: number; user: AuthUser }> {
-  return api.get<{ status: QIULoginStatus; session_token: string; expires_at: number; user: AuthUser }>(
-    `/auth/qiu/status/${encodeURIComponent(taskId)}`,
-  )
+export function qiuLoginStatus(taskId: string): Promise<QIUStatusResult> {
+  return api.get<QIUStatusResult>(`/auth/qiu/status/${encodeURIComponent(taskId)}`)
 }
 
 /** POST /api/auth/qiu/bind：已登录用户把当前账号绑定到某个 QIU 身份。 */
@@ -166,4 +185,21 @@ export function bindQIUAccount(taskId: string): Promise<{ ok: boolean; username:
  */
 export function reauth(password: string): Promise<{ ok: boolean; reauth_until: number }> {
   return api.post<{ ok: boolean; reauth_until: number }>('/auth/reauth', { password })
+}
+
+/** 「我的第三方账号」列表项 */
+export interface ExternalAccount {
+  provider: string
+  provider_text: string
+  account_name: string
+  nickname: string
+  /** Unix 秒；0 = 未知 */
+  bound_at: number
+  /** 该第三方登录当前是否开放（总开关关掉后仍能看见已绑定关系） */
+  login_enabled: boolean
+}
+
+/** GET /api/user/external-accounts：查看当前账号绑定了哪些第三方身份。 */
+export function listMyExternalAccounts(): Promise<{ items: ExternalAccount[] }> {
+  return api.get<{ items: ExternalAccount[] }>('/user/external-accounts')
 }

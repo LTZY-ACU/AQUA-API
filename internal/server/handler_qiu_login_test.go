@@ -13,7 +13,7 @@
 // 流转（Flow）：
 //
 //	httptest 起一个假 QIU 服务 → 把配置里的 BaseURL 指向它
-//	→ 走完 start / status 两步 → 断言账号落到行由和经验ally一致
+//	→ 走完 start / status 两步 → 断言账号归属、绑定关系与预期一致
 //
 // 扩展（Extend）：
 //
@@ -22,6 +22,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -244,6 +245,44 @@ func TestQIULogin_已登录用户可绑定既有账号(t *testing.T) {
 	userObj, _ := body["user"].(map[string]any)
 	if uid, _ := userObj["id"].(float64); uint64(uid) != me.ID {
 		t.Errorf("登录到了账号 %v，期望既有账号 %d", uid, me.ID)
+	}
+}
+
+// TestQIULogin_已登录用户轮询不得建号发会话 钉住"绑定流程被误当成登录"这个坑。
+//
+// 场景：用户在控制台点「绑定第三方账号」，前端走的是同一条轮询链接。
+// 若处理器认不出调用方已登录，就会为他凭空建一个新号并下发属于新号的会话——
+// 用户被静默切走，而真正的绑定其实一步都没做。
+func TestQIULogin_已登录用户轮询不得建号发会话(t *testing.T) {
+	f := newQIUFixture(t)
+	f.qiu.status.Store("ok")
+	// 换一个全新的外部 id：一旦按登录流程处理，它必然凭空建号。
+	f.qiu.userID.Store(float64(88888))
+
+	rec, body := doAnnouncementJSON(t, f.srv, http.MethodGet,
+		"/api/auth/qiu/status/task-abc123", f.fx.userTok, "")
+	if rec.Code != http.StatusOK || body["status"] != "ok" {
+		t.Fatalf("已登录用户轮询应回报已确认，实际 %d / %v", rec.Code, body)
+	}
+	if tok, _ := body["session_token"].(string); tok != "" {
+		t.Error("已登录用户轮询绝不能下发会话令牌：一旦下发，用户就被静默切到另一个账号")
+	}
+	if _, err := f.srv.deps.ExternalAccounts.GetByExternalID(context.Background(),
+		model.ExternalProviderQIU, "88888"); !errors.Is(err, model.ErrExternalAccountNotFound) {
+		t.Errorf("轮询不应产生绑定关系（绑定只能由 /auth/qiu/bind 建立），实际 err = %v", err)
+	}
+	if _, ok := body["profile"]; !ok {
+		t.Error("应回传对方身份的展示信息，供前端确认「绑的是这个号」")
+	}
+
+	// 未登录时仍必须是完整登录流程：本改动不得影响主路径
+	f.qiu.userID.Store(float64(99999))
+	rec, body = doAnnouncementJSON(t, f.srv, http.MethodGet, "/api/auth/qiu/status/task-abc123", "", "")
+	if rec.Code != http.StatusOK || body["status"] != "ok" {
+		t.Fatalf("未登录轮询应完成登录，实际 %d / %v", rec.Code, body)
+	}
+	if tok, _ := body["session_token"].(string); tok == "" {
+		t.Error("未登录轮询必须下发会话令牌，否则登录流程被破坏")
 	}
 }
 

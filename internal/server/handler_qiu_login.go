@@ -263,6 +263,10 @@ func (s *Server) handleQIULoginStart(c *gin.Context) {
 // 轮询由前端驱动（每 2 秒一次），本站只做转发与结论处理：
 // 不在服务端起轮询任务，是因为"用户是否愿意等多久"只有浏览器那边知道，
 // 服务端轮询会变成一堆没人认领的 goroutine。
+//
+// 同一条链接服务两种场景，靠"调用方是否已登录"区分（路由挂了可选会话中间件）：
+//   - 未登录：登录流程 —— 解析身份、按需建号、下发会话；
+//   - 已登录：绑定流程 —— 只回报"对方已确认"，不碰任何账号与会话。
 func (s *Server) handleQIULoginStatus(c *gin.Context) {
 	if !s.qiuReady(c) {
 		return
@@ -316,6 +320,23 @@ func (s *Server) handleQIULoginStatus(c *gin.Context) {
 		slog.Error("QIU 登录：对方确认后未返回用户 id", "task_id", taskID)
 		oai.WriteError(c.Writer, http.StatusBadGateway, "第三方登录服务未返回用户标识",
 			oai.TypeServer, "oauth_upstream_unavailable")
+		return
+	}
+
+	// 已登录的人查的是"我这次授权点完没有"（绑定流程），不是"我要登录"。
+	//
+	// 这里绝不能往下走建号 / 发会话：一旦发了，点「绑定」的用户会被静默切到
+	// 另一个账号（甚至是一个刚被凭空建出来的空号），而他自己的账号并未真正
+	// 完成绑定。绑定关系由 POST /auth/qiu/bind 凭【已登录会话】来建立，
+	// 本分支只回报"对方已确认"与用于展示的身份信息。
+	if _, authed := middleware.CurrentUser(c); authed {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "ok",
+			"profile": gin.H{
+				"username": truncateRunes(payload.User.Username, 64),
+				"nickname": truncateRunes(payload.User.Nickname, 64),
+			},
+		})
 		return
 	}
 
@@ -613,4 +634,65 @@ func randomPasswordForExternal() string {
 		return "aqua-external-fallback-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
 	return "aqua-external-" + hex.EncodeToString(raw)
+}
+
+// ── ④ 查看自己绑了哪些第三方账号 ────────────────────────────────────────────
+
+// externalAccountDTO 是"我的第三方账号"列表项。
+//
+// 只下发展示所需字段：external_id 是内部匹配用的主键，
+// 不该出现在门户页的响应里（它一旦与其它数据拼在一起就可能成为关联线索）。
+type externalAccountDTO struct {
+	Provider     string `json:"provider"`
+	ProviderText string `json:"provider_text"`
+	AccountName  string `json:"account_name"`
+	Nickname     string `json:"nickname"`
+	BoundAt      int64  `json:"bound_at"`
+	// LoginEnabled 表示该第三方登录当前是否开放。
+	//
+	// 前端据此决定"还能不能用它登录"——总开关关掉后，
+	// 已绑定的用户会看到"该登录方式已停用"，而不是点了没反应。
+	LoginEnabled bool `json:"login_enabled"`
+}
+
+// handleMyExternalAccounts 处理 GET /api/user/external-accounts。
+//
+// 刻意【不提供解绑接口】：第三方自动建号的账号没有已知口令（随机生成、无人知晓），
+// 一旦解绑又退出登录，这个账号就再也进不来了——那是比"绑错了"严重得多的事故。
+// 真要支持解绑，必须先保证账号至少还有一种可用的登录方式。
+func (s *Server) handleMyExternalAccounts(c *gin.Context) {
+	user, ok := middleware.CurrentUser(c)
+	if !ok {
+		writeUserError(c, http.StatusUnauthorized,
+			"auth.not_logged_in", oai.TypeAuthentication, oai.CodeMissingAPIKey)
+		return
+	}
+	if s.deps.ExternalAccounts == nil {
+		oai.WriteError(c.Writer, http.StatusServiceUnavailable,
+			"第三方账号模块未启用", oai.TypeServer, oai.CodeInternal)
+		return
+	}
+
+	items, err := s.deps.ExternalAccounts.ListByUser(c.Request.Context(), user.ID)
+	if err != nil {
+		s.respondInternalError(c, "查询第三方账号绑定失败", err)
+		return
+	}
+
+	list := make([]externalAccountDTO, 0, len(items))
+	for _, item := range items {
+		name := item.Nickname
+		if name == "" {
+			name = item.ExternalUsername
+		}
+		list = append(list, externalAccountDTO{
+			Provider:     item.Provider.String(),
+			ProviderText: item.Provider.DisplayName(),
+			AccountName:  item.ExternalUsername,
+			Nickname:     name,
+			BoundAt:      unixOrZero(item.CreatedAt),
+			LoginEnabled: s.deps.Config.QIU.Enabled,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"items": list})
 }

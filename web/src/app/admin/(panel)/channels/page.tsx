@@ -24,7 +24,7 @@ import { Field, Input, Select, Switch, Textarea } from '@/components/ui/Form'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
 import { useToast } from '@/lib/toast/toast-context'
 import { channelStatusLabel, channelStatusBadgeClass } from '@/utils/display'
-import { formatDateTime } from '@/utils/format'
+import { formatDateTime, formatLatency, formatRelative } from '@/utils/format'
 
 const PAGE_SIZE = 20
 
@@ -109,7 +109,7 @@ export default function AdminChannelsPage() {
         <span className={channelStatusBadgeClass(row.status)}>{channelStatusLabel(row.status)}</span>
       ),
     },
-    { title: '测活', render: (row) => <span className="text-ink-2">{row.last_test_ok ? <Badge tone="ok">通过</Badge> : <Badge tone="off">未测</Badge>}</span> },
+    { title: '延迟 / 测活', render: (row) => <ProbeCell channel={row} /> },
     {
       title: '操作',
       align: 'right',
@@ -179,6 +179,56 @@ export default function AdminChannelsPage() {
       />
     </div>
   )
+}
+
+/* ── 巡检结论单元格 ─────────────────────────────────────── */
+
+/**
+ * 把「最近一次测活」压缩成一格展示。
+ *
+ * 时间必须与延迟同时出现：延迟是一次测量而非均值，三小时前的 80ms
+ * 说明不了现在的状况，只给数字会被误读成"实时延迟"。
+ *
+ * 状态码要翻译成动作：401/404/429 各自对应完全不同的处置方式，
+ * 直接摆一个 401 出来，管理员还得自己回忆这代表密钥坏了还是模型没了。
+ */
+function ProbeCell({ channel }: { channel: Channel }) {
+  const tested = Boolean(channel.last_test_at) || Boolean(channel.latency_ms)
+  if (!tested) {
+    return (
+      <span className="text-ink-2" title="后台巡检会在下一个周期自动测活，也可以现在手动点「测活」">
+        <Badge tone="off">未测</Badge>
+      </span>
+    )
+  }
+  const ok = Boolean(channel.last_test_ok)
+  const tooltip = [
+    channel.last_test_at
+      ? `测于 ${formatDateTime(channel.last_test_at)}（${formatRelative(channel.last_test_at)}）`
+      : '测于未知时间',
+    channel.last_test_model ? `模型 ${channel.last_test_model}` : '',
+    channel.last_test_code ? `HTTP ${channel.last_test_code}` : '网络层未连通',
+    probeHint(channel),
+  ]
+    .filter(Boolean)
+    .join('\n')
+  return (
+    <span className="flex items-center gap-1.5" title={tooltip}>
+      <Badge tone={ok ? 'ok' : 'err'}>{ok ? '正常' : '异常'}</Badge>
+      <span className="text-ink-2">{channel.latency_ms ? formatLatency(channel.latency_ms) : '—'}</span>
+    </span>
+  )
+}
+
+/** 状态码 → 下一步该做什么（只覆盖常见且处置方式明确的几种，其余不臆测） */
+function probeHint(channel: Channel): string {
+  const code = channel.last_test_code ?? 0
+  if (code === 0) return '连不上：检查上游地址、出网与 DNS'
+  if (code === 401 || code === 403) return '鉴权失败：上游密钥无效或已过期，换一把'
+  if (code === 404) return '模型不存在：清理渠道里的模型名或改用上游真实模型'
+  if (code === 429) return '被限流：降低调用频率或补充密钥池'
+  if (code >= 500) return '上游故障：等待对方恢复'
+  return ''
 }
 
 /* ── 渠道表单弹层 ───────────────────────────────────────── */

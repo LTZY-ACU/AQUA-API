@@ -36,6 +36,7 @@ const GROUPS: ShellNavGroup[] = [
       { label: '财务记录', href: '/console/finance', icon: 'wallet' },
       { label: '账户充值', href: '/console/recharge', icon: 'cart' },
       { label: '邀请奖励', href: '/console/referral', icon: 'users' },
+      { label: '第三方账号', href: '/console/accounts', icon: 'external' },
     ],
   },
 ]
