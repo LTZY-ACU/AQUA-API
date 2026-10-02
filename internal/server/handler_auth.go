@@ -526,10 +526,29 @@ func (s *Server) handleMe(c *gin.Context) {
 // 集中在此处的原因：注册与登录都需要"建会话 + 返回统一结构"，
 // 若各写一份，很容易出现两处返回字段不一致（前端就得写兼容代码）。
 func (s *Server) issueSession(c *gin.Context, user *model.User, status int) {
+	token, expiresAt, ok := s.createSession(c, user)
+	if !ok {
+		return
+	}
+
+	c.JSON(status, gin.H{
+		"session_token": token,
+		"expires_at":    expiresAt.Unix(),
+		"user":          toUserDTO(user),
+	})
+}
+
+// createSession 签发一条会话，返回明文令牌与过期时刻。
+//
+// 与 issueSession 的分工：issueSession 只负责"按既有契约写出响应"，
+// 而第三方登录这类新流程需要在会话令牌之外再塞字段（例如轮询结论 status），
+// 抽出本函数后两条路径共用同一份签发逻辑——含登录来源记账，
+// 不会出现"第三方登录不记录来源"这种安全盲区。
+func (s *Server) createSession(c *gin.Context, user *model.User) (string, time.Time, bool) {
 	token, err := model.GenerateSessionToken()
 	if err != nil {
 		s.respondInternalError(c, "生成会话令牌失败", err)
-		return
+		return "", time.Time{}, false
 	}
 
 	expiresAt := time.Now().Add(sessionTTL)
@@ -544,18 +563,14 @@ func (s *Server) issueSession(c *gin.Context, user *model.User, status int) {
 	}
 	if err := s.deps.Sessions.Create(c.Request.Context(), session); err != nil {
 		s.respondInternalError(c, "创建登录会话失败", err)
-		return
+		return "", time.Time{}, false
 	}
 
 	// 来源记账放在会话签发成功之后：会话没建成说明这次登录根本没生效，
 	// 此时清零失败计数等于替攻击者抹掉了痕迹。
 	s.noteLoginSuccess(c, user)
 
-	c.JSON(status, gin.H{
-		"session_token": token,
-		"expires_at":    expiresAt.Unix(),
-		"user":          toUserDTO(user),
-	})
+	return token, expiresAt, true
 }
 
 // extractSessionToken 从请求头提取会话令牌明文。

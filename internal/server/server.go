@@ -62,6 +62,13 @@ type Deps struct {
 	Settings    model.SettingRepository  // 系统设置仓储
 	Relay       *relay.Relay             // 转发引擎（模型 API 的核心处理器）
 
+	// ExternalAccounts 是第三方账号绑定仓储（本站账号 ↔ 外部平台账号，
+	// 用于"QIU 科技账号登录"之类的第三方登录）。
+	//
+	// 为 nil 时第三方登录入口返回 404（未开放），而不是 panic ——
+	// 它是可选能力，缺失不应拖垮整个服务。
+	ExternalAccounts model.ExternalAccountRepository
+
 	// ModelPrices 是模型计价规则仓储（后台维护价格、计算用量费用）。
 	ModelPrices model.ModelPriceRepository
 	// Groups 是模型分组仓储（分组倍率参与计费，也是模型广场的分组来源）。
@@ -172,6 +179,14 @@ type Server struct {
 	// loginAccountLimiter 是登录接口的账号维度节流（见 New 处的说明）。
 	loginAccountLimiter *middleware.RateLimiter
 
+	// qiuPollLimiter 限制第三方登录轮询的频率。
+	//
+	// 为什么要单独一条：轮询的节奏是"每 2 秒一次、持续到用户点确认"，
+	// 一分钟就是 30 次请求，远超普通登录接口的配额；
+	// 沿用 loginLimiter（20 次/5 分钟）会让第三方登录在等待期就被限流掉。
+	// 但它仍然必须有上限——每次轮询都会向对方平台发一次真实出站请求。
+	qiuPollLimiter *middleware.RateLimiter
+
 	// sensitiveFilter 是 /v1 入口的内容合规过滤器（敏感词）。
 	//
 	// 与登录限流器一样属于"进程内状态"：它缓存编译好的词表匹配器；
@@ -221,6 +236,7 @@ func New(deps Deps) *Server {
 		// 的成本从攻击者的 IP 池转移到他无法无限扩展的账号名上。
 		// 正常用户几乎感知不到：连续输错 10 次的人本来就该歇 5 分钟。
 		loginAccountLimiter: middleware.NewRateLimiter(10, 5*time.Minute),
+		qiuPollLimiter:      middleware.NewRateLimiter(qiuPollLimit, 5*time.Minute),
 		// 内容合规过滤器：词表编译结果在组件内缓存，改词后由后台主动失效。
 		sensitiveFilter: middleware.NewSensitiveFilter(deps.SensitiveWords, deps.Settings),
 	}

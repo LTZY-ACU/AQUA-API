@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
 
 import { BrandLogo } from '@/components/BrandMark'
+import { QIOLoginButton } from '@/components/auth/QIOLoginButton'
 import { sendEmailCode } from '@/api/auth'
 import { SiteFooter } from '@/components/site/SiteFooter'
 import { Button } from '@/components/ui/Button'
@@ -22,7 +23,7 @@ function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirect = searchParams.get('redirect') || null
-  const { signIn, signInWithEmail } = useAuth()
+  const { signIn, signInWithEmail, applySessionResult } = useAuth()
   const { toastError } = useToast()
 
   const [mode, setMode] = useState<'password' | 'email'>('password')
@@ -127,6 +128,18 @@ function LoginForm() {
               登录
             </Button>
           </form>
+
+          {/* 第三方登录：与本站账号互不替代——首次登录会自动建号，
+              已在站上有号的用户可在控制台里绑定同一个第三方身份。 */}
+          <div className="mt-5">
+            <QIOLoginButton
+              disabled={loading}
+              onSuccess={(result) => {
+                const user = applySessionResult(result)
+                afterLogin(user.role === 10)
+              }}
+            />
+          </div>
 
           <div className="mt-4 flex items-center justify-between text-[13px]">
             <a href="/register" className="text-brand hover:underline">注册新账号</a>

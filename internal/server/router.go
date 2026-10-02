@@ -156,6 +156,14 @@ func (s *Server) registerRoutes() {
 	api.POST("/auth/email-login", authLimit, s.handleEmailLogin)
 	// 邮箱验证码重置密码：重置成功后会吊销该账号全部会话。
 	api.POST("/auth/password-reset", authLimit, s.handleResetPassword)
+	// QIU 科技账号登录（三段式：建任务 → 轮询 → 绑定）。
+	//
+	// 轮询接口【刻意不挂在 authLimit 下】：它每 2 秒一次，一分钟就是 30 次，
+	// 普通登录的配额会被瞬间打满；改挂独立的 qiuPollLimiter，
+	// 既容得下正常轮询节奏，又保持着每次请求都有配额消耗。
+	api.POST("/auth/qiu/start", authLimit, s.handleQIULoginStart)
+	api.GET("/auth/qiu/status/:task_id", s.qiuPollLimiter.Middleware(middleware.ClientIP),
+		s.handleQIULoginStatus)
 
 	// ── 需登录（网站会话）────────────────────────────────────────
 	authed := api.Group("")
@@ -163,6 +171,9 @@ func (s *Server) registerRoutes() {
 
 	authed.GET("/auth/me", s.handleMe)
 	authed.POST("/auth/logout", s.handleLogout)
+	// QIU 科技账号绑定：需要已登录会话（用它证明本地账号归属，
+	// 因此不存在"抢绑别人账号"的可能），挂在需登录分组里由中间件统一拦截未登录请求。
+	authed.POST("/auth/qiu/bind", s.handleQIUBind)
 
 	// ── 用户门户（仅能操作自己的资源）────────────────────────────
 	//

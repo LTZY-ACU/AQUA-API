@@ -119,3 +119,41 @@ export async function fetchMe(): Promise<AuthUser> {
 export function logout(): Promise<unknown> {
   return api.post<unknown>('/auth/logout')
 }
+
+/* ── QIU 科技账号登录 ──────────────────────────────────────────────────────
+ *
+ * 三段式：
+ *   ① startQIULogin()  → 拿到 task_id 与「对方确认页」的 url
+ *   ② 把 url 开给用户（window.open），由用户在 QIU 侧点确认
+ *   ③ qiuLoginStatus() 轮询该 task_id，直到拿到状态机的终态
+ *
+ * 为什么由前端驱动轮询而不是后端自己转：等待多久取决于用户何时点确认，
+ * 只有浏览器这一侧知道用户还在不在页面上；后端转轮询会变成一堆没人认领的任务。
+ */
+
+/** QIU 登录任务状态机的取值。 */
+export type QIULoginStatus = 'pending' | 'ok' | 'denied' | 'expired'
+
+/** POST /api/auth/qiu/start：创建一次第三方登录任务。 */
+export function startQIULogin(): Promise<{ task_id: string; url: string }> {
+  return api.post<{ task_id: string; url: string }>('/auth/qiu/start')
+}
+
+/**
+ * GET /api/auth/qiu/status/{taskId}：查询任务结论。
+ *
+ * 只有 status === 'ok' 时才带 session_token / user —— 调用方必须严格按此判断，
+ * 不能只看"有没有 user"，否则 pending 会被误当成登录成功。
+ */
+export function qiuLoginStatus(
+  taskId: string,
+): Promise<{ status: QIULoginStatus; session_token: string; expires_at: number; user: AuthUser }> {
+  return api.get<{ status: QIULoginStatus; session_token: string; expires_at: number; user: AuthUser }>(
+    `/auth/qiu/status/${encodeURIComponent(taskId)}`,
+  )
+}
+
+/** POST /api/auth/qiu/bind：已登录用户把当前账号绑定到某个 QIU 身份。 */
+export function bindQIUAccount(taskId: string): Promise<{ ok: boolean; username: string }> {
+  return api.post<{ ok: boolean; username: string }>('/auth/qiu/bind', { task_id: taskId })
+}

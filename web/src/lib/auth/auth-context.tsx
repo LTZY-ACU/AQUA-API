@@ -36,6 +36,8 @@ interface AuthContextValue {
   ready: boolean
   displayName: string
   signIn: (payload: LoginPayload) => Promise<AuthUser>
+  /** 直接接纳一份会话结果（第三方登录在其自己的流程里拿到了 session_token） */
+  applySessionResult: (result: AuthResult) => AuthUser
   signInAsAdmin: (password: string) => Promise<AuthUser>
   signInWithEmail: (email: string, code: string) => Promise<AuthUser>
   signUp: (payload: RegisterPayload) => Promise<AuthUser>
@@ -71,6 +73,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signIn(payload: LoginPayload): Promise<AuthUser> {
     const result = await login(payload)
+    applySession(result)
+    return result.user
+  }
+
+  function applySessionResult(result: AuthResult): AuthUser {
     applySession(result)
     return result.user
   }
@@ -144,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ready,
       displayName,
       signIn,
+      applySessionResult,
       signInAsAdmin,
       signInWithEmail,
       signUp,

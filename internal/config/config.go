@@ -142,6 +142,7 @@ type Config struct {
 	// Retention 是各类随时间线性增长数据的保留期（天）。
 	Retention RetentionConfig `json:"retention"` // 数据保留期相关
 	Health    HealthConfig    `json:"health"`    // 渠道健康巡检（自动延迟刷新）相关
+	QIU       QIUConfig       `json:"qiu"`       // QIU 科技账号登录相关
 }
 
 // RetentionConfig 描述各只写表的保留天数（0 = 永不清理）。
@@ -177,6 +178,45 @@ type HealthConfig struct {
 	// TimeoutSeconds 是单个渠道的最长等待时间（秒）；<= 0 回退到默认值。
 	TimeoutSeconds int `json:"timeout_seconds"`
 }
+
+// QIUConfig 描述「QIU 科技账号登录」的外部对接参数。
+//
+// 为什么这几个对接参数要外置而不是写死在代码里：
+// 第三方平台的地址可能更换域名、一个平台也可能分多套环境（含自用搭建），
+// 写死会让"对方换域名"变成我们必须发版才能修的故障。
+type QIUConfig struct {
+	// Enabled 为 true 时才开放第三方登录入口。
+	//
+	// 默认启用：这是站点方主动要求接入的能力，关掉它就等于没做；
+	// 若站长不希望自己的站点依赖外部平台，用 AQUA_QIU_ENABLED=false 关掉即可。
+	Enabled bool `json:"enabled"`
+	// BaseURL 是 QIU 开放接口的根地址（不含结尾斜杠）。
+	BaseURL string `json:"base_url"`
+	// AppName 是向 QIU 表明身份的应用名（会展示在它的确认页上）。
+	//
+	// 留空时回退到站点名称：用户看到的是自己熟悉的站名，
+	// 比一个默认占位串更容易判断"这次授权是不是给对了人"。
+	AppName string `json:"app_name"`
+	// TimeoutSeconds 是调用 QIU 接口的超时（秒）。
+	//
+	// 第三方接口不在我们的控制范围内，必须有独立且较短的截止时间：
+	// 否则对方一旦慢下来，会把本进程的 goroutine 与连接一点点占满。
+	TimeoutSeconds int `json:"timeout_seconds"`
+}
+
+// QIU 科技账号登录的默认值。
+const (
+	// DefaultQIUEnabled 默认开启第三方登录入口。
+	DefaultQIUEnabled = true
+	// DefaultQIUBaseURL 是 QIU 开放接口的默认根地址。
+	DefaultQIUBaseURL = "https://qiukeji.jghuihui.top"
+	// DefaultQIUTimeoutSeconds 是调用 QIU 接口的最长等待时间。
+	//
+	// 取 10 秒：正常的任务创建与轮询都是毫秒级返回，
+	// 超过 10 秒基本可判定对方异常，此时应当尽快失败并让用户重试，
+	// 而不是让请求（以及它占用的连接与 goroutine）继续挂下去。
+	DefaultQIUTimeoutSeconds = 10
+)
 
 // ServerConfig 描述 HTTP 服务的监听与运行模式。
 type ServerConfig struct {
@@ -337,6 +377,13 @@ func Default() *Config {
 			Concurrency:     DefaultHealthCheckConcurrency,
 			TimeoutSeconds:  DefaultHealthCheckTimeoutSeconds,
 		},
+		// QIU 科技账号登录默认启用（对接的是站点方指定的合作平台）。
+		QIU: QIUConfig{
+			Enabled:        DefaultQIUEnabled,
+			BaseURL:        DefaultQIUBaseURL,
+			AppName:        "",
+			TimeoutSeconds: DefaultQIUTimeoutSeconds,
+		},
 		// 默认分组固定为 default：保证未显式配置时，路由行为与旧版本完全一致。
 		RelayGroup: DefaultRelayGroup,
 	}
@@ -448,6 +495,11 @@ func applyEnv(cfg *Config) {
 	setIfNotEmptyInt(&cfg.Health.IntervalMinutes, EnvPrefix+"HEALTH_INTERVAL_MINUTES")
 	setIfNotEmptyInt(&cfg.Health.Concurrency, EnvPrefix+"HEALTH_CONCURRENCY")
 	setIfNotEmptyInt(&cfg.Health.TimeoutSeconds, EnvPrefix+"HEALTH_TIMEOUT_SECONDS")
+	// QIU 科技账号登录
+	setIfNotEmptyBool(&cfg.QIU.Enabled, EnvPrefix+"QIU_ENABLED")
+	setIfNotEmpty(&cfg.QIU.BaseURL, EnvPrefix+"QIU_BASE_URL")
+	setIfNotEmpty(&cfg.QIU.AppName, EnvPrefix+"QIU_APP_NAME")
+	setIfNotEmptyInt(&cfg.QIU.TimeoutSeconds, EnvPrefix+"QIU_TIMEOUT_SECONDS")
 }
 
 // setIfNotEmptyBool 是 setIfNotEmpty 的布尔版本：解析失败时保留原值。

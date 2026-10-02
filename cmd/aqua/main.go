@@ -226,6 +226,8 @@ func run() error {
 	announcements := store.NewAnnouncementRepository(st.DB())
 	// 邀请返利 / 签到：注册与充值发的奖励、每人每天的签到记录。
 	referrals := store.NewReferralRepository(st.DB())
+	// 第三方账号绑定：本站账号 ↔ QIU 科技账号的对应关系（第三方登录的依据）。
+	externalAccounts := store.NewExternalAccountRepository(st.DB())
 	// SMTP 配置仓储：口令以密文落库（加密器与渠道密钥同一个）。
 	smtpSettings := store.NewSMTPRepository(st.DB(), cipher)
 	// 额度预留台账：鉴权时预扣、响应后结算/退还，堵住并发超支漏洞。
@@ -496,6 +498,8 @@ func run() error {
 		Audit:         auditLogs,
 		Announcements: announcements,
 		Referrals:     referrals,
+		// 第三方账号绑定（QIU 科技账号登录）
+		ExternalAccounts: externalAccounts,
 		// 敏感词表：/v1 入口的内容合规过滤
 		SensitiveWords: sensitiveWords,
 		// 上游进价：按密钥核算消耗、计算余额剩余与毛利
