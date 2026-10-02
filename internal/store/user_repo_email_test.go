@@ -115,7 +115,7 @@ func TestUserUpdate_改成他人邮箱_返回ErrEmailTaken(t *testing.T) {
 
 // TestUserCreate_多个空邮箱_允许共存 验证空邮箱不参与唯一约束。
 //
-// 邮箱是可选字段（部分唯一索引 WHERE email <> ''），
+// 邮箱是可选字段（部分唯一索引带 WHERE email 不等于空串 的过滤），
 // 大量"未绑定邮箱"的用户共存是合法且必须的，不能因空串互相冲突。
 func TestUserCreate_多个空邮箱_允许共存(t *testing.T) {
 	st := newTestStore(t)
@@ -196,11 +196,11 @@ func TestMigrate0036_清理重复邮箱并建索引(t *testing.T) {
 	}
 	// 三个账号绑同一个邮箱（id 依次增大），另有一个大小写变体、一个空邮箱
 	legacy := []struct{ username, email string }{
-		{"u1", "dup@example.com"},      // id=1，应保留
-		{"u2", "dup@example.com"},      // id=2，应清空
-		{"u3", "  DUP@EXAMPLE.COM  "},  // id=3，归一化后与上面同，应清空
-		{"u4", "solo@example.com"},     // id=4，唯一，应保留
-		{"u5", ""},                     // id=5，空邮箱，不参与约束，应保留
+		{"u1", "dup@example.com"},     // id=1，应保留
+		{"u2", "dup@example.com"},     // id=2，应清空
+		{"u3", "  DUP@EXAMPLE.COM  "}, // id=3，归一化后与上面同，应清空
+		{"u4", "solo@example.com"},    // id=4，唯一，应保留
+		{"u5", ""},                    // id=5，空邮箱，不参与约束，应保留
 	}
 	for _, it := range legacy {
 		if _, err := st.DB().ExecContext(ctx,

@@ -278,6 +278,7 @@ func (s *Server) invalidateSitemapCache() {
 //     后端整块替换标记之间的内容，标记本身保留（便于下次再替换）；
 //  2. Next.js 静态导出：页面由 Next 生成 <head>（含 title/meta），没有 aqua:seo 标记，
 //     此时退化到在 </head> 之前插入 SEO 块，保证站长在后台配置的收录信息仍能进页面。
+//
 // 找不到标记且无法定位 </head> 时原样返回：老版本前端产物也能正常服务，不能因此报错或返回空页。
 func injectSEOMeta(page []byte, settings model.SiteSettings, baseURL, path string) []byte {
 	content := string(page)

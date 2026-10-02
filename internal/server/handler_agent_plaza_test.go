@@ -300,4 +300,3 @@ func TestAgentPlaza_分组停用后降级为公开视图(t *testing.T) {
 		t.Fatalf("降级为公开视图后应能正常看到公开模型")
 	}
 }
-

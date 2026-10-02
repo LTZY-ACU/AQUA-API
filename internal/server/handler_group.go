@@ -901,8 +901,9 @@ func (s *Server) resolvePlazaViewer(ctx context.Context, c *gin.Context) *plazaV
 // 该分组下没有匹配到规则时返回 (nil, nil)，调用方据此把模型排除出代理清单。
 //
 // 为什么把折后金额直接算进 DTO，而不是只给 ratio 让前端自己乘：
-//   现有前端的价格格式化函数不感知倍率（公开视图展示的就是规则原值），
-//   若此处也给原值，代理视图就会显示成"没打折"，与"拿货 6 折"直接矛盾。
+//
+//	现有前端的价格格式化函数不感知倍率（公开视图展示的就是规则原值），
+//	若此处也给原值，代理视图就会显示成"没打折"，与"拿货 6 折"直接矛盾。
 func plazaAgentPricePair(prices []*model.ModelPrice, modelName, group string, ratio int64) (*plazaPriceDTO, *plazaPriceDTO) {
 	rows := make([]*model.ModelPrice, 0, 4)
 	for _, price := range prices {
