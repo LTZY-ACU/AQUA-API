@@ -183,6 +183,83 @@ func NewLocationEmail(siteName, username, ip, userAgent string, at time.Time) (s
 	return subject, htmlBody
 }
 
+// AnnouncementEmail 构造「站点公告」邮件的主题与 HTML 正文。
+//
+// 为什么单独一个模板而不是复用群发模板目录：群发模板是站方反复使用的固定文案
+// （计费专线等），由 RenderBroadcast 按 key 渲染；而公告标题与正文是站长这一次
+// 现写的内容，必须先落成字符串快照存进批次表，"预览看到的就是发出去的"
+// 这条约定才不会被后续的模板改动破坏。
+//
+// 参数里的 levelText 是公告的语气（普通/喜报/警告/故障）：
+// 它决定邮件的强调色，让收件人在收件箱里就能分辨"这是通知"还是"这是故障"。
+func AnnouncementEmail(siteName, title, content, levelText string) (subject, htmlBody string) {
+	name := html.EscapeString(strings.TrimSpace(siteName))
+	if name == "" {
+		name = "AQUA-API"
+	}
+	heading := html.EscapeString(strings.TrimSpace(title))
+	if heading == "" {
+		heading = "站点公告"
+	}
+	levelLabel := html.EscapeString(strings.TrimSpace(levelText))
+	if levelLabel == "" {
+		levelLabel = "普通"
+	}
+	// 正文按行处理：公告通常是多行短文。空行分段、其余各成一行，
+	// 避免管理员精心排的段落被压成一坨看不出结构。
+	bodyHTML := ""
+	for _, line := range strings.Split(strings.TrimSpace(content), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			bodyHTML += "\n"
+			continue
+		}
+		if bodyHTML != "" {
+			bodyHTML += "\n      "
+		}
+		bodyHTML += fmt.Sprintf(`<p style="margin:0 0 10px;font-size:14px;color:#334155;line-height:1.75;">%s</p>`,
+			html.EscapeString(trimmed))
+	}
+	if strings.TrimSpace(bodyHTML) == "" {
+		bodyHTML = `<p style="margin:0;font-size:14px;color:#64748b;">（公告正文为空）</p>`
+	}
+
+	// 语气→强调色：只覆盖四种公告级别，未命中一律走中性蓝。
+	accent, bg := "#0891b2", "#ecfeff"
+	switch levelText {
+	case "喜报":
+		accent, bg = "#059669", "#ecfdf5"
+	case "警告":
+		accent, bg = "#d97706", "#fffbeb"
+	case "故障":
+		accent, bg = "#dc2626", "#fef2f2"
+	}
+
+	subject = fmt.Sprintf("【%s】%s", name, heading)
+
+	htmlBody = fmt.Sprintf(`<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>%[1]s</title></head>
+<body style="margin:0;padding:24px;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;color:#0f172a;">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:28px;">
+    <div style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;color:%[4]s;background:%[5]s;">%[3]s</div>
+    <h1 style="margin:12px 0 18px;font-size:18px;font-weight:600;color:#0f172a;">%[2]s</h1>
+
+    <div style="font-size:14px;color:#334155;">
+      %[6]s
+    </div>
+
+    <hr style="margin:22px 0 14px;border:none;border-top:1px solid #e2e8f0;">
+    <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.7;">
+      您收到这封信是因为在本站绑定了邮箱。本邮件由系统自动发送，请勿直接回复。
+    </p>
+  </div>
+</body>
+</html>`, name, heading, levelLabel, accent, bg, bodyHTML)
+
+	return subject, htmlBody
+}
+
 // trimUserAgent 截断用于展示的 UA。
 //
 // UA 完全由客户端控制，可以有几千个字符；原样放进表格会把邮件撑成一屏看不全的噪声，

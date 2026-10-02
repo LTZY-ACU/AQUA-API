@@ -31,9 +31,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"gitee.com/xiaosu4610/aqua-api/internal/mailer"
 	"gitee.com/xiaosu4610/aqua-api/internal/model"
 	"gitee.com/xiaosu4610/aqua-api/internal/oai"
+	"gitee.com/xiaosu4610/aqua-api/internal/server/middleware"
 )
+
+// announcementBroadcastTemplate 是"由公告触发的邮件群发"在批次表里的模板键。
+//
+// 它不出现在 mailer.BroadcastTemplates() 目录里：那份目录是"可反复使用的固定文案"，
+// 而公告邮件的内容每次都不同（已在批次表里快照）。留这个键纯粹是为了审计——
+// 日后要统计"今年发过几次全站通知、都是什么"，按它聚合即可。
+const announcementBroadcastTemplate = "announcement"
 
 // publicAnnouncementDTO 是公开端的公告表示。
 //
@@ -64,6 +73,22 @@ type announcementDTO struct {
 	ExpireAt  int64  `json:"expire_at"`
 	CreatedAt int64  `json:"created_at"`
 	UpdatedAt int64  `json:"updated_at"`
+
+	// MailBroadcastID 是"发布公告时同步群发邮件"所产生的批次号；0 表示本次没有发邮件。
+	//
+	// 为什么要回传它：邮件是异步发出去的（几千封要跑几十分钟），
+	// 管理员需要去群发进度页看"发到哪了、谁失败了"，没有这个 id 就得自己猜是哪一批。
+	MailBroadcastID uint64 `json:"mail_broadcast_id"`
+	// MailRecipients 是本次实际入队的收件人数（邮箱为空的用户被跳过）。
+	//
+	// 可能小于启用用户总数，甚至为 0 —— 前端据此显示"还没有人绑定邮箱"，
+	// 而不是让管理员以为邮件已经发出去了。
+	MailRecipients int `json:"mail_recipients"`
+	// MailMessage 是本次邮件环节的结论性提示（如"尚未配置 SMTP，公告已发布但邮件未发送"）。
+	//
+	// 关键场景：SMTP 没配好时公告照常发布（不能因为邮件不通就拦住业务），
+	// 但必须明确告知"这封信没发出去"，否则管理员会以为用户已经收到了。
+	MailMessage string `json:"mail_message"`
 }
 
 // toPublicAnnouncementDTO 把领域模型转为公开端 DTO。
@@ -188,6 +213,12 @@ type announcementRequest struct {
 	Enabled   *bool   `json:"enabled"`
 	PublishAt *int64  `json:"publish_at"`
 	ExpireAt  *int64  `json:"expire_at"`
+	// NotifyEmail 为真时，公告发布的同时把它的内容以邮件发给所有已绑定邮箱的用户。
+	//
+	// 这个勾选本身就是"我已确认要全站发信"：全站群发不可撤回，
+	// 因此在别处还会要求单独的 confirm 字段，这里不再重复一次——
+	// 管理员在同一张表单上既写内容又点选了"发邮件"，意图已经足够明确。
+	NotifyEmail *bool `json:"notify_email"`
 }
 
 // handleAdminCreateAnnouncement 处理 POST /api/admin/announcements。
@@ -254,7 +285,94 @@ func (s *Server) handleAdminCreateAnnouncement(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, toAnnouncementDTO(item))
+	dto := toAnnouncementDTO(item)
+	// ── 勾选了"同步邮件通知"：把公告内容作为一次全站群发发出去 ──────────
+	//
+	// 顺序刻意如此：公告先落库成功，再尝试发邮件。
+	// 邮件依赖 SMTP 且要跑几十分钟，是"可能失败"的环节；而公告发布是业务动作，
+	// 不能因为邮件通道不通就把已经写好的内容退回去——管理员会丢失刚写的正文。
+	// 但邮件没发出去的事实必须回传到界面（MailMessage），绝不能悄悄吞掉。
+	if req.NotifyEmail != nil && *req.NotifyEmail {
+		dto.MailBroadcastID, dto.MailRecipients, dto.MailMessage = s.sendAnnouncementEmail(c, item)
+	}
+
+	c.JSON(http.StatusOK, dto)
+}
+
+// sendAnnouncementEmail 把一条公告以邮件的形式发给所有已绑定邮箱的启用用户。
+//
+// 返回 (批次号, 收件人数, 结论提示)：三者都为零/空表示一封都没发出去。
+//
+// 为什么复用群发通道而不是自己循环发：一封公告要发给全站用户，那就是一次群发——
+// 节流、去重、可停止、进程重启后续发这些能力全在 broadcast.Sender 里，
+// 在公告处理器里另写一套"直接调 Mailer.Send"，等于重新犯一次
+// "瞬时几百个 SMTP 连接 → 被服务商限流 → 重复投递"的错误。
+func (s *Server) sendAnnouncementEmail(c *gin.Context, item *model.Announcement) (uint64, int, string) {
+	ctx := c.Request.Context()
+
+	switch {
+	case !item.Enabled:
+		// 草稿（停用）公告不在前台显示，把它邮给全站用户是自相矛盾的。
+		return 0, 0, "公告为草稿状态，未在站点显示，因此未发送邮件"
+	case item.PublishAt.After(time.Now()):
+		// 定时发布的公告此刻还没人看得见，提前把内容邮出去等于泄露未上线信息。
+		return 0, 0, "公告设置了未来的发布时间，未在站点显示前不发送邮件（请在到点后手动重发）"
+	case s.deps.Mailer == nil || !s.deps.Mailer.Configured():
+		return 0, 0, "尚未配置邮件通道（SMTP），公告已发布但邮件未发送"
+	case s.deps.Broadcasts == nil || s.deps.Broadcast == nil:
+		return 0, 0, "邮件群发模块未启用，公告已发布但邮件未发送"
+	}
+
+	user, ok := middleware.CurrentUser(c)
+	if !ok {
+		return 0, 0, "无法识别操作者身份，未发送邮件"
+	}
+
+	siteName := fallbackSiteName
+	if settings, err := model.LoadSiteSettings(ctx, s.deps.Settings); err == nil && settings.SiteName != "" {
+		siteName = settings.SiteName
+	}
+	subject, body := mailer.AnnouncementEmail(siteName, item.Title, item.Content, item.Level.String())
+
+	bc := &model.EmailBroadcast{
+		// 模板键填 announcement：群里这一批就算其独特的那份内容，
+		// 后续审计"这一年在群发什么"时按它聚合即可（正文已在下面快照）。
+		Template:  announcementBroadcastTemplate,
+		Subject:   subject,
+		BodyHTML:  body,
+		Status:    model.BroadcastStatusPending,
+		CreatedBy: user.ID,
+	}
+	if err := s.deps.Broadcasts.Create(ctx, bc); err != nil {
+		slog.Error("公告邮件批次创建失败", "error", err, "announcement_id", item.ID)
+		return 0, 0, "邮件批次创建失败，公告已发布但邮件未发送"
+	}
+
+	enabled := model.UserStatusEnabled
+	total, err := s.deps.Broadcast.Enqueue(ctx, bc, model.UserQuery{Status: &enabled})
+	if err != nil {
+		slog.Error("生成公告邮件收件人失败", "error", err, "broadcast_id", bc.ID)
+		return 0, 0, "生成收件人名单失败，公告已发布但邮件未发送"
+	}
+	if total == 0 {
+		// 没有绑定邮箱的用户：这不是故障（很多人注册时不填邮箱），
+		// 但要说清楚，否则管理员以为几千封都发了。
+		return 0, 0, "没有任何用户绑定邮箱，公告已发布但邮件未发送"
+	}
+	if err := s.deps.Broadcasts.UpdateProgress(ctx, bc.ID, model.BroadcastStatusPending,
+		total, 0, 0, time.Time{}, time.Time{}); err != nil {
+		slog.Error("写入公告邮件进度失败", "error", err, "broadcast_id", bc.ID)
+		return 0, 0, "写入群发进度失败，公告已发布但邮件未发送"
+	}
+
+	// 后台开始逐封发送，接口立即返回——全站几千封不可能让 HTTP 请求挂着等。
+	if !s.deps.Broadcast.Start(bc.ID) {
+		return 0, 0, "该批次已在发送中，公告已发布但邮件未重复启动"
+	}
+	slog.Info("公告已同步发出邮件通知", "announcement_id", item.ID,
+		"broadcast_id", bc.ID, "recipients", total)
+
+	return bc.ID, total, ""
 }
 
 // handleAdminUpdateAnnouncement 处理 PUT /api/admin/announcements/{id}。
