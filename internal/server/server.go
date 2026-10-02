@@ -202,6 +202,9 @@ func New(deps Deps) *Server {
 	// 请求体大小上限：必须早于一切读 body 的中间件（限流 keyFunc、ShouldBindJSON、oai.ReadBody）。
 	// 否则一个超大 body 就能让并发请求各持一份全量副本，把内存打穿（见 body_limit.go）。
 	engine.Use(bodyLimit())
+	// 浏览器侧安全响应头：装配在一切处理器与静态伺服之前，
+	// 让新增路由自动带上（见 security_headers.go）。位置与 bodyLimit 同级、互不依赖先后。
+	engine.Use(securityHeaders())
 
 	s := &Server{
 		deps:      deps,

@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strings"
 	"time"
@@ -1165,16 +1166,49 @@ func isRetryableStatus(status int) bool {
 // 过滤原因：
 //   - 逐跳头（hop-by-hop）仅在单段连接内有效，代理不应转发；
 //   - Content-Length / Transfer-Encoding 描述的是"上游连接"的消息边界，
-//     我们回写时由 Go 的 http 包重新决定帧格式，直接复制可能造成长度不一致。
+//     我们回写时由 Go 的 http 包重新决定帧格式，直接复制可能造成长度不一致；
+//   - Set-Cookie 绝不透传：域名是本站的，浏览器会把它存成"本站的 Cookie"
+//     （上游据此做会话固定，或用海量 Cookie 把客户端写满）；
+//   - 正文类型若属于浏览器会解析执行的那几种（HTML/SVG），改成
+//     application/octet-stream：网关与站点同源，有人拿浏览器直接打开该地址时，
+//     上游投毒的脚本会在本站源上执行（读取会话 Cookie 即等于接管账号）。
 func copyResponseHeaders(dst http.Header, src http.Header) {
 	for key, values := range src {
-		if isHopByHopHeader(key) {
+		canonical := http.CanonicalHeaderKey(key)
+		if isHopByHopHeader(canonical) {
+			continue
+		}
+		if canonical == "Set-Cookie" || canonical == "Set-Cookie2" {
 			continue
 		}
 		for _, value := range values {
 			dst.Add(key, value)
 		}
 	}
+	if isBrowserExecutableType(dst.Get("Content-Type")) {
+		dst.Set("Content-Type", "application/octet-stream")
+	}
+}
+
+// browserExecutableTypes 是"浏览器拿到后会解析执行脚本"的正文类型。
+//
+// 只收这三种：XML/XSLT 一类在现代浏览器里不执行脚本，
+// 而 JSON 即便被当成 HTML 也构不成可执行内容，无需改写（改动越少越不影响客户端）。
+var browserExecutableTypes = map[string]struct{}{
+	"text/html":             {},
+	"application/xhtml+xml": {},
+	"image/svg+xml":         {},
+}
+
+// isBrowserExecutableType 判断 Content-Type 头（可带 charset 等参数）是否为可执行类型。
+func isBrowserExecutableType(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		// 解析不了的头保持原样：改写一个客户端本想用的类型，风险比放行更大
+		return false
+	}
+	_, found := browserExecutableTypes[strings.ToLower(mediaType)]
+	return found
 }
 
 // hopByHopHeaders 是 HTTP/1.1 规范定义的逐跳头（不应被代理转发）。

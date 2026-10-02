@@ -380,6 +380,10 @@ func (s *TaskService) PollOnce(ctx context.Context, task *model.Task) (*model.Ta
 func (s *TaskService) finishTask(ctx context.Context, task *model.Task,
 	status model.TaskStatus, resultURL, resultData, errorText string, quota int64) {
 
+	// 结果地址在落库前过一遍白名单（伪协议直接清空）：
+	// 仓储层与内存快照两条路都要拿到已清洗的值，否则前端仍会渲染出危险链接。
+	resultURL = model.SanitizeResultURL(resultURL)
+
 	err := s.tasks.Finish(ctx, task.ID, status, resultURL, resultData, errorText, quota)
 	if errors.Is(err, model.ErrTaskAlreadyFinished) {
 		return

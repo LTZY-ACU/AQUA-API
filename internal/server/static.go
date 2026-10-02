@@ -123,7 +123,7 @@ func (s *Server) registerStaticRoutes(fsys fs.FS) {
 		// index.html 自身不做缓存：它引用的是带哈希的资源文件名，
 		// 若缓存了旧版 index.html，发版后用户会继续请求已不存在的旧资源。
 		c.Header("Cache-Control", "no-cache")
-		c.Data(http.StatusOK, "text/html; charset=utf-8", index)
+		c.Data(http.StatusOK, htmlContentType, index)
 	})
 }
 
@@ -153,21 +153,19 @@ func serveRealFile(s *Server, c *gin.Context, dist fs.FS, path string) bool {
 		if _, err := fs.Stat(dist, candidate); err != nil {
 			continue
 		}
-		// 命中真实文件：按文件类型返回，HTML 额外注入 SEO
 		data, err := fs.ReadFile(dist, candidate)
 		if err != nil {
 			continue
 		}
-		contentType := "text/html; charset=utf-8"
-		if strings.HasSuffix(candidate, ".txt") {
-			contentType = "text/plain; charset=utf-8"
-		} else if strings.HasSuffix(candidate, ".js") {
-			contentType = "text/javascript; charset=utf-8"
-		} else if strings.HasSuffix(candidate, ".css") {
-			contentType = "text/css; charset=utf-8"
-		}
+		// 命中真实文件：按扩展名定正文类型，HTML 额外注入 SEO。
+		//
+		// 为什么不能"不认识就当 HTML"：原来除 .txt/.js/.css 外一律 text/html，
+		// 于是 .svg/未知后缀的资源全被当成页面渲染——SVG 内含 <script> 时
+		// 会在本站源执行脚本，等于给静态产物开了一个执行面。
+		// 认不出的一律 octet-stream：浏览器按下载处理，不解析。
+		contentType := staticContentType(candidate)
 
-		if strings.Contains(contentType, "text/html") {
+		if contentType == htmlContentType {
 			if settings, loadErr := model.LoadSiteSettings(c.Request.Context(), s.deps.Settings); loadErr == nil {
 				base := resolveBaseURL(settings, c)
 				data = injectSEOMeta(data, settings, base, "/"+strings.TrimSuffix(rel, indexFileName))
@@ -180,6 +178,50 @@ func serveRealFile(s *Server, c *gin.Context, dist fs.FS, path string) bool {
 		return true
 	}
 	return false
+}
+
+// htmlContentType 是页面正文类型：SEO 注入与"不缓存"策略都以它为准。
+const htmlContentType = "text/html; charset=utf-8"
+
+// staticContentType 按扩展名给出正文类型；认不出的扩展名返回 octet-stream。
+//
+// 为什么不用 mime.TypeByExtension：它依赖系统 mime.types 与各版本内置表，
+// 不同发行版对 .js/.svg 的结果不一致（有的还漏 charset）。
+// 前端产物的类型集合是固定的，显式列全既可控又与环境无关。
+func staticContentType(path string) string {
+	ext := ""
+	if i := strings.LastIndexByte(path, '.'); i >= 0 {
+		ext = strings.ToLower(path[i:])
+	}
+	if contentType, ok := staticContentTypes[ext]; ok {
+		return contentType
+	}
+	return "application/octet-stream"
+}
+
+// staticContentTypes 是前端产物里会出现的扩展名与正文类型的对应表。
+var staticContentTypes = map[string]string{
+	".html":        htmlContentType,
+	".txt":         "text/plain; charset=utf-8",
+	".js":          "text/javascript; charset=utf-8",
+	".mjs":         "text/javascript; charset=utf-8",
+	".css":         "text/css; charset=utf-8",
+	".json":        "application/json; charset=utf-8",
+	".map":         "application/json; charset=utf-8",
+	".webmanifest": "application/manifest+json; charset=utf-8",
+	".xml":         "application/xml; charset=utf-8",
+	".svg":         "image/svg+xml",
+	".ico":         "image/x-icon",
+	".png":         "image/png",
+	".jpg":         "image/jpeg",
+	".jpeg":        "image/jpeg",
+	".gif":         "image/gif",
+	".webp":        "image/webp",
+	".avif":        "image/avif",
+	".woff":        "font/woff",
+	".woff2":       "font/woff2",
+	".ttf":         "font/ttf",
+	".otf":         "font/otf",
 }
 
 // isAPIPath 判断路径是否属于后端接口（这些路径不应回退到前端页面）。

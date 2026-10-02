@@ -146,3 +146,40 @@ func TestTask_并发Test_ApplyProgress_不越界(t *testing.T) {
 		}
 	}
 }
+
+// TestSanitizeResultURL_只放行http与https 覆盖"上游输入直达浏览器"的伪协议拦截：
+// 结果地址会渲染成任务列表里的链接，放行 javascript: 即等于把脚本执行权交给上游。
+func TestSanitizeResultURL_只放行http与https(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"https://cdn.example.com/a.png", "https://cdn.example.com/a.png"},
+		{"http://cdn.example.com/a.png", "http://cdn.example.com/a.png"},
+		{"  https://cdn.example.com/a.png  ", "https://cdn.example.com/a.png"},
+		{"javascript:alert(1)", ""},
+		{"JaVaScRiPt:alert(1)", ""},
+		{"data:text/html;base64,PHNjcmlwdD4=", ""},
+		{"vbscript:msgbox(1)", ""},
+		{"//cdn.example.com/a.png", ""}, // 协议相对地址：没有 scheme，一并拒绝
+		{"/local/path.png", ""},         // 相对路径：结果地址本就应当是绝对地址
+		{"", ""},
+		{"   ", ""},
+		{"https://", ""},                        // 有 scheme 但无 host
+		{"https://cdn.example.com/\x7fbad", ""}, // 控制字符导致解析失败
+	}
+	for _, item := range cases {
+		if got := SanitizeResultURL(item.in); got != item.want {
+			t.Errorf("SanitizeResultURL(%q) = %q，期望 %q", item.in, got, item.want)
+		}
+	}
+
+	// 写入口同样收口：伪协议在 MarkSucceeded 里就该被清空，
+	// 而不是等前端渲染时再校验。
+	task := &Task{}
+	task.MarkSucceeded("javascript:alert(1)", "{}")
+	if task.ResultURL != "" {
+		t.Errorf("MarkSucceeded 不应保留伪协议地址，实际 %q", task.ResultURL)
+	}
+	task.MarkSucceeded("https://cdn.example.com/a.png", "{}")
+	if task.ResultURL != "https://cdn.example.com/a.png" {
+		t.Errorf("正常地址应原样保留，实际 %q", task.ResultURL)
+	}
+}

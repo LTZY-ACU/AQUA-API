@@ -34,6 +34,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -184,7 +185,7 @@ func (t *Task) ApplyProgress(status TaskStatus, progress int) {
 func (t *Task) MarkSucceeded(resultURL, resultData string) {
 	t.Status = TaskStatusSucceeded
 	t.Progress = 100
-	t.ResultURL = resultURL
+	t.ResultURL = SanitizeResultURL(resultURL)
 	t.ResultData = resultData
 	t.Error = ""
 	t.FinishedAt = time.Now()
@@ -197,6 +198,34 @@ func (t *Task) MarkFailed(reason string) {
 	t.Error = truncateText(reason, 500)
 	t.FinishedAt = time.Now()
 	t.UpdatedAt = t.FinishedAt
+}
+
+// SanitizeResultURL 归一化上游给出的结果地址：仅放行 http/https 的绝对地址，
+// 其余（伪协议、空串、解析失败）一律清空。
+//
+// 为什么必须做：ResultURL 完全来自上游，落库后原样回给前端，
+// 在任务列表里被渲染成「查看结果」的链接。若放行 javascript: / data: 伪协议，
+// 一个被投毒的上游（或被篡改的渠道配置）就能在用户点开结果时执行脚本——
+// 这属于"上游输入直达浏览器"的信任边界问题，必须在写入口一次收口，
+// 而不是指望每个渲染点都记得校验。
+func SanitizeResultURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "" // 控制字符、残缺转义等非法地址
+	}
+	// 协议相对地址（//host/x）与相对路径都没有 scheme，在此一并拒绝：
+	// 结果地址本就应当是上游给的绝对地址，开口子只会扩大攻击面。
+	if !strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https") {
+		return ""
+	}
+	if parsed.Host == "" {
+		return ""
+	}
+	return raw
 }
 
 // TaskQuery 是任务列表的查询条件。
