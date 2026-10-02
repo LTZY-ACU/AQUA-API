@@ -14,6 +14,7 @@ import { BrandLogo } from '@/components/BrandMark'
 import { Button } from '@/components/ui/Button'
 import { Field, Input } from '@/components/ui/Form'
 import { useAuth } from '@/lib/auth/auth-context'
+import { safeRedirect } from '@/lib/auth/safe-redirect'
 
 function AdminLoginForm() {
   const router = useRouter()
@@ -35,7 +36,8 @@ function AdminLoginForm() {
     setLoading(true)
     try {
       const user = await signInAsAdmin(password)
-      router.replace(redirect || (user.role === 10 ? '/admin' : '/console'))
+      // 与普通登录同理：redirect 只放行站内地址，避免登录后被带去站外
+      router.replace(safeRedirect(redirect, user.role === 10 ? '/admin' : '/console'))
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败')
     } finally {
