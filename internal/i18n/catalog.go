@@ -164,6 +164,17 @@ var catalog = Catalog{
 		Es:   "Cuenta o contraseña incorrectas",
 		Ar:   "الحساب أو كلمة المرور غير صحيحة",
 	},
+	"auth.login_locked": {
+		// 含一个 %d 占位符：剩余锁定分钟数（向上取整，最小 1）。
+		// 给出具体时长而非"请稍后再试"，是因为这里的用户往往是账号本人，
+		// 一个明确的等待时间能把"反复重试 / 反复投诉"变成"等一会儿再来"。
+		ZhCN: "密码连续错误次数过多，账号已临时锁定，请 %d 分钟后重试",
+		En:   "Too many failed password attempts. This account is temporarily locked — try again in %d minutes",
+		Fr:   "Trop de tentatives de mot de passe échouées. Ce compte est temporairement verrouillé — réessayez dans %d minutes",
+		Ru:   "Слишком много неудачных попыток ввода пароля. Аккаунт временно заблокирован — попробуйте через %d мин",
+		Es:   "Demasiados intentos fallidos de contraseña. La cuenta está bloqueada temporalmente — inténtelo de nuevo en %d minutos",
+		Ar:   "عدد كبير جدًا من محاولات كلمة المرور الفاشلة. تم قفل الحساب مؤقتًا — أعد المحاولة بعد %d دقيقة",
+	},
 	"auth.username_taken": {
 		ZhCN: "用户名已被占用",
 		En:   "The username is already taken",

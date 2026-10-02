@@ -121,6 +121,80 @@ func renderEmailCode(siteName, code string, ttl time.Duration, c emailCodeCopy) 
 	return subject, htmlBody
 }
 
+// NewLocationEmail 构造「异地登录提醒」邮件的主题与 HTML 正文。
+//
+// 为什么必须有这封信：账号被盗的第一现场通常不是"钱没了"，而是
+// "有人先在别的地方登进来了"。等到受害者发现额度被刷，损失已经发生；
+// 一封即时提醒把察觉时机提前到"还能改密码"的窗口内。
+//
+// 参数里的 IP / UA / 时间三项刻意全部给出：受害者据此判断
+// "这是不是我自己"（例如手机换网后的新出口），避免看到提醒就恐慌。
+func NewLocationEmail(siteName, username, ip, userAgent string, at time.Time) (subject, htmlBody string) {
+	// 三项来源信息都不是完全可信的输入：
+	//   - siteName 来自后台设置；
+	//   - UA 完全由客户端控制（可伪造任意长度的字符串）；
+	// 二者在拼进 HTML 前都必须转义，否则一封"提醒邮件"自己就成了注入载体。
+	name := html.EscapeString(strings.TrimSpace(siteName))
+	if name == "" {
+		name = "AQUA-API"
+	}
+	account := html.EscapeString(strings.TrimSpace(username))
+	clientIP := html.EscapeString(strings.TrimSpace(ip))
+	if clientIP == "" {
+		clientIP = "未知"
+	}
+	ua := html.EscapeString(trimUserAgent(userAgent, 160))
+	if ua == "" {
+		ua = "未提供"
+	}
+	timeText := at.Format("2006-01-02 15:04:05")
+	if at.IsZero() {
+		timeText = "未知"
+	}
+
+	subject = fmt.Sprintf("【%s】账号异地登录提醒", name)
+
+	htmlBody = fmt.Sprintf(`<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>%[1]s</title></head>
+<body style="margin:0;padding:24px;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;color:#0f172a;">
+  <div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:28px;">
+    <h1 style="margin:0 0 8px;font-size:18px;font-weight:600;color:#0f172a;">检测到异地登录</h1>
+    <p style="margin:0 0 20px;font-size:13px;color:#64748b;">您的账号刚刚从一个与以往不同的网络位置登录成功。</p>
+
+    <table style="width:100%%;border-collapse:collapse;font-size:13px;color:#334155;">
+      <tr><td style="padding:8px 0;color:#64748b;width:88px;">账号</td><td style="padding:8px 0;">%[2]s</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">登录 IP</td><td style="padding:8px 0;font-family:'SFMono-Regular',Consolas,monospace;">%[3]s</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">登录时间</td><td style="padding:8px 0;">%[4]s</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">设备信息</td><td style="padding:8px 0;word-break:break-all;">%[5]s</td></tr>
+    </table>
+
+    <p style="margin:20px 0 0;font-size:13px;color:#475569;line-height:1.7;">
+      如果这次登录是您本人的操作（例如更换了网络、使用了新的设备），可以放心忽略本邮件。<br>
+      如果不是您本人操作，请立即登录站点修改密码——修改密码会让此前的登录状态全部失效。
+    </p>
+
+    <hr style="margin:22px 0 14px;border:none;border-top:1px solid #e2e8f0;">
+    <p style="margin:0;font-size:12px;color:#94a3b8;">本邮件由系统自动发送，请勿直接回复。</p>
+  </div>
+</body>
+</html>`, name, account, clientIP, timeText, ua)
+
+	return subject, htmlBody
+}
+
+// trimUserAgent 截断用于展示的 UA。
+//
+// UA 完全由客户端控制，可以有几千个字符；原样放进表格会把邮件撑成一屏看不全的噪声，
+// 因此超过 max 的部分以省略号收尾（仍保留头部，那里才是浏览器/系统的标识区）。
+func trimUserAgent(ua string, max int) string {
+	ua = strings.TrimSpace(ua)
+	if len(ua) <= max {
+		return ua
+	}
+	return strings.TrimSpace(ua[:max]) + "…"
+}
+
 // ---------------------------------------------------------------------------
 // 全站通知邮件（群发）模板目录
 // ---------------------------------------------------------------------------

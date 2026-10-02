@@ -18,6 +18,12 @@
 // 扩展（Extend）：
 //
 //	新增用户字段：先建迁移脚本加列，再同步更新本文件的 userColumns / insert / update / scanUser 四处。
+//	例外——登录安全类字段（failed_logins / locked_until / last_login_at / last_login_ip）
+//	刻意【只进 userColumns/scanUser，不进 insert/update】：
+//	  1) 新号默认 0，由迁移的 DEFAULT 兜底，insert 无需带；
+//	  2) 它们由登录流水单列更新（RecordLoginSuccess / RegisterLoginFailure），
+//	     若混进 Update 的整行写回，登录路径上读到的陈旧副本会把并发期间的计数清掉，
+//	     等于给撞库开了一条"登录一次就能重置别人失败计数"的口子。
 package store
 
 import (
@@ -38,7 +44,7 @@ const (
 )
 
 // userColumns 集中定义查询列，顺序必须与 scanUser 的扫描顺序严格一致。
-const userColumns = `id, username, password_hash, email, role, status, quota, used_quota, invite_code, inviter_id, agent_group, created_at, updated_at`
+const userColumns = `id, username, password_hash, email, role, status, quota, used_quota, invite_code, inviter_id, agent_group, failed_logins, locked_until, last_login_at, last_login_ip, created_at, updated_at`
 
 // maxInviteCodeAttempts 是注册时生成邀请码的最大重试次数。
 //
@@ -296,6 +302,64 @@ func (r *userRepository) UpdatePassword(ctx context.Context, id uint64, password
 	return nil
 }
 
+// RecordLoginSuccess 记录一次成功登录：清零失败计数与锁定，写入来源。
+//
+// 为什么是"一条 UPDATE 打四个单列"而不是复用 Update：
+// 登录路径上持有的是本次请求开始时读到的副本，整行写回会覆盖并发期间的额度变化；
+// 而且登录不应刷新 updated_at（那是"资料修改时间"）。
+func (r *userRepository) RecordLoginSuccess(ctx context.Context, id uint64, ip string, at time.Time) error {
+	if ip == "" {
+		ip = "unknown"
+	}
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE users SET failed_logins = 0, locked_until = 0,
+			last_login_at = ?, last_login_ip = ?
+		WHERE id = ?`,
+		at.Unix(), ip, id,
+	)
+	if err != nil {
+		return fmt.Errorf("store: 记录登录成功失败: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("store: 读取登录记录影响行数失败: %w", err)
+	}
+	if affected == 0 {
+		return model.ErrUserNotFound
+	}
+	return nil
+}
+
+// RegisterLoginFailure 登记一次登录失败：计数 +1，达到阈值时置锁定截止。
+//
+// 计数与锁定判定在同一条 UPDATE 内完成（`failed_logins + 1` 先算再比），
+// 因此并发失败不会数丢、也不会出现"两边都以为对方已锁定"的漏锁。
+// 阈值与锁期取自 model 常量，SQL 侧不重复定义，避免两处口径漂移。
+func (r *userRepository) RegisterLoginFailure(ctx context.Context, id uint64, now time.Time) (int, time.Time, error) {
+	lockUntil := now.Add(model.LoginFailureLockDuration).Unix()
+	if _, err := r.db.ExecContext(ctx, `
+		UPDATE users SET
+			failed_logins = failed_logins + 1,
+			locked_until = CASE WHEN failed_logins + 1 >= ? THEN ? ELSE locked_until END
+		WHERE id = ?`,
+		model.LoginFailureLockThreshold, lockUntil, id,
+	); err != nil {
+		return 0, time.Time{}, fmt.Errorf("store: 记录登录失败: %w", err)
+	}
+
+	var failed int
+	var lockedUnix int64
+	row := r.db.QueryRowContext(ctx,
+		"SELECT failed_logins, locked_until FROM users WHERE id = ?", id)
+	if err := row.Scan(&failed, &lockedUnix); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, time.Time{}, model.ErrUserNotFound
+		}
+		return 0, time.Time{}, fmt.Errorf("store: 读取登录失败计数: %w", err)
+	}
+	return failed, unixToTime(lockedUnix), nil
+}
+
 // Delete 按 ID 删除用户。
 func (r *userRepository) Delete(ctx context.Context, id uint64) error {
 	res, err := r.db.ExecContext(ctx, "DELETE FROM users WHERE id = ?", id)
@@ -455,12 +519,18 @@ func scanUser(sc rowScanner) (*model.User, error) {
 		inviteCode   string
 		inviterID    uint64
 		agentGroup   string
+		failedLogins int
+		lockedUntil  int64
+		lastLoginAt  int64
+		lastLoginIP  string
 		createdAt    int64
 		updatedAt    int64
 	)
 
 	if err := sc.Scan(&id, &username, &passwordHash, &email, &role, &status,
-		&quota, &usedQuota, &inviteCode, &inviterID, &agentGroup, &createdAt, &updatedAt); err != nil {
+		&quota, &usedQuota, &inviteCode, &inviterID, &agentGroup,
+		&failedLogins, &lockedUntil, &lastLoginAt, &lastLoginIP,
+		&createdAt, &updatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
@@ -479,9 +549,27 @@ func scanUser(sc rowScanner) (*model.User, error) {
 		InviteCode:   inviteCode,
 		InviterID:    inviterID,
 		AgentGroup:   agentGroup,
-		CreatedAt:    time.Unix(createdAt, 0),
-		UpdatedAt:    time.Unix(updatedAt, 0),
+		FailedLogins: failedLogins,
+		// 库里的 0 表示"从未锁定 / 从未登录"，必须映射成零值 time.Time：
+		// 若直接 time.Unix(0,0) 会得到 1970 年，IsLocked 会把它当成"锁到 1970"之后的
+		// 永远已过期（判断没错），但 IsZero 语义就丢了——异地提醒靠它识别"首次登录"。
+		LockedUntil: unixToTime(lockedUntil),
+		LastLoginAt: unixToTime(lastLoginAt),
+		LastLoginIP: lastLoginIP,
+		CreatedAt:   time.Unix(createdAt, 0),
+		UpdatedAt:   time.Unix(updatedAt, 0),
 	}, nil
+}
+
+// unixToTime 把 Unix 秒转为 time.Time，0（含负数）返回零值 time.Time。
+//
+// 与 time.Unix(0,0) 的区别：后者是 1970 年这一具体时刻，会让
+// "从未发生过" 与 "很久以前发生过" 无法区分，而安全判定恰恰依赖前者。
+func unixToTime(sec int64) time.Time {
+	if sec <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(sec, 0)
 }
 
 // ---------------------------------------------------------------------------
@@ -489,7 +577,7 @@ func scanUser(sc rowScanner) (*model.User, error) {
 // ---------------------------------------------------------------------------
 
 // sessionColumns 定义会话查询列。
-const sessionColumns = `id, user_id, token_hash, expires_at, created_at`
+const sessionColumns = `id, user_id, token_hash, expires_at, created_at, ip, user_agent, reauth_at`
 
 // sessionRepository 是 model.SessionRepository 的 SQL 实现。
 type sessionRepository struct {
@@ -514,11 +602,18 @@ func (r *sessionRepository) Create(ctx context.Context, s *model.Session) error 
 	}
 
 	s.CreatedAt = time.Now()
+	// UA 完全由客户端控制，入库前截断，防止一个超长头把行撑大
+	// （上限见 model.UserAgentMaxLength）。
+	ua := s.UserAgent
+	if len(ua) > model.UserAgentMaxLength {
+		ua = ua[:model.UserAgentMaxLength]
+	}
 
 	res, err := r.db.ExecContext(ctx, `
-		INSERT INTO sessions (user_id, token_hash, expires_at, created_at)
-		VALUES (?, ?, ?, ?)`,
+		INSERT INTO sessions (user_id, token_hash, expires_at, created_at, ip, user_agent, reauth_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		s.UserID, s.TokenHash, s.ExpiresAt.Unix(), s.CreatedAt.Unix(),
+		s.IP, ua, reauthUnix(s.ReauthAt),
 	)
 	if err != nil {
 		return fmt.Errorf("store: 创建会话失败: %w", err)
@@ -580,6 +675,18 @@ func (r *sessionRepository) DeleteExpired(ctx context.Context, before time.Time)
 	return affected, nil
 }
 
+// UpdateReauth 记录该会话最近一次"重新验证密码"的时刻。
+//
+// 会话被同时删除（改密/禁用踢下线）时 affected 为 0，属正常并发，不报错——
+// 会话都没了，验证结果自然无需保留。
+func (r *sessionRepository) UpdateReauth(ctx context.Context, id uint64, at time.Time) error {
+	if _, err := r.db.ExecContext(ctx,
+		"UPDATE sessions SET reauth_at = ? WHERE id = ?", at.Unix(), id); err != nil {
+		return fmt.Errorf("store: 记录会话二次验证失败: %w", err)
+	}
+	return nil
+}
+
 // scanSession 把一行数据映射为会话对象。
 func scanSession(sc rowScanner) (*model.Session, error) {
 	var (
@@ -588,9 +695,13 @@ func scanSession(sc rowScanner) (*model.Session, error) {
 		tokenHash string
 		expiresAt int64
 		createdAt int64
+		ip        string
+		userAgent string
+		reauthAt  int64
 	)
 
-	if err := sc.Scan(&id, &userID, &tokenHash, &expiresAt, &createdAt); err != nil {
+	if err := sc.Scan(&id, &userID, &tokenHash, &expiresAt, &createdAt,
+		&ip, &userAgent, &reauthAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
@@ -603,7 +714,18 @@ func scanSession(sc rowScanner) (*model.Session, error) {
 		TokenHash: tokenHash,
 		ExpiresAt: time.Unix(expiresAt, 0),
 		CreatedAt: time.Unix(createdAt, 0),
+		IP:        ip,
+		UserAgent: userAgent,
+		ReauthAt:  unixToTime(reauthAt),
 	}, nil
+}
+
+// reauthUnix 把二次验证时刻转成入库值：零值时刻入 0（表示"从未验证"）。
+func reauthUnix(at time.Time) int64 {
+	if at.IsZero() {
+		return 0
+	}
+	return at.Unix()
 }
 
 // ---------------------------------------------------------------------------

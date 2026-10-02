@@ -152,8 +152,22 @@ type User struct {
 	//
 	// 详见迁移 0042_user_agent_group.sql。
 	AgentGroup string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// FailedLogins 是"自上次成功登录以来"的连续失败次数（成功即清零）。
+	//
+	// 为什么落库而不是靠进程内限流器：限流器重启清零、多实例不共享，
+	// 撞库只要换个出口 IP 就能绕过；落库的账号级计数与 IP 无关，才是真正的锁定。
+	FailedLogins int
+	// LockedUntil 是锁定截止时刻（Unix 秒）；0 = 未锁定，> now = 锁定中。
+	//
+	// 用绝对截止时间而非"锁定标记"：到点自动解锁、无需任何定时任务，
+	// 也不会出现"任务漏跑导致用户被永久锁死"的事故。
+	LockedUntil time.Time
+	// LastLoginAt 是最近一次成功登录的时刻；零值 = 从未登录（用于异地提醒的基准）。
+	LastLoginAt time.Time
+	// LastLoginIP 是最近一次成功登录的客户端 IP；空 = 未知（老用户迁移后即为此值）。
+	LastLoginIP string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // IsAdmin 判断是否为管理员。
@@ -317,6 +331,21 @@ type UserRepository interface {
 	// 管理员以便逐个比对口令哈希。limit 是硬约束——bcrypt 比对是刻意昂贵的操作，
 	// 管理员数量若不加限制，未鉴权接口就会变成 CPU 放大器。
 	ListAdmins(ctx context.Context, limit int) ([]*User, error)
+
+	// RecordLoginSuccess 记录一次成功登录：清零失败计数与锁定，写入登录时间与 IP。
+	//
+	// 与 Update 的分工：登录流水是"单列增量"，绝不能走整行写回——
+	// 登录路径上持有的是鉴权前读到的副本，整行回写会覆盖并发期间的额度变化。
+	// 刻意不更新 updated_at：登录不是资料变更，不该刷新"资料修改时间"。
+	RecordLoginSuccess(ctx context.Context, id uint64, ip string, at time.Time) error
+
+	// RegisterLoginFailure 登记一次登录失败：失败次数 +1，
+	// 达到 LoginFailureLockThreshold 时把 locked_until 置为 now+LockDuration。
+	//
+	// 返回更新后的失败次数与锁定截止时刻，供调用方决定响应文案
+	// （首次达到阈值时可以明确告诉用户"已被锁定 15 分钟"）。
+	// 计数与判定都在同一条 UPDATE 里完成，并发失败不会数丢。
+	RegisterLoginFailure(ctx context.Context, id uint64, now time.Time) (failed int, lockedUntil time.Time, err error)
 }
 
 // 会话令牌的格式约定。
@@ -348,6 +377,56 @@ type Session struct {
 	TokenHash string    // 令牌明文的 SHA-256 摘要
 	ExpiresAt time.Time // 过期时间
 	CreatedAt time.Time // 创建时间
+	// IP 是签发本会话时的客户端 IP；空 = 未知（迁移前创建的老会话）。
+	//
+	// 只用于比对与告警，【不】作为拒绝条件：移动网络与家庭宽带的出口 IP
+	// 本就会变，硬绑会让用户在换基站/换网时被自己踢下线。
+	IP string
+	// UserAgent 是签发本会话时的 UA（已按 UserAgentMaxLength 截断）。
+	UserAgent string
+	// ReauthAt 是本会话最近一次"重新验证密码"的时刻；零值 = 从未验证。
+	ReauthAt time.Time
+}
+
+// UserAgentMaxLength 是入库 UA 的长度上限。
+//
+// 取 256：足够区分浏览器/设备，又不会让一个恶意超长头把行撑大
+// （UA 完全由客户端控制，不设限等于给了个免费的存储放大器）。
+const UserAgentMaxLength = 256
+
+// LoginFailureLockThreshold 是连续登录失败达到该次数时锁定账号。
+//
+// 取 5：既高于"正常人忘密码会试两三次"，又低于"撞库脚本一分钟能试上千次"。
+const LoginFailureLockThreshold = 5
+
+// LoginFailureLockDuration 是账号锁定时长。
+//
+// 取 15 分钟：撞库的窗口成本足够高（5 次失败换 15 分钟静默），
+// 又短到"用户忘记密码等一会儿就能自己回来"，不需要站长人工解锁。
+const LoginFailureLockDuration = 15 * time.Minute
+
+// IsLocked 判断用户在 now 时刻是否处于锁定中。
+func (u *User) IsLocked(now time.Time) bool {
+	return u.LockedUntil.After(now)
+}
+
+// LockRemain 返回剩余锁定时长（未锁定时返回 0）。
+func (u *User) LockRemain(now time.Time) time.Duration {
+	if !u.IsLocked(now) {
+		return 0
+	}
+	return u.LockedUntil.Sub(now)
+}
+
+// IsReauthFresh 判断该会话的"密码二次验证"是否仍在 window 有效期内。
+//
+// 窗口制而非"一次验证永久有效"：被劫持的会话若能永久做敏感操作，
+// 二次验证就形同虚设；窗口过短又会让管理员连续操作时反复输密码。
+func (s *Session) IsReauthFresh(now time.Time, window time.Duration) bool {
+	if s.ReauthAt.IsZero() {
+		return false
+	}
+	return now.Sub(s.ReauthAt) <= window
 }
 
 // IsExpired 判断会话在给定时刻是否已过期。
@@ -382,4 +461,11 @@ type SessionRepository interface {
 
 	// DeleteExpired 清理在 before 之前过期的会话，返回删除条数。
 	DeleteExpired(ctx context.Context, before time.Time) (int64, error)
+
+	// UpdateReauth 记录该会话最近一次"重新验证密码"的时刻（敏感操作二次验证）。
+	//
+	// 为什么挂在会话而不是用户：验证时效属于"这台设备这一次登录"，
+	// 挂用户会让一次输密码放行所有设备，等于没有二次验证。
+	// 会话不存在时不报错（会被同时删掉的会话属于正常并发场景）。
+	UpdateReauth(ctx context.Context, id uint64, at time.Time) error
 }

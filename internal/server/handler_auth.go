@@ -460,7 +460,14 @@ func (s *Server) handleLogin(c *gin.Context) {
 		return
 	}
 
+	now := time.Now()
 	if !crypto.VerifyPassword(req.Password, user.PasswordHash) {
+		// 锁定判定刻意放在"口令确认错误"之后（详见 login_security.go 头部说明）：
+		// 受害者本人拿着正确口令依然进得来，被挡住的只有猜口令的人。
+		if s.rejectLoginIfLocked(c, user, now) {
+			return
+		}
+		s.noteLoginFailure(c, user)
 		// 与"用户不存在"返回完全相同的提示，不泄露用户名是否存在
 		writeUserError(c, http.StatusUnauthorized,
 			"auth.invalid_credentials", oai.TypeAuthentication, oai.CodeInvalidAPIKey)
@@ -530,11 +537,19 @@ func (s *Server) issueSession(c *gin.Context, user *model.User, status int) {
 		UserID:    user.ID,
 		TokenHash: crypto.SHA256Hex(token),
 		ExpiresAt: expiresAt,
+		// 记录签发来源：后续可在"会话管理"里把同一账号的登录设备摊开给本人看，
+		// 也用于识别"同一会话突换指纹"这类异常（当前只落库存证，不做拒绝）。
+		IP:        middleware.ClientIP(c),
+		UserAgent: requestUserAgent(c),
 	}
 	if err := s.deps.Sessions.Create(c.Request.Context(), session); err != nil {
 		s.respondInternalError(c, "创建登录会话失败", err)
 		return
 	}
+
+	// 来源记账放在会话签发成功之后：会话没建成说明这次登录根本没生效，
+	// 此时清零失败计数等于替攻击者抹掉了痕迹。
+	s.noteLoginSuccess(c, user)
 
 	c.JSON(status, gin.H{
 		"session_token": token,

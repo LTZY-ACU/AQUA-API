@@ -37,6 +37,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -268,6 +269,14 @@ func (s *Server) handleAdminLogin(c *gin.Context) {
 		return
 	}
 
+	// ── 口令比对 ────────────────────────────────────────────────
+	//
+	// 失败计数只在"只有一个管理员"时登记（见下方 noteLoginFailure 的调用条件）：
+	// 多管理员场景下本次请求无法确定攻击者瞄准的是哪个账号，
+	// 若给所有人各记一次，5 次失败就能把全站管理员一起锁死——
+	// 那是比爆破更划算的破坏方式，宁可退回到"仅靠 IP/全局限流"。
+	singleAdmin := len(admins) == 1
+
 	for _, admin := range admins {
 		if !crypto.VerifyPassword(req.Password, admin.PasswordHash) {
 			continue
@@ -279,6 +288,16 @@ func (s *Server) handleAdminLogin(c *gin.Context) {
 		}
 		s.issueSession(c, admin, http.StatusOK)
 		return
+	}
+
+	now := time.Now()
+	if singleAdmin {
+		// 与 handleLogin 同一套语义：锁定期只在"口令确认错误"时才生效，
+		// 保证真正的管理员永远进得来，被挡的只有猜口令的人。
+		if s.rejectLoginIfLocked(c, admins[0], now) {
+			return
+		}
+		s.noteLoginFailure(c, admins[0])
 	}
 
 	writeUserError(c, http.StatusUnauthorized,
