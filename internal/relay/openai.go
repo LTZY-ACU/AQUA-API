@@ -30,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -250,8 +251,9 @@ func (r *Relay) forwardWithFallback(w http.ResponseWriter, req *http.Request, mo
 	// 一次性取出候选集：同一次请求内的多次重试都基于它挑选，避免每次重试都查库
 	candidates, err := r.listCandidates(req.Context(), group, modelName)
 	if err != nil {
-		// 仓储查询失败：不向客户端暴露细节
-		// TODO(relay): 接入结构化日志后在此记录 err
+		// 仓储查询失败：不向客户端暴露细节，但必须留痕，
+		// 否则"用户报 500 却查不到原因"时无从下手。
+		slog.Error("查询候选渠道失败", "error", err, "model", modelName, "group", group)
 		writeAdaptedError(w, adapter, http.StatusInternalServerError, "网关内部错误",
 			oai.TypeServer, oai.CodeInternal)
 		return

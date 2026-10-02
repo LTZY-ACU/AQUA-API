@@ -25,6 +25,7 @@ package server
 
 import (
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -59,7 +60,8 @@ func (s *Server) registerStaticRoutes(fsys fs.FS) {
 	if err != nil {
 		// 嵌入路径异常属于构建配置问题，记录后不注册静态路由：
 		// 接口仍可用，便于在浏览器之外排查。
-		// TODO(server): 接入结构化日志后记录 err
+		slog.Error("嵌入前端产物不可用，静态路由未注册（接口不受影响）",
+			"error", err, "root", distRoot)
 		return
 	}
 

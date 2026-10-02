@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -2776,9 +2777,12 @@ func parseIDParam(c *gin.Context) (uint64, bool) {
 }
 
 // respondInternalError 统一输出内部错误（不暴露细节）。
-func (s *Server) respondInternalError(c *gin.Context, _ string) {
-	// 说明：传入的描述仅用于将来接入结构化日志时记录，当前不返回给客户端。
-	// TODO(server): 接入结构化日志后在此记录 message 与 err
+//
+// detail 只写服务端日志、绝不回给客户端：约百处调用点靠它区分"是哪一步失败"，
+// 若不留痕，一次 500 在日志里完全无法定位。
+func (s *Server) respondInternalError(c *gin.Context, detail string) {
+	slog.Error("处理请求失败", "detail", detail,
+		"method", c.Request.Method, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
 	oai.WriteError(c.Writer, http.StatusInternalServerError,
 		"网关内部错误", oai.TypeServer, oai.CodeInternal)
 }
@@ -2789,6 +2793,7 @@ func (s *Server) loadUsernames(ctx context.Context) map[uint64]string {
 	users, err := s.deps.Users.List(ctx, model.UserQuery{Limit: nameLookupLimit})
 	if err != nil {
 		// 名称解析失败不应阻断主流程：日志本身仍然有价值，最多"用户名"列为空
+		slog.Warn("加载用户名映射失败，列表中用户名列将为空", "error", err)
 		return result
 	}
 	for _, user := range users {

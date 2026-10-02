@@ -29,6 +29,7 @@ package server
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -313,7 +314,7 @@ func (s *Server) handleRegister(c *gin.Context) {
 		}
 		// 用户名/口令规则不满足时，领域校验的错误信息对使用者是有帮助的，
 		// 但它可能包含内部描述，因此这里只回笼统提示，详细原因记录在服务端。
-		// TODO(server): 接入结构化日志后记录 err
+		slog.Warn("注册用户失败", "error", err, "username", req.Username, "client_ip", c.ClientIP())
 		writeUserError(c, http.StatusBadRequest,
 			"auth.invalid_registration", oai.TypeInvalidRequest, "invalid_registration")
 		return
