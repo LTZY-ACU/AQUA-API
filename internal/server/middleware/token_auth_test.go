@@ -624,6 +624,11 @@ type fakeQuotaReserver struct {
 
 	reserveCalls  int
 	lastRequestID string
+
+	releaseCalls   int
+	lastReleasedID string
+	releaseErr     error
+	pendingCalls   int
 }
 
 func (f *fakeQuotaReserver) EstimateReserve(_ context.Context, _, _ string, _ int) (int64, bool) {
@@ -645,7 +650,15 @@ func (f *fakeQuotaReserver) Reserve(_ context.Context, req model.ReserveRequest)
 }
 
 func (f *fakeQuotaReserver) PendingReserved(context.Context, uint64) (int64, error) {
+	f.pendingCalls++
 	return f.pending, nil
+}
+
+// Release 记录兜底退还的调用，供"预留必须闭环"的用例断言。
+func (f *fakeQuotaReserver) Release(_ context.Context, requestID string) error {
+	f.releaseCalls++
+	f.lastReleasedID = requestID
+	return f.releaseErr
 }
 
 // newLimitedOwnerAndToken 创建一个有限额度用户与其名下的令牌，返回令牌明文。

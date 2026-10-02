@@ -148,7 +148,10 @@ type QuotaRepository interface {
 	// GetByRequestID 按幂等键查询预留记录，不存在时返回 ErrReservationNotFound。
 	GetByRequestID(ctx context.Context, requestID string) (*QuotaReservation, error)
 
-	// PendingAmount 返回某用户在途预留的合计额度（用于计算可用额度）。
+	// PendingAmount 返回某用户在途预留的合计额度。
+	//
+	// 只用于"额度耗尽"类错误文案的诊断数字，不参与可用额度计算：
+	// 预留落台账时额度已同步进 used_quota，再减一遍会重复扣减。
 	PendingAmount(ctx context.Context, userID uint64) (int64, error)
 
 	// CleanupExpired 回收"在途且超过 expires_at"的陈旧预留并退还额度，返回处理条数。

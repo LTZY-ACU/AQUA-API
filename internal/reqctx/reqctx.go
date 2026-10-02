@@ -26,6 +26,7 @@ package reqctx
 
 import (
 	"context"
+	"sync/atomic"
 
 	"gitee.com/xiaosu4610/aqua-api/internal/i18n"
 )
@@ -45,6 +46,60 @@ type Identity struct {
 	// 为空表示本次调用【未做预留】（未定价模型 / 信任额度旁路 / 未启用），
 	// 转发结束后据此跳过结算，避免无谓地查库。
 	RequestID string // 幂等键（空 = 未预留）
+}
+
+// ReservationGuard 标记「本次请求的额度预留是否已被闭环」（Settle 或 Release 之一）。
+//
+// 为什么需要它（Why）：预留在鉴权中间件里发生，结算发生在转发引擎或异步任务里；
+// 中间件在 handler 返回后还要做一道兜底释放（覆盖敏感词拦截、参数校验失败、
+// 任务提交前早退等根本走不到结算的路径），但它无法区分「已结算」与「还没人结算」。
+// 靠查库判断会给每个请求加一次读写，因此改为进程内标记，热路径零额外开销。
+//
+// 流转（Flow）：中间件创建（有预留时）→ relay.Settle/Release 成功后置位
+//
+//	→ 中间件 defer 若发现未置位则兜底 Release（幂等，重复调用是空操作）。
+//
+// 并发安全：结算方（handler 内）与兜底方（handler 返回后）分属两个阶段，
+// 理论上不会并发，但仍用 atomic 保证任何调度与内存模型下的可见性。
+type ReservationGuard struct {
+	closed atomic.Bool
+}
+
+// MarkClosed 标记预留已闭环（已结算或已退还）。
+//
+// 对 nil 接收者安全：未做预留的请求（RequestID 为空）根本不会创建标记，
+// 结算方用零值判断再调用会更啰嗦，不如让本方法直接容忍 nil。
+func (g *ReservationGuard) MarkClosed() {
+	if g != nil {
+		g.closed.Store(true)
+	}
+}
+
+// Closed 返回预留是否已被闭环。
+func (g *ReservationGuard) Closed() bool {
+	return g != nil && g.closed.Load()
+}
+
+// reservationGuardKey 是预留闭环标记在 context 中的键（独立于 identityKey，
+// 保持本包「一类信息一个键」的写法，避免空结构体键坍缩的隐患）。
+var reservationGuardKey = ctxKey{name: "reservation_guard"}
+
+// WithReservationGuard 返回携带预留闭环标记的 context。
+//
+// 只在鉴权中间件「确实做了预留」时调用：没有预留就没有闭环问题，
+// 多挂一个标记只会让下游多一次判断。
+func WithReservationGuard(ctx context.Context) (context.Context, *ReservationGuard) {
+	g := &ReservationGuard{}
+	return context.WithValue(ctx, reservationGuardKey, g), g
+}
+
+// ReservationGuardFrom 取出预留闭环标记；未写入时返回 (nil, false)。
+func ReservationGuardFrom(ctx context.Context) (*ReservationGuard, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	g, ok := ctx.Value(reservationGuardKey).(*ReservationGuard)
+	return g, ok
 }
 
 // ctxKey 是本包专属的 context 键类型。

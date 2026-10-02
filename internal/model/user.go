@@ -176,28 +176,21 @@ func (u *User) HasQuota() bool {
 	return u.Quota-u.UsedQuota > 0
 }
 
-// RemainingQuota 返回剩余额度；不限额度时返回 QuotaUnlimited。
+// RemainingQuota 返回剩余额度 = 总额度 − 已用；不限额度时返回 QuotaUnlimited。
+//
+// 为什么【不】再减"在途预留"：预留落台账的同时额度就已加进 used_quota
+// （见 store/quota_repo.go Reserve：先 UPDATE used_quota，再写 pending 行），
+// 在途部分已经包含在 UsedQuota 里；再减一遍等于同一份额度扣两次——
+// 额度 10000、预扣 5000 之后再判定一个新请求会算出 0，把它误判成 429。
+//
+// 并发超支也不靠这里的减项来堵：Reserve 用原子条件更新
+// （quota - used_quota >= amount，不足则整笔回滚）当闸门，
+// 并发请求在预留那一步就已经被串行化并拒绝，读到这里时结果早已确定。
 func (u *User) RemainingQuota() int64 {
 	if u.Quota == QuotaUnlimited {
 		return QuotaUnlimited
 	}
 	return u.Quota - u.UsedQuota
-}
-
-// AvailableQuota 返回「可用额度」= 总额度 − 已用 − 在途预留。
-//
-// 为什么要减去在途预留（这是堵住并发超支漏洞的关键）：
-//
-//	并发的多个请求在鉴权时都会读到同一个 used_quota，若只看「总额度 − 已用」，
-//	它们会全部通过检查、各自扣费，最终「已用」可以超过「总额度」（用户倒欠）。
-//	把"已预扣但尚未结算"的在途预留计入后，并发请求会相互挤压同一份额度。
-//
-// 不限额度时返回 QuotaUnlimited（-1），调用方须先判断该哨兵值。
-func (u *User) AvailableQuota(pendingReserved int64) int64 {
-	if u.Quota == QuotaUnlimited {
-		return QuotaUnlimited
-	}
-	return u.Quota - u.UsedQuota - pendingReserved
 }
 
 // Validate 校验用户字段合法性。

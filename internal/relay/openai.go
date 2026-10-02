@@ -360,14 +360,15 @@ retryLoop:
 
 		// 占用在途计数（供 least_in_flight 使用）：与下方的 releaseKey 成对，
 		// 覆盖本轮从"选定凭据"到"响应结束"的整个区间。
-		r.acquireKey(keyCtx, target.keyID)
+		// 只有确实占上才释放（acquireKey 失败时 releaseKey 是空操作，避免计数被减成负数）。
+		acquired := r.acquireKey(keyCtx, target.keyID)
 		// 按本轮的渠道决定是否注入 include_usage（见 injectStreamUsageFor）。
 		// 每次都从原始 body 派生，因此同一请求的各次尝试只在渠道不同时才不同。
 		attemptBody := withStreamUsageOption(body, injectStreamUsageFor(ch))
 		outcome := r.forwardChat(w, req, target, group, modelName, attemptBody, adapter, upstreamPath, &lastFailure)
 		// 归还本轮的在途占用：无论成功、换密钥还是换渠道，都必须释放，
 		// 否则 in_flight 只增不减，least_in_flight 会逐步失去参考价值。
-		r.releaseKey(target.keyID)
+		r.releaseKey(target.keyID, acquired)
 		switch outcome {
 		case forwardResponded:
 			return
@@ -771,23 +772,28 @@ func (r *Relay) hasOtherChannel(candidates []*model.Channel, excluded map[uint64
 	return pickCandidate(candidates, probe) != nil
 }
 
-// acquireKey 记录在途占用（in_flight + 1）。刻意忽略错误：属调度统计用途。
-func (r *Relay) acquireKey(ctx context.Context, keyID uint64) {
+// acquireKey 记录在途占用（in_flight + 1），返回是否真的占上了。
+//
+// 返回值存在的意义（配对释放）：失败（keyID 为 0、调度仓储故障、ctx 已取消）
+// 时若仍调用 releaseKey，就会凭空减掉一次别人的 in_flight——
+// 计数被减成负数后，least_in_flight 会把该密钥误判成"最空闲"，
+// 反而被优先选中。因此"没占上就不要放"。
+func (r *Relay) acquireKey(ctx context.Context, keyID uint64) bool {
 	if r.keys == nil || keyID == 0 {
-		return
+		return false
 	}
-	_ = r.keys.Acquire(ctx, keyID)
+	return r.keys.Acquire(ctx, keyID) == nil
 }
 
-// releaseKey 释放在途占用（in_flight - 1）。
+// releaseKey 释放在途占用（in_flight - 1）；acquired 为 false 时直接跳过。
 //
 // 刻意忽略错误：这是调度统计用途，失败不应影响对客户端的响应。
 // 实现保证重复释放安全（不会把计数减到负数），因此调用方无需担心重复调用。
 //
 // 使用独立 context 而非请求 context：响应写完后请求可能已被取消（客户端断开），
 // 若沿用请求 context，这次释放会失败并让 in_flight 残留。
-func (r *Relay) releaseKey(keyID uint64) {
-	if r.keys == nil || keyID == 0 {
+func (r *Relay) releaseKey(keyID uint64, acquired bool) {
+	if !acquired || r.keys == nil || keyID == 0 {
 		return
 	}
 	_ = r.keys.Release(context.Background(), keyID)

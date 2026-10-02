@@ -53,6 +53,10 @@ func (f *fakeReserver) PendingReserved(_ context.Context, _ uint64) (int64, erro
 	return 0, nil
 }
 
+func (f *fakeReserver) Release(_ context.Context, _ string) error {
+	return nil
+}
+
 // createOwnerWithToken 创建"指定额度"的用户与归属它的令牌，返回令牌明文。
 func createOwnerWithToken(t *testing.T, tokens model.TokenRepository,
 	users model.UserRepository, name string, quota, used int64) string {

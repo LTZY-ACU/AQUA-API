@@ -493,6 +493,61 @@ func TestBilling_预留结算释放_委托台账(t *testing.T) {
 	}
 }
 
+// TestBilling_结算或退还后置位预留闭环标记 验证中间件兜底不会对已闭环的预留再写一次库。
+//
+// 闭环标记由鉴权中间件在做了预留时挂到 ctx 上；Billing.Settle / Release 成功后
+// 置位，中间件在 handler 返回时据此决定"要不要兜底退还"。
+// 置位失败的代价是多一次幂等空操作，置位过头的代价是漏退还（额度占到 TTL），
+// 因此这里把"成功即置位"这条最关键的方向锁死。
+func TestBilling_结算或退还后置位预留闭环标记(t *testing.T) {
+	base := newTestBilling(100, 1_000_000, 2_000_000, 0)
+
+	// 结算路径：Settle 成功 → 标记闭环
+	settleBilling := base.WithQuotaRepository(newFakeQuotaRepo())
+	settleCtx, settleGuard := reqctx.WithReservationGuard(context.Background())
+	if _, err := settleBilling.Reserve(settleCtx, model.ReserveRequest{RequestID: "g1", UserID: 1, Amount: 10}); err != nil {
+		t.Fatalf("Reserve 失败: %v", err)
+	}
+	if settleGuard.Closed() {
+		t.Fatal("刚预留就闭环了？标记只应在 Settle/Release 成功后置位")
+	}
+	if _, err := settleBilling.Settle(settleCtx, "g1", 4); err != nil {
+		t.Fatalf("Settle 失败: %v", err)
+	}
+	if !settleGuard.Closed() {
+		t.Fatal("Settle 成功后应置位闭环标记，否则中间件会再退还一次（白写一笔库）")
+	}
+
+	// 退还路径：Release 成功 → 同样闭环（异步任务在 Submit 开头即走这条）
+	releaseBilling := base.WithQuotaRepository(newFakeQuotaRepo())
+	releaseCtx, releaseGuard := reqctx.WithReservationGuard(context.Background())
+	if _, err := releaseBilling.Reserve(releaseCtx, model.ReserveRequest{RequestID: "g2", UserID: 1, Amount: 10}); err != nil {
+		t.Fatalf("Reserve 失败: %v", err)
+	}
+	if err := releaseBilling.Release(releaseCtx, "g2"); err != nil {
+		t.Fatalf("Release 失败: %v", err)
+	}
+	if !releaseGuard.Closed() {
+		t.Fatal("Release 成功后应置位闭环标记")
+	}
+
+	// 失败不置位 + 未挂标记的 context 都不应 panic：
+	// 结算不存在的预留必然报错，此时标记必须保持未闭环（中间件还要再兜一次），
+	// 而没有标记的 context（后台调用 / 单元测试直接调用）也不能解引用出错。
+	failBilling := base.WithQuotaRepository(newFakeQuotaRepo())
+	failCtx, failGuard := reqctx.WithReservationGuard(context.Background())
+	if _, err := failBilling.Settle(failCtx, "missing", 1); err == nil {
+		t.Fatal("结算不存在的预留应报错")
+	}
+	if failGuard.Closed() {
+		t.Fatal("结算失败不应置位闭环标记，否则额度会留在在途没人退还")
+	}
+	if _, err := base.WithQuotaRepository(newFakeQuotaRepo()).
+		Settle(context.Background(), "g3", 1); err == nil {
+		t.Fatal("无标记 ctx 的结算同样应如实报错")
+	}
+}
+
 // TestBilling_PendingReserved_委托台账 验证在途预留统计被正确委托。
 func TestBilling_PendingReserved_委托台账(t *testing.T) {
 	ctx := context.Background()

@@ -80,8 +80,18 @@ type QuotaReserver interface {
 	EstimateReserve(ctx context.Context, group, modelName string, promptBytes int) (amount int64, priced bool)
 	// Reserve 预扣额度；可用额度不足时返回 model.ErrQuotaInsufficient。
 	Reserve(ctx context.Context, req model.ReserveRequest) (*model.QuotaReservation, error)
-	// PendingReserved 返回某用户在途预留的合计额度（用于计算可用额度）。
+	// PendingReserved 返回某用户在途预留的合计额度。
+	//
+	// 现在只用于"额度耗尽"的错误文案（给站长定位问题的诊断数字），
+	// 不再参与可用额度计算——预留落台账时就已同步进 used_quota，
+	// 再减一次会把同一份额度扣两遍（见 model.User.RemainingQuota）。
+	// 因此它只在【即将返回 429】的失败分支才查询，热路径零额外读库。
 	PendingReserved(ctx context.Context, userID uint64) (int64, error)
+	// Release 退还预留；幂等（对不存在/已结算的预留是空操作）。
+	//
+	// 由本中间件在兜底释放时调用：请求走不到结算（敏感词拦截、参数校验失败、
+	// 任务提交前早退）时，额度不能一直占到 TTL 到期才自动回收。
+	Release(ctx context.Context, requestID string) error
 }
 
 // TokenAuth 返回校验下游令牌的 gin 中间件。
@@ -162,10 +172,7 @@ func TokenAuth(tokens model.TokenRepository, users model.UserRepository, reserve
 		//
 		// 注意：这里只查用户、不做额度判定。额度判定被后移到【步骤 7】，
 		// 因为只有先拿到模型名才能知道"这次调用是否要花钱"（见步骤 5、6）。
-		var (
-			owner   *model.User
-			pending int64
-		)
+		var owner *model.User
 		if users != nil && token.OwnerID > 0 {
 			owner, err = users.GetByID(c.Request.Context(), token.OwnerID)
 			if err != nil {
@@ -257,7 +264,7 @@ func TokenAuth(tokens model.TokenRepository, users model.UserRepository, reserve
 		//	明确不计费（未命中任何计价规则，或规则被【显式设为免费】）
 		//	  → 既不做额度校验、也不做额度预留，直接放行；
 		//	计费（或因拿不到模型名而无法判断）
-		//	  → 沿用严格的"可用额度 = 总额度 − 已用 − 在途预留"判定。
+		//	  → 沿用严格的"可用额度 = 总额度 − 已用"判定（见步骤 7）。
 		//
 		// 为什么必须这样分：若把额度校验放在判断计费之前，0 额度用户连免费模型
 		// 都会被拦成 429，站长为了让免费模型可用，只能把用户额度设成"不限"(-1)
@@ -290,9 +297,12 @@ func TokenAuth(tokens model.TokenRepository, users model.UserRepository, reserve
 
 		// ── 步骤 7：账号级额度校验（仅对计费模型生效）──────────
 		//
-		// 可用额度 = 总额度 − 已用 − 在途预留（而不是只看"总额度 − 已用"）。
-		// 必须减去在途预留：并发的多个请求会读到同一个 used_quota，
-		// 若只看"总额度 − 已用"就会全部通过、各自扣费，最终"已用"超过"总额度"。
+		// 可用额度 = 总额度 − 已用。【不要】再减"在途预留"：预留落台账的同时
+		// 额度就已经加进 used_quota（见 store/quota_repo.go Reserve），在途部分
+		// 已包含在 UsedQuota 里，再减一遍等于同一份额度扣两次——额度 10000、
+		// 预扣 5000 时再发一个请求会算出 0 而被误判 429（实际还剩 5000）。
+		// 并发超支由 Reserve 的原子条件更新（quota - used_quota >= amount，
+		// 不足则整笔回滚）兜底，不依赖这里的减项。
 		//
 		// 两个容易写错的地方（都曾真实踩过）：
 		//  1) 必须显式排除「不限额度」：它的 RemainingQuota() 返回 -1，
@@ -303,20 +313,19 @@ func TokenAuth(tokens model.TokenRepository, users model.UserRepository, reserve
 		// bodyless：无请求体的只读元数据请求（GET /v1/models 等）跳过额度墙。
 		// 它们不产生任何费用，"余额为 0 就不让看模型清单"只会把用户挡在门外。
 		if owner != nil && !bodyless && !exemptFromQuota {
-			// 统计在途预留：仅在"有限额度 + 启用了预留"时才需要查库。
-			if reserver != nil && owner.Quota != model.QuotaUnlimited {
-				if p, perr := reserver.PendingReserved(c.Request.Context(), owner.ID); perr == nil {
-					pending = p
-				} else {
-					// 查询失败不阻断：降级为"只看已用额度"判定，并留下日志。
-					slog.Warn("查询在途预留失败，本次按已用额度判定",
-						"error", perr, "user_id", owner.ID)
-				}
-			}
-
-			if owner.Quota != model.QuotaUnlimited && owner.AvailableQuota(pending) <= 0 {
+			if owner.Quota != model.QuotaUnlimited && owner.RemainingQuota() <= 0 {
 				// 报错里带上具体数值：使用者转述给站长时，"额度 0 / 已用 0"
 				// 一眼就能定位到是"默认额度没配"，而不是"上游限流"。
+				// 在途预留只在这里查一次：诊断信息属于失败路径，不值得热路径每次读库。
+				pending := int64(0)
+				if reserver != nil {
+					if p, perr := reserver.PendingReserved(c.Request.Context(), owner.ID); perr == nil {
+						pending = p
+					} else {
+						slog.Warn("查询在途预留失败，错误文案中省略该数字",
+							"error", perr, "user_id", owner.ID)
+					}
+				}
 				abortWithErrorKey(c, http.StatusTooManyRequests,
 					"quota.account_exhausted", oai.TypeRateLimit, oai.CodeInsufficientQuota,
 					owner.Quota, owner.UsedQuota, pending)
@@ -330,7 +339,7 @@ func TokenAuth(tokens model.TokenRepository, users model.UserRepository, reserve
 		requestID := ""
 		if needReserve && modelName != "" {
 			id, ok := tryReserveQuota(c, reserver, token, owner,
-				modelName, reserveAmount, pending)
+				modelName, reserveAmount)
 			if !ok {
 				// 额度不足：tryReserveQuota 已写出 429
 				return
@@ -351,6 +360,33 @@ func TokenAuth(tokens model.TokenRepository, users model.UserRepository, reserve
 			RequestID: requestID,
 		})
 		reqCtx = reqctx.WithGroup(reqCtx, tokenGroup)
+
+		// 预留一旦产生就必须有人闭环：正常由 relay（结算/退还）或任务服务
+		// （提交即退还）负责，但敏感词拦截、参数校验失败、任务提交前早退等
+		// 路径根本走不到结算——额度会一直占到 15 分钟 TTL 到期才被回收，
+		// 期间用户看到的是"有钱却用不了"。这里加一道 defer 兜底。
+		//
+		// 闭环标记由结算方在 Settle/Release 成功后置位（reqctx.ReservationGuard），
+		// 已结算时本兜底跳过，热路径零额外写库；标记缺失（如某些路径丢了 ctx 值）
+		// 也不会出错——Release 幂等，对已结算的预留是空操作。
+		if requestID != "" {
+			var guard *reqctx.ReservationGuard
+			reqCtx, guard = reqctx.WithReservationGuard(reqCtx)
+			defer func() {
+				if guard.Closed() {
+					return
+				}
+				// 用独立 context：此时请求 context 可能已被取消（客户端断开、
+				// 上游超时），沿用它会让这次释放失败并拖到 TTL 才回收。
+				releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := reserver.Release(releaseCtx, requestID); err != nil {
+					slog.Warn("兜底退还预留额度失败（将等待 TTL 到期由清理任务回收）",
+						"error", err, "request_id", requestID, "user_id", token.OwnerID)
+				}
+			}()
+		}
+
 		c.Request = c.Request.WithContext(reqCtx)
 
 		c.Next()
@@ -367,7 +403,7 @@ func TokenAuth(tokens model.TokenRepository, users model.UserRepository, reserve
 // 返回的第二个值为 false 表示已写出错误响应（额度不足），调用方应立即返回。
 // 返回空 requestID 且 true 表示"本次不预留"（不计费模型 / 信任额度旁路 / 台账降级）。
 func tryReserveQuota(c *gin.Context, reserver QuotaReserver, token *model.Token,
-	owner *model.User, modelName string, amount, pending int64) (string, bool) {
+	owner *model.User, modelName string, amount int64) (string, bool) {
 	ctx := c.Request.Context()
 
 	if amount <= 0 {
@@ -378,7 +414,9 @@ func tryReserveQuota(c *gin.Context, reserver QuotaReserver, token *model.Token,
 	}
 
 	// 【例外二】信任额度旁路：可用额度充足时跳过预留，减少一次写库。
-	if owner.AvailableQuota(pending) >= trustQuotaBypassThreshold {
+	//
+	// 同样只看"总额度 − 已用"：在途预留已计入 used_quota（见 model.User.RemainingQuota）。
+	if owner.RemainingQuota() >= trustQuotaBypassThreshold {
 		return "", true
 	}
 
@@ -391,7 +429,9 @@ func tryReserveQuota(c *gin.Context, reserver QuotaReserver, token *model.Token,
 		TTL:       reservationTTL,
 	}); err != nil {
 		if errors.Is(err, model.ErrQuotaInsufficient) {
-			available := owner.AvailableQuota(pending)
+			// 原子条件更新才是并发闸门：这里显示的"剩余"只是判断瞬间的快照，
+			// 不参与判定（判定已由 Reserve 内部完成），仅供使用者定位问题。
+			available := owner.RemainingQuota()
 			if available < 0 {
 				available = 0
 			}

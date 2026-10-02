@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"gitee.com/xiaosu4610/aqua-api/internal/reqctx"
 )
 
 // priceCacheTTL 是价格缓存的存活时间。
@@ -584,22 +585,44 @@ func (b *Billing) Reserve(ctx context.Context, req model.ReserveRequest) (*model
 //
 // actualQuota 为 model.QuotaUnknown 时按预留量收取。
 // 返回的预留记录中 Settled 是真实入账额度，调用方据此识别"补扣受限"的缺口。
+//
+// 成功后把 ctx 中的预留闭环标记置位（reqctx.ReservationGuard）：
+// 鉴权中间件据此知道"这笔预留已有人负责"，从而跳过它的兜底退还。
+// 失败时不置位——中间件会再试一次 Release（幂等），失败则等 TTL 回收。
 func (b *Billing) Settle(ctx context.Context, requestID string, actualQuota int64) (*model.QuotaReservation, error) {
 	if b == nil || b.quota == nil {
 		return nil, nil
 	}
-	return b.quota.Settle(ctx, requestID, actualQuota)
+	res, err := b.quota.Settle(ctx, requestID, actualQuota)
+	if err == nil {
+		if guard, ok := reqctx.ReservationGuardFrom(ctx); ok {
+			guard.MarkClosed()
+		}
+	}
+	return res, err
 }
 
 // Release 全额退还第 requestID 号预留（幂等，请求失败时调用）。
+//
+// 与 Settle 一样在成功后置位闭环标记：异步任务在 Submit 开头即退还预留，
+// 置位后中间件不会在 handler 返回时再退还一次（多一次无谓的写库）。
 func (b *Billing) Release(ctx context.Context, requestID string) error {
 	if b == nil || b.quota == nil {
 		return nil
 	}
-	return b.quota.Release(ctx, requestID)
+	err := b.quota.Release(ctx, requestID)
+	if err == nil {
+		if guard, ok := reqctx.ReservationGuardFrom(ctx); ok {
+			guard.MarkClosed()
+		}
+	}
+	return err
 }
 
-// PendingReserved 返回某用户在途预留的合计额度（用于计算可用额度）。
+// PendingReserved 返回某用户在途预留的合计额度。
+//
+// 只用于"额度耗尽"类错误文案的诊断数字，不参与可用额度计算
+// （在途预留已计入 used_quota，再减一遍会重复扣减）。
 func (b *Billing) PendingReserved(ctx context.Context, userID uint64) (int64, error) {
 	if b == nil || b.quota == nil {
 		return 0, nil
