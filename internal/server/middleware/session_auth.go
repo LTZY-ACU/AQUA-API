@@ -35,9 +35,34 @@ import (
 // contextKeyUser 是登录用户在 gin 上下文中的键。
 const contextKeyUser = "aqua.context.user"
 
+// contextKeySession 是当前会话在 gin 上下文中的键。
+const contextKeySession = "aqua.context.session"
+
 // SetUser 把已认证用户写入上下文（仅供本包中间件调用）。
 func SetUser(c *gin.Context, user *model.User) {
 	c.Set(contextKeyUser, user)
+}
+
+// SetSession 把当前会话写入上下文（仅供本包中间件调用）。
+//
+// 为什么要把会话对象也放进上下文：会话上挂着"这次登录的来源与最近一次
+// 二次验证的时刻"这类【会话级】事实，属于每个请求都要用到的安全上下文，
+// 让处理器各自按令牌摘要再查一次既浪费一次查询，也让"有没有查"变成隐性约定。
+func SetSession(c *gin.Context, session *model.Session) {
+	c.Set(contextKeySession, session)
+}
+
+// CurrentSession 取出当前会话。
+//
+// 第二个返回值为 false 表示没有会话信息（路由未挂 SessionAuth，
+// 或走的是 API 令牌鉴权而不是网站会话）。
+func CurrentSession(c *gin.Context) (*model.Session, bool) {
+	value, exists := c.Get(contextKeySession)
+	if !exists {
+		return nil, false
+	}
+	session, ok := value.(*model.Session)
+	return session, ok
 }
 
 // CurrentUser 取出当前登录用户。
@@ -151,6 +176,7 @@ func sessionAuth(sessions model.SessionRepository, users model.UserRepository, r
 		}
 
 		SetUser(c, user)
+		SetSession(c, session)
 		c.Next()
 	}
 }

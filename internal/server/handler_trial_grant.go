@@ -84,6 +84,11 @@ type trialActiveDTO struct {
 
 // handleGrantTrial 处理 POST /api/admin/trial-grants。
 func (s *Server) handleGrantTrial(c *gin.Context) {
+	// 二次验证：这笔额度一旦发放只能等到期自动收回，属于"发了就收不回来"的操作。
+	if !s.requireFreshReauth(c) {
+		return
+	}
+
 	var req trialGrantRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		oai.WriteError(c.Writer, http.StatusBadRequest, "请求体格式错误",

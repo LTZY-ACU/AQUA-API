@@ -175,6 +175,16 @@ var catalog = Catalog{
 		Es:   "Demasiados intentos fallidos de contraseña. La cuenta está bloqueada temporalmente — inténtelo de nuevo en %d minutos",
 		Ar:   "عدد كبير جدًا من محاولات كلمة المرور الفاشلة. تم قفل الحساب مؤقتًا — أعد المحاولة بعد %d دقيقة",
 	},
+	"auth.reauth_required": {
+		// 敏感操作前的二次验证：这个提示必须指向"下一步该做什么"（重新输一次密码），
+		// 只说"没有权限"会让管理员以为自己的角色出了问题。
+		ZhCN: "该操作涉及资产或不可撤回，请重新验证密码后再执行",
+		En:   "This action affects assets and cannot be undone. Please re-enter your password to continue",
+		Fr:   "Cette action affecte les actifs et ne peut pas être annulée. Veuillez saisir à nouveau votre mot de passe",
+		Ru:   "Это действие затрагивает активы и необратимо. Пожалуйста, введите пароль заново",
+		Es:   "Esta acción afecta a los activos y no se puede deshacer. Vuelva a introducir su contraseña para continuar",
+		Ar:   "هذا الإجراء يؤثر على الأصول ولا يمكن التراجع عنه. يُرجى إعادة إدخال كلمة المرور للمتابعة",
+	},
 	"auth.username_taken": {
 		ZhCN: "用户名已被占用",
 		En:   "The username is already taken",

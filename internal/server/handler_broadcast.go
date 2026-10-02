@@ -189,6 +189,12 @@ func (s *Server) handlePreviewBroadcast(c *gin.Context) {
 
 // handleCreateBroadcast 处理 POST /api/admin/broadcasts。
 func (s *Server) handleCreateBroadcast(c *gin.Context) {
+	// 二次验证：全站群发一旦点下去就发到所有绑定邮箱，既不可撤回，
+	// 又直接消耗发信额度与服务商信誉，是最需要"确认是本人亲手点的"的操作之一。
+	if !s.requireFreshReauth(c) {
+		return
+	}
+
 	var req broadcastRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		oai.WriteError(c.Writer, http.StatusBadRequest, "请求体格式错误",

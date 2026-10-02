@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { closeOrder, listAllOrders, markOrderPaid } from '@/api/admin'
+import { useReauthGuard } from '@/components/auth/ReauthGuard'
 import type { PaymentOrder } from '@/api/types'
 import { ORDER_STATUS_PAID, ORDER_STATUS_PENDING } from '@/api/types'
 import { Badge, Card } from '@/components/ui/Display'
@@ -47,12 +48,16 @@ export default function AdminOrdersPage() {
     void load()
   }, [load])
 
+  // 人工入账属于"凭一句话产生资产"的操作，后端要求二次验证；
+  // guard 会在被拦时弹窗要密码，验证通过后自动重试，调用方无需感知。
+  const { guard, dialog } = useReauthGuard()
+
   async function handleConfirm() {
     if (!confirmAction) return
     const { type, order } = confirmAction
     try {
       if (type === 'paid') {
-        await markOrderPaid(order.trade_no)
+        await guard(() => markOrderPaid(order.trade_no))
         toast('订单已人工入账')
       } else {
         await closeOrder(order.trade_no)
@@ -144,6 +149,9 @@ export default function AdminOrdersPage() {
         onConfirm={handleConfirm}
         onCancel={() => setConfirmAction(null)}
       />
+
+      {/* 二次验证弹窗（被闸门拦下时才显示） */}
+      {dialog}
     </div>
   )
 }

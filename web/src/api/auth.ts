@@ -157,3 +157,13 @@ export function qiuLoginStatus(
 export function bindQIUAccount(taskId: string): Promise<{ ok: boolean; username: string }> {
   return api.post<{ ok: boolean; username: string }>('/auth/qiu/bind', { task_id: taskId })
 }
+
+/**
+ * POST /api/auth/reauth：敏感操作前的二次验证（重新输一次密码）。
+ *
+ * 结果只对当前会话生效 15 分钟：攻击者拿到一台设备的令牌后，
+ * 也无法直接动"人工入账 / 全站群发 / 发放试用额"这类不可撤回的操作。
+ */
+export function reauth(password: string): Promise<{ ok: boolean; reauth_until: number }> {
+  return api.post<{ ok: boolean; reauth_until: number }>('/auth/reauth', { password })
+}

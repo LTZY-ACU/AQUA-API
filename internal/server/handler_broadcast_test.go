@@ -144,7 +144,7 @@ func newBroadcastFixture(t *testing.T, adminEmail string, mailerConfigured bool)
 		bcasts:   bcasts,
 		fake:     fake,
 		adminID:  admin.ID,
-		adminTok: createTokenGroupSession(t, sessions, admin.ID),
+		adminTok: mustReauthedSession(t, sessions, createTokenGroupSession(t, sessions, admin.ID)),
 	}
 }
 

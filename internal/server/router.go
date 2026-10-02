@@ -171,6 +171,8 @@ func (s *Server) registerRoutes() {
 
 	authed.GET("/auth/me", s.handleMe)
 	authed.POST("/auth/logout", s.handleLogout)
+	// 二次验证：做敏感操作前重新输一次密码，结果只对当前会话生效 15 分钟。
+	authed.POST("/auth/reauth", s.handleReauth)
 	// QIU 科技账号绑定：需要已登录会话（用它证明本地账号归属，
 	// 因此不存在"抢绑别人账号"的可能），挂在需登录分组里由中间件统一拦截未登录请求。
 	authed.POST("/auth/qiu/bind", s.handleQIUBind)

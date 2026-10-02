@@ -119,7 +119,7 @@ func newTrialFixture(t *testing.T) *trialFixture {
 		users:     users,
 		sessions:  sessions,
 		memberIDs: memberIDs,
-		adminTok:  createTokenGroupSession(t, sessions, admin.ID),
+		adminTok:  mustReauthedSession(t, sessions, createTokenGroupSession(t, sessions, admin.ID)),
 	}
 }
 

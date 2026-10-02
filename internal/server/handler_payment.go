@@ -467,6 +467,11 @@ func (s *Server) respondOrderList(c *gin.Context, query model.PaymentOrderQuery)
 // 用途：人工确认通道的核心动作（收到款后手动入账）。
 // 也用于处理"用户确实付了款但回调丢失"的异常，因此必须走同一套幂等入账逻辑。
 func (s *Server) handleAdminMarkOrderPaid(c *gin.Context) {
+	// 二次验证：人工确认入账直接给账户加钱，是后台里唯一"凭一句话产生资产"的操作。
+	if !s.requireFreshReauth(c) {
+		return
+	}
+
 	ctx := c.Request.Context()
 
 	order, err := s.deps.Orders.GetByTradeNo(ctx, c.Param("tradeNo"))
