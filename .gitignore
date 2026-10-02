@@ -16,6 +16,10 @@ opensource/
 # AI 工具本地记忆（正常位于仓库之外）
 .trae/
 
+# 修改前备份与更新日志（本地协作规矩，不入库）
+.backup/
+CHANGELOG.md
+
 # 构建产物与本地数据
 bin/
 *.exe

@@ -94,6 +94,12 @@ package xxx
    （位于仓库之外的工作区 `D:\AQUA-API\opensource\`）。
 4. **依赖约束**：本机 **无 gcc、CGO 不可用**，只能引入纯 Go 依赖
    （SQLite 使用 `modernc.org/sqlite`，不要用 `mattn/go-sqlite3`）。
+5. **修改前必须备份**：改动任何已有文件前，先复制原文件到仓库根的 `.backup/`
+   （同名存放；短时间多次修改同一文件时加时间戳后缀，如 `config.go.20261002-1630`）。
+   `.backup/` 已被 `.gitignore` 忽略，永不提交。
+6. **每个改动文件都要记更新日志**：每改一个文件，立即在仓库根 `CHANGELOG.md`
+   追加一条记录，格式：`- **<文件路径>**：<改了什么> —— <为什么>`。
+   新建文件同样记录。`CHANGELOG.md` 已被 `.gitignore` 忽略，不入库。
 
 ## 五、分层与依赖约束
 
