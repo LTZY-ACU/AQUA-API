@@ -79,10 +79,21 @@ func TestKeyRouting_按模型选到匹配的凭据(t *testing.T) {
 	if len(pool) != 2 {
 		t.Fatalf("池内应有 2 把凭据，实际 %d", len(pool))
 	}
-	if err := keys.UpdateRouting(ctx, pool[0].ID, nil, []string{"model-a"}); err != nil {
+	// 按明文识别两把凭据，再各自限定一个模型。
+	// 不能用 pool[0]/pool[1] 这类下标：池的 id 顺序属于存储细节，
+	// 测试要钉住的是"凭据声明与请求模型是否匹配"，与落库顺序无关。
+	byKey := make(map[string]uint64, len(pool))
+	for _, k := range pool {
+		byKey[k.Key] = k.ID
+	}
+	idA, idB := byKey["sk-for-a"], byKey["sk-for-b"]
+	if idA == 0 || idB == 0 {
+		t.Fatalf("池内应包含 sk-for-a 与 sk-for-b，实际 %#v", byKey)
+	}
+	if err := keys.UpdateRouting(ctx, idA, nil, []string{"model-a"}); err != nil {
 		t.Fatalf("配置第一把凭据失败: %v", err)
 	}
-	if err := keys.UpdateRouting(ctx, pool[1].ID, nil, []string{"model-b"}); err != nil {
+	if err := keys.UpdateRouting(ctx, idB, nil, []string{"model-b"}); err != nil {
 		t.Fatalf("配置第二把凭据失败: %v", err)
 	}
 
@@ -166,7 +177,17 @@ func TestKeyRouting_按分组选到匹配的凭据(t *testing.T) {
 		t.Fatalf("导入密钥池失败: %v", err)
 	}
 	pool, _ := keys.ListByChannel(ctx, ch.ID)
-	if err := keys.UpdateRouting(ctx, pool[0].ID, []string{"vip"}, nil); err != nil {
+	// 同样按明文定位，避免依赖池内顺序
+	var vipKeyID uint64
+	for _, k := range pool {
+		if k.Key == "sk-vip-only" {
+			vipKeyID = k.ID
+		}
+	}
+	if vipKeyID == 0 {
+		t.Fatalf("池内未找到 sk-vip-only，实际 %d 把", len(pool))
+	}
+	if err := keys.UpdateRouting(ctx, vipKeyID, []string{"vip"}, nil); err != nil {
 		t.Fatalf("配置凭据分组失败: %v", err)
 	}
 
