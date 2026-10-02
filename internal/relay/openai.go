@@ -464,7 +464,15 @@ type resolvedCredential struct {
 // （迁移 0038），因此挑凭据前必须按它过滤（见 filterUsableKeysForRequest）。
 func (r *Relay) resolveChatCredential(ctx context.Context, ch *model.Channel, used map[uint64]struct{}, scope credentialScope) (resolvedCredential, bool, bool) {
 	if r.keys != nil {
-		if pool, err := r.keys.ListUsable(ctx, ch.ID); err == nil && len(pool) > 0 {
+		pool, poolErr := r.keys.ListUsable(ctx, ch.ID)
+		if poolErr != nil {
+			// 查询失败不阻断转发（见上方"容错"说明，退回单密钥继续），
+			// 但必须留痕：否则 DB 抖动期间"密钥池配了却从没被选中"完全无从排查，
+			// 降级过程对站长彻底不可见。
+			slog.Error("读取凭据池失败，本次退回渠道单密钥",
+				"error", poolErr, "channel_id", ch.ID, "model", scope.Model)
+		}
+		if poolErr == nil && len(pool) > 0 {
 			sessionHash := credentialSessionFrom(ctx)
 			// 循环而非单次挑选：OAuth 凭据可能因刷新失败而不可用，
 			// 此时应换池内下一条，而不是让整个请求失败。
@@ -496,6 +504,11 @@ func (r *Relay) resolveChatCredential(ctx context.Context, ch *model.Channel, us
 				// 策略选择：五策略择优 + 会话粘性（内部会再做一次幂等的可用性过滤）。
 				picked, err := r.SelectKey(ctx, ch, usable, sessionHash)
 				if err != nil {
+					// 这是"故障"而非"业务上无可用凭据"：不记日志的话，
+					// 它会和正常冷却/额度耗尽混在一起，最终只表现为一句
+					// "所有候选渠道均请求失败"，把系统自身的问题抹平成上游问题。
+					slog.Error("选择凭据失败", "error", err,
+						"channel_id", ch.ID, "model", scope.Model)
 					return resolvedCredential{}, false, false
 				}
 

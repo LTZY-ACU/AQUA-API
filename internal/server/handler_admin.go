@@ -2780,9 +2780,21 @@ func parseIDParam(c *gin.Context) (uint64, bool) {
 //
 // detail 只写服务端日志、绝不回给客户端：约百处调用点靠它区分"是哪一步失败"，
 // 若不留痕，一次 500 在日志里完全无法定位。
-func (s *Server) respondInternalError(c *gin.Context, detail string) {
-	slog.Error("处理请求失败", "detail", detail,
-		"method", c.Request.Method, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
+//
+// 可选的 err 是真实原因（SQL/磁盘/上游错误），只会进日志、不会回给客户端。
+// 做成变参而非强制参数：既有约 180 处调用点没有 err 可传（或错误已在别处记录），
+// 强制补齐会把一次"补日志"的改动变成对全仓的机械改写，
+// 反而容易在改写中引入笔误。关键链路（支付、备份、安装、验证码）应尽量传入。
+func (s *Server) respondInternalError(c *gin.Context, detail string, errs ...error) {
+	attrs := []any{"detail", detail,
+		"method", c.Request.Method, "path", c.Request.URL.Path, "client_ip", c.ClientIP()}
+	for _, err := range errs {
+		if err != nil {
+			attrs = append(attrs, "error", err)
+			break
+		}
+	}
+	slog.Error("处理请求失败", attrs...)
 	oai.WriteError(c.Writer, http.StatusInternalServerError,
 		"网关内部错误", oai.TypeServer, oai.CodeInternal)
 }

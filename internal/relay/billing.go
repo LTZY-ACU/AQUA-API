@@ -262,10 +262,20 @@ func (b *Billing) refresh(ctx context.Context, group string, old *cachedRules) *
 		rules.ratio = old.ratio
 	}
 
+	// coldPriceFailed：既没有旧快照可沿用、这次又没读到价。
+	// 此时 rules.prices 为 nil = "未定价" = 不收费——若照常写进缓存，
+	// 等于把"白送"锁死 30 秒（priceCacheTTL），且注释承诺的保护并不覆盖这条路径。
+	coldPriceFailed := false
 	if b.prices != nil {
 		prices, err := b.prices.List(ctx, group, true)
 		if err != nil {
-			slog.Warn("读取计价规则失败，本次沿用旧缓存", "error", err, "group", group)
+			if old == nil {
+				coldPriceFailed = true
+				slog.Error("读取计价规则失败且无旧缓存可沿用：本次按未定价处理且【不写缓存】",
+					"error", err, "group", group)
+			} else {
+				slog.Warn("读取计价规则失败，本次沿用旧缓存", "error", err, "group", group)
+			}
 		} else {
 			rules.prices = prices
 		}
@@ -296,6 +306,12 @@ func (b *Billing) refresh(ctx context.Context, group string, old *cachedRules) *
 	}
 	rules.ratio = ratio
 	rules.cachedAt = time.Now()
+
+	if coldPriceFailed {
+		// 不写缓存：下一个请求会立刻重试读库，故障恢复即恢复计费。
+		// 代价只有"本次这一笔按未定价放行"——宁可少收一笔，也不能锁 30 秒白送。
+		return rules
+	}
 
 	b.mu.Lock()
 	if b.rules == nil {
@@ -456,16 +472,22 @@ func (b *Billing) Refund(ctx context.Context, userID, tokenID uint64, amount int
 //
 // 抽出来的理由：扣减与退还的目标、容错策略完全相同，
 // 各写一遍必然有一天会出现"退还时漏掉用户额度"的不一致。
+//
+// 失败按错误级记录：额度写失败意味着账实不符（usage_log 里已经记了这笔 quota，
+// 但 users/tokens 的计数没动），与结算失败同属"必须被发现的资损风险"，
+// 不能用 Warn 混在普通告警里被淹没。
 func (b *Billing) applyDelta(ctx context.Context, userID, tokenID uint64, delta int64, action string) {
 	now := time.Now()
 	if tokenID > 0 && b.tokens != nil {
 		if err := b.tokens.ConsumeQuota(ctx, tokenID, delta, now); err != nil {
-			slog.Warn(action+"令牌额度失败", "error", err, "token_id", tokenID, "delta", delta)
+			slog.Error(action+"令牌额度失败（账实不符，需人工核查）",
+				"error", err, "token_id", tokenID, "delta", delta)
 		}
 	}
 	if userID > 0 && b.users != nil {
 		if err := b.users.AddUsedQuota(ctx, userID, delta); err != nil {
-			slog.Warn(action+"用户已用额度失败", "error", err, "user_id", userID, "delta", delta)
+			slog.Error(action+"用户已用额度失败（账实不符，需人工核查）",
+				"error", err, "user_id", userID, "delta", delta)
 		}
 	}
 }

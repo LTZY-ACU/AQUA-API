@@ -41,6 +41,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -592,20 +593,29 @@ func isSignatureParam(key string) bool {
 //
 // 注意：任何分支都【不】向调用者回显内部错误细节——
 // 回调接口的错误信息是攻击者最好的调试工具。
+//
+// 但"不回显"只针对调用方：每个分支都必须留日志。
+// 这是全站唯一无需鉴权、且直接产生资损副作用的接口，此前却是一条日志都没有——
+// "用户付了钱订单没到账"时，日志里连回调来没来过都查不到。
+// 日志只记结构化字段（method/trade_no/金额/err），不记回调原文与签名。
 func (s *Server) handlePaymentNotify(c *gin.Context) {
 	method := strings.TrimSpace(c.Param("method"))
 	provider, err := s.deps.Payment.Get(method)
 	if err != nil {
+		// 通常意味着回调地址配错了通道名，是最该留痕的一种失败
+		slog.Warn("支付回调通道未知", "method", method, "client_ip", c.ClientIP())
 		c.String(http.StatusNotFound, "unknown payment method")
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxNotifyBodyBytes+1))
 	if err != nil {
+		slog.Error("读取支付回调请求体失败", "method", method, "error", err, "client_ip", c.ClientIP())
 		c.String(http.StatusBadRequest, "read body failed")
 		return
 	}
 	if int64(len(body)) > maxNotifyBodyBytes {
+		slog.Warn("支付回调请求体超限", "method", method, "size", len(body), "client_ip", c.ClientIP())
 		c.String(http.StatusRequestEntityTooLarge, "body too large")
 		return
 	}
@@ -632,7 +642,11 @@ func (s *Server) handlePaymentNotify(c *gin.Context) {
 		Body:   body,
 	})
 	if err != nil {
-		// 验签失败/不支持回调：明确拒绝，但不回显原因
+		// 验签失败/不支持回调：明确拒绝，但不回显原因。
+		// 日志里必须留下"是伪造回调还是本地密钥配错"的线索——
+		// 两者都表现为验签失败，没有 err 就无法区分。
+		slog.Warn("支付回调验签失败或不支持", "method", method,
+			"error", err, "client_ip", c.ClientIP())
 		c.String(http.StatusBadRequest, "invalid notify")
 		return
 	}
@@ -647,6 +661,11 @@ func (s *Server) handlePaymentNotify(c *gin.Context) {
 	if err != nil {
 		// 订单不存在：可能是伪造的回调，也可能是发到了错误的部署实例。
 		// 无论哪种都不应入账，但应答 200 以避免第三方无限重试（没有意义的重试）。
+		// 这是最需要留痕的分支——"钱收了、单子找不到"就是资损现场。
+		slog.Error("支付回调找不到订单（需人工核对是否已收款）",
+			"method", method, "trade_no", result.TradeNo,
+			"provider_trade_no", result.ProviderTradeNo,
+			"amount_cents", result.AmountCents, "client_ip", c.ClientIP())
 		c.String(http.StatusOK, "order not found")
 		return
 	}
@@ -655,7 +674,12 @@ func (s *Server) handlePaymentNotify(c *gin.Context) {
 	// 与 epay 通道同一标准（安全审计 P2-1）：Paid 事件金额必须 > 0 且等于订单金额。
 	// 各通道适配器已在源头拒绝缺失/非法金额，这里兜住"未来新增通道忘记校验"的情况。
 	if result.AmountCents <= 0 || result.AmountCents != order.Amount {
-		// 不回显两个金额：这会帮助攻击者推断出订单金额
+		// 不回显两个金额：这会帮助攻击者推断出订单金额。
+		// 日志里则要记全——金额不符是典型的篡改/配置错信号，必须能对账。
+		slog.Error("支付回调金额不符（疑似篡改或通道配置错误）",
+			"method", method, "trade_no", order.TradeNo,
+			"notify_amount_cents", result.AmountCents, "order_amount_cents", order.Amount,
+			"client_ip", c.ClientIP())
 		c.String(http.StatusBadRequest, "amount mismatch")
 		return
 	}
@@ -663,18 +687,22 @@ func (s *Server) handlePaymentNotify(c *gin.Context) {
 	// 落库的回调原文先去掉 sign 等签名字段（见 scrubNotifyPayload 的说明）：
 	// 排查与对账需要的字段都保留，只不留存可被拿去重放实验的签名字符串。
 	if _, err := s.deps.Orders.MarkPaid(ctx, order.TradeNo, result.ProviderTradeNo, scrubNotifyPayload(body), time.Now()); err != nil {
-		s.respondInternalError(c, "更新订单状态失败")
+		s.respondInternalError(c, "更新订单状态失败", err)
 		return
 	}
 	if err := s.creditOrder(ctx, order.TradeNo); err != nil {
 		// 入账失败：返回 500 让支付平台重试——重试会再次走到这里，
 		// 而 CreditOrder 是幂等的，不会重复给额度。
+		slog.Error("支付回调入账失败（已收款但未加额度，平台会重试）",
+			"method", method, "trade_no", order.TradeNo, "error", err)
 		c.String(http.StatusInternalServerError, "credit failed")
 		return
 	}
 	// 入账成功后再挂充值返利（幂等：同一订单只返一次）。
 	// 返利失败同样返回 500 促发重试：重试时入账幂等跳过，返利会在此补发。
 	if err := s.rewardReferralOnRecharge(ctx, order); err != nil {
+		slog.Error("支付回调发放充值返利失败（订单已入账，平台会重试）",
+			"method", method, "trade_no", order.TradeNo, "error", err)
 		c.String(http.StatusInternalServerError, "reward failed")
 		return
 	}
@@ -722,6 +750,10 @@ func writePaymentError(c *gin.Context, err error) {
 		oai.WriteError(c.Writer, http.StatusBadRequest, err.Error(),
 			oai.TypeInvalidRequest, "payment_notify_unsupported")
 	default:
+		// 未知错误：客户端只拿到一句通用文案，原因必须留在日志里，
+		// 否则"支付通道请求失败"这条 502 在排障时等于零信息。
+		slog.Error("支付通道请求失败", "error", err,
+			"method", c.Request.Method, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
 		oai.WriteError(c.Writer, http.StatusBadGateway,
 			"支付通道请求失败，请稍后重试", oai.TypeServer, "payment_upstream_failed")
 	}
@@ -733,6 +765,9 @@ func writeOrderLookupError(c *gin.Context, err error) {
 		writeOrderNotFound(c)
 		return
 	}
+	// 未预期的查询失败（多为 DB 故障）：客户端只拿到通用 500，根因必须进日志。
+	slog.Error("查询支付订单失败", "error", err,
+		"method", c.Request.Method, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
 	oai.WriteError(c.Writer, http.StatusInternalServerError,
 		"网关内部错误", oai.TypeServer, oai.CodeInternal)
 }

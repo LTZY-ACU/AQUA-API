@@ -129,7 +129,9 @@ func TokenAuth(tokens model.TokenRepository, users model.UserRepository, reserve
 					"auth.invalid_token", oai.TypeAuthentication, oai.CodeInvalidAPIKey)
 				return
 			}
-			// 仓储故障：属于网关内部问题，不暴露细节
+			// 仓储故障：不暴露细节给客户端，但根因必须进日志
+			// （abortWithError 另记一条 5xx 事件，这里记的是原因）。
+			slog.Error("查询令牌失败", "error", err, "client_ip", c.ClientIP())
 			abortWithError(c, http.StatusInternalServerError,
 				"网关内部错误", oai.TypeServer, oai.CodeInternal)
 			return
@@ -182,6 +184,8 @@ func TokenAuth(tokens model.TokenRepository, users model.UserRepository, reserve
 						"auth.token_revoked", oai.TypeAuthentication, oai.CodeInvalidAPIKey)
 					return
 				}
+				slog.Error("查询令牌归属用户失败", "error", err,
+					"user_id", token.OwnerID, "client_ip", c.ClientIP())
 				abortWithError(c, http.StatusInternalServerError,
 					"网关内部错误", oai.TypeServer, oai.CodeInternal)
 				return
@@ -546,7 +550,18 @@ func extractAPIKey(r *http.Request) string {
 // 导致既返回了错误、又执行了业务逻辑（可能产生额外费用）。
 //
 // 本函数用于「运维/内部错误」等无需本地化的文案（保持中文，便于日志检索）。
+//
+// 5xx 一律记错误级日志：不暴露给客户端的是【原因细节】，不是【发生了故障】本身。
+// 此前 DB 故障期间每个请求都返回 500、日志却一条没有——
+// "全线 500 但日志干净" 是最难定位的一类故障。
+// 4xx 不记：那是客户端输入问题，逐条记录只会把日志刷成噪音。
 func abortWithError(c *gin.Context, status int, message, errType, code string) {
+	if status >= http.StatusInternalServerError {
+		slog.Error("请求处理失败（服务端内部错误）",
+			"status", status, "code", code, "message", message,
+			"method", c.Request.Method, "path", c.Request.URL.Path,
+			"client_ip", c.ClientIP())
+	}
 	oai.WriteError(c.Writer, status, message, errType, code)
 	c.Abort()
 }
@@ -557,7 +572,14 @@ func abortWithError(c *gin.Context, status int, message, errType, code string) {
 // args 为可选格式化参数（词条含 %d 等占位符时使用）。
 //
 // 仅用于「面向最终用户、会被展示」的错误；内部错误请用 abortWithError 保持中文。
+// 5xx 同样记日志，理由见 abortWithError。
 func abortWithErrorKey(c *gin.Context, status int, key, errType, code string, args ...any) {
+	if status >= http.StatusInternalServerError {
+		slog.Error("请求处理失败（服务端内部错误）",
+			"status", status, "code", code, "i18n_key", key,
+			"method", c.Request.Method, "path", c.Request.URL.Path,
+			"client_ip", c.ClientIP())
+	}
 	oai.WriteErrorKey(c.Writer, status, key, errType, code, reqctx.Locale(c.Request.Context()), args...)
 	c.Abort()
 }

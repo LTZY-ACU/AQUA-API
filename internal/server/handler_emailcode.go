@@ -202,7 +202,11 @@ func (s *Server) handleSendEmailCode(c *gin.Context) {
 			// 邮箱未注册、或账号被禁用：不发信，但对外表现与发送成功一致
 			shouldSend = false
 		default:
-			// 查询异常同样按"不发"处理：宁可不发，也不能因此泄露内部状态
+			// 查询异常同样按"不发"处理：宁可不发，也不能因此泄露内部状态。
+			// 但必须留痕：对外表现为"发送成功却永远收不到"，没有这条日志
+			// 站长只会以为是垃圾箱问题，永远想不到是查库挂了。
+			slog.Error("查询邮箱归属用户失败，跳过发信（对外仍按成功响应）",
+				"error", err, "purpose", purpose, "client_ip", clientIP)
 			shouldSend = false
 		}
 	}
@@ -229,9 +233,19 @@ func (s *Server) handleSendEmailCode(c *gin.Context) {
 	if shouldSend {
 		subject, body := emailCodeMessage(settings.SiteName, code, purpose)
 		if err := s.deps.Mailer.Send(ctx, email, subject, body); err != nil {
+			// 发信失败的根因（SMTP 认证失败/域名错/被拒收）只在这里有：
+			// 此前它既不回给用户也不进日志，站长面对"收不到验证码"的投诉零信息。
+			// 邮箱地址不进日志（避免日志本身成为泄露面），只记用途与摘要。
+			slog.Error("发送验证码邮件失败", "error", err,
+				"purpose", purpose, "email_sha256", crypto.SHA256Hex(email),
+				"client_ip", clientIP)
 			// 关键：发信失败必须回滚记录，否则用户会因这条"从未收到"的记录
 			// 被冷却 60 秒，表现为"点了重发却一直提示过于频繁"。
-			_ = s.deps.EmailCodes.DeleteByID(ctx, record.ID)
+			// 回滚失败同样要留痕——否则用户被锁 60 秒却无因可查。
+			if delErr := s.deps.EmailCodes.DeleteByID(ctx, record.ID); delErr != nil {
+				slog.Error("回滚未发出的验证码记录失败（用户可能被冷却锁住）",
+					"error", delErr, "purpose", purpose, "record_id", record.ID)
+			}
 			writeUserError(c, http.StatusBadGateway,
 				"email.send_failed", oai.TypeServer, "email_send_failed")
 			return

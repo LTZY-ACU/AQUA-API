@@ -9,6 +9,7 @@ package relay
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -652,5 +653,56 @@ func TestBilling_结算接入_成功多退_失败退还_未知用量按预留收
 	}
 	if fake.reserveCalls != before {
 		t.Fatal("未预留的请求不应触碰预留台账")
+	}
+}
+
+// flakyPriceRepo 是"读库偶发失败"的计价仓储：fail 为 true 时 List 一律报错。
+// 嵌入 fakePriceRepo 复用其余方法，只覆盖 List。
+type flakyPriceRepo struct {
+	fakePriceRepo
+	fail bool
+}
+
+func (f *flakyPriceRepo) List(ctx context.Context, group string, enabledOnly bool) ([]*model.ModelPrice, error) {
+	if f.fail {
+		return nil, errors.New("db down")
+	}
+	return f.fakePriceRepo.List(ctx, group, enabledOnly)
+}
+
+// TestBilling_冷启动读价失败不得缓存空价格 验证资损防护：
+// 冷启动时既没有旧快照可沿用、读库又失败，若照常写缓存，
+// 等于把"未定价 = 不收费"锁满一个缓存 TTL（30 秒白送）。
+func TestBilling_冷启动读价失败不得缓存空价格(t *testing.T) {
+	ctx := context.Background()
+
+	repo := &flakyPriceRepo{fakePriceRepo: fakePriceRepo{prices: []*model.ModelPrice{{
+		ID: 1, Model: "test-model", PerCallPrice: 100, Group: "default", Enabled: true,
+	}}}}
+	repo.fail = true
+	billing := NewBilling(repo, newFakeGroupRepo(100), nil, nil, "default")
+
+	// 冷启动读价失败：本次只能按未定价放行（拿不到价也无从扣），
+	// 但断言缓存里不得留下这个空快照。
+	if got := billing.QuoteOnce(ctx, "default", "test-model", 1); got != 0 {
+		t.Fatalf("读价失败时无法计价，QuoteOnce = %d，期望 0", got)
+	}
+	billing.mu.RLock()
+	_, cached := billing.rules["default"]
+	billing.mu.RUnlock()
+	if cached {
+		t.Fatal("冷启动读价失败不应写入缓存：否则后续整个 TTL 内都是免费")
+	}
+
+	// 读库恢复后必须立刻重新加载并按价计费，而不是等缓存过期。
+	repo.fail = false
+	if got := billing.QuoteOnce(ctx, "default", "test-model", 1); got != 100 {
+		t.Fatalf("恢复后应按 100 计价，实际 %d", got)
+	}
+	billing.mu.RLock()
+	_, cached = billing.rules["default"]
+	billing.mu.RUnlock()
+	if !cached {
+		t.Fatal("恢复后应写入缓存，避免每个请求都去读库")
 	}
 }

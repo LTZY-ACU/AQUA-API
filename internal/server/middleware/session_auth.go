@@ -21,6 +21,7 @@ package middleware
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -106,6 +107,9 @@ func sessionAuth(sessions model.SessionRepository, users model.UserRepository, r
 					"auth.session_invalid", oai.TypeAuthentication, oai.CodeInvalidAPIKey)
 				return
 			}
+			// 根因只在这里有（fail 只带语义键），必须当场记下：
+			// DB 故障时每个请求都会 500，没有这条日志就只剩"全线 500 却查无原因"。
+			slog.Error("查询会话失败", "error", err, "client_ip", c.ClientIP())
 			fail(http.StatusInternalServerError,
 				"网关内部错误", oai.TypeServer, oai.CodeInternal)
 			return
@@ -130,6 +134,8 @@ func sessionAuth(sessions model.SessionRepository, users model.UserRepository, r
 					"auth.account_missing", oai.TypeAuthentication, oai.CodeInvalidAPIKey)
 				return
 			}
+			slog.Error("查询会话所属用户失败", "error", err,
+				"user_id", session.UserID, "client_ip", c.ClientIP())
 			fail(http.StatusInternalServerError,
 				"网关内部错误", oai.TypeServer, oai.CodeInternal)
 			return
