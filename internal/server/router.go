@@ -39,6 +39,22 @@ import (
 // IP 维度限流完全无效。按用户名计数才能把攻击成本压在攻击者
 // 无法无限扩展的维度上（账号名）。
 //
+// loginBodyTooLargeKey 是"请求体超限/无法解析"时的固定限流键。
+//
+// 为什么不沿用空串：RateLimiter.Allow 对空串一律放行（避免误伤无法识别来源的
+// 正常请求），那样"拿超大 body 打登录接口"就完全不吃账号维度配额，
+// 等于给爆破留了后门。固定桶只对这类畸形请求生效——正常登录的用户名
+// 走自己的桶，不会被它挤占。
+const loginBodyTooLargeKey = "__oversized_or_invalid_login_body__"
+
+// maxLoginKeyBodyBytes 是 keyFunc 读取请求体的上限。
+//
+// 它只需要 username 一个字段，合法请求不到 1KB；取 64KiB 是给
+// "账号名带全角字符/超长备注"留足余量。全局 bodyLimit 已经封到 4MiB，
+// 这里再收一层，避免 keyFunc 在业务处理器之前就把允许范围内的大 body
+// 整份读进内存（它每个登录请求都会跑一次）。
+const maxLoginKeyBodyBytes = 64 << 10
+
 // 【读请求体必须把 body 放回】（线上事故，勿删此说明）：
 //
 //	gin 的 ShouldBindJSON 直接读 c.Request.Body，读完即空，且**不会**自动复原。
@@ -46,10 +62,16 @@ import (
 //	紧随其后的 handleLogin 就会拿到 EOF、一律回 "请求体格式错误" —— 表现为
 //	**所有账号都无法登录**。因此这里用 io.ReadAll 读一次、立刻把同一份字节
 //	塞回 c.Request.Body，再对内存里的字节做解析（不要再 ShouldBindJSON）。
+//	超限时用 MultiReader 把已读部分与剩余流拼回去：截断或丢弃都会让
+//	处理器拿到与客户端发出的不同的 body。
 func loginUsernameKey(c *gin.Context) string {
-	raw, err := io.ReadAll(c.Request.Body)
+	raw, err := io.ReadAll(io.LimitReader(c.Request.Body, maxLoginKeyBodyBytes+1))
 	if err != nil {
 		return ""
+	}
+	if len(raw) > maxLoginKeyBodyBytes {
+		c.Request.Body = io.NopCloser(io.MultiReader(bytes.NewReader(raw), c.Request.Body))
+		return loginBodyTooLargeKey
 	}
 	c.Request.Body = io.NopCloser(bytes.NewReader(raw))
 
