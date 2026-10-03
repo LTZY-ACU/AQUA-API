@@ -83,6 +83,16 @@ type Deps struct {
 	// 探针历史是可选的观察能力，它缺失不该让渠道巡检失败。
 	ChannelProbeLogs model.ChannelProbeLogRepository
 
+	// AgentKeys 是 AI Agent 入口的密钥仓储。
+	//
+	// 为什么独立于 Tokens：token 能调任意模型 API，agent key 只能问 agent。
+	// 复用一张表就必须在每个鉴权分支上判"这是哪种 key"，
+	// 漏判一次就是越权；独立表让鉴权只有一种判据。
+	//
+	// 为 nil 时 agent 入口整体关闭（路由返回 503）而不是放行：
+	// 未接入密钥仓储时若默认放行，等于开了一个不需要 key 的公网接口。
+	AgentKeys model.AgentKeyRepository
+
 	// Metrics 是进程内指标注册表。
 	//
 	// 为什么由外部传入而不是服务内部创建：告警派发器也要往同一张表里写

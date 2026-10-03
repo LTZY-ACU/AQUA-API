@@ -239,6 +239,9 @@ func run() error {
 	alertChannels := store.NewAlertChannelRepository(st.DB())
 	// 渠道探针历史：巡检每轮的结论按时间追加，看板据此画延迟曲线与成功率趋势。
 	channelProbeLogs := store.NewChannelProbeLogRepository(st.DB())
+	// AI Agent 密钥：运维（带工具）与客服（纯问答）两套入口各自鉴权。
+	// 刻意不复用 tokens——那张表的 key 能调任意模型 API，权限边界完全不同。
+	agentKeys := store.NewAgentKeyRepository(st.DB())
 	// SMTP 配置仓储：口令以密文落库（加密器与渠道密钥同一个）。
 	smtpSettings := store.NewSMTPRepository(st.DB(), cipher)
 	// 额度预留台账：鉴权时预扣、响应后结算/退还，堵住并发超支漏洞。
@@ -543,6 +546,8 @@ func run() error {
 		Notifier:      notifier,
 		// 渠道探针历史：巡检留痕 + 后台看板数据源
 		ChannelProbeLogs: channelProbeLogs,
+		// AI Agent 密钥：agent 入口鉴权（运维 / 客服两套边界）
+		AgentKeys: agentKeys,
 		// 指标注册表：与告警派发器共用同一份，保证 /metrics 展示完整
 		Metrics: appMetrics,
 		// 敏感词表：/v1 入口的内容合规过滤
