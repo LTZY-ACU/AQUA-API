@@ -11,7 +11,7 @@ import { fetchDashboard } from '@/api/admin'
 import type { DashboardStats } from '@/api/types'
 import { Card, Skeleton, StatCard } from '@/components/ui/Display'
 import { EChart } from '@/components/ui/EChart'
-import { useTheme } from '@/lib/theme/theme-context'
+import { useTheme, isDarkScheme } from '@/lib/theme/theme-context'
 import { chartStyles } from '@/utils/chart'
 import { formatNumber } from '@/utils/format'
 
@@ -24,7 +24,8 @@ export default function AdminDashboardPage() {
   }, [])
 
   // 图表配色随主题切换：ECharts 用 canvas，不认 CSS 变量，必须按 isDark 显式取色
-  const cs = useMemo(() => chartStyles(resolved === 'dark'), [resolved])
+  // 用 isDarkScheme 而非 === 'dark'：深蓝也是暗色语义，漏判会让图表退化成浅色配色。
+  const cs = useMemo(() => chartStyles(isDarkScheme(resolved)), [resolved])
 
   const trendOption = useMemo(() => {
     const days = stats?.recent_days ?? []

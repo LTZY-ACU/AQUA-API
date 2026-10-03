@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/store"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/store"
 )
 
 // fakeMailer 记录成功发送的地址，并可按地址注入失败。

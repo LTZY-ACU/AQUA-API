@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // newTestLogRepo 构造基于临时数据库的日志仓储。
@@ -295,6 +295,43 @@ func TestModelFailureStats_按模型与状态码聚合(t *testing.T) {
 	}
 	if empty == nil || len(empty) != 0 {
 		t.Errorf("无失败数据应返回空数组，实际 %#v", empty)
+	}
+}
+
+// TestUsageLog_PriceVersionRoundTrip 验证定价版本快照字段写得进、读得出。
+//
+// 背景（迁移 0047）：定价规则是就地更新的，改价之后历史账再也无法说明
+// "那一笔按什么价算的"。price_version 记录当时的规则版本标识，本测试锁住
+// "从写入到读出全链路不丢字段"，同时覆盖版本标识的生成口径。
+func TestUsageLog_PriceVersionRoundTrip(t *testing.T) {
+	repo := newTestLogRepo(t)
+	ctx := context.Background()
+
+	// 版本标识口径：规则 ID @ 规则更新时间（Unix 秒）
+	want := model.PriceSnapshotVersion(42, time.Unix(1727000000, 0))
+	if want != "42@1727000000" {
+		t.Fatalf("版本标识应为 42@1727000000，实际 %q", want)
+	}
+
+	entry := &model.UsageLog{
+		Model:        "AQUA-CALL/glm-5.3",
+		StatusCode:   200,
+		PriceVersion: want,
+		CreatedAt:    time.Now(),
+	}
+	if err := repo.Create(ctx, entry); err != nil {
+		t.Fatalf("写入日志失败: %v", err)
+	}
+
+	logs, err := repo.List(ctx, model.UsageLogQuery{})
+	if err != nil {
+		t.Fatalf("查询日志失败: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("日志数 = %d，期望 1", len(logs))
+	}
+	if logs[0].PriceVersion != want {
+		t.Fatalf("price_version 未正确持久化：期望 %q，实际 %q", want, logs[0].PriceVersion)
 	}
 }
 

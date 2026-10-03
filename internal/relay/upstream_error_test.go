@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
 )
 
 // TestSanitizeUpstreamError_映射表 锁定三类上游失败的语义归类。

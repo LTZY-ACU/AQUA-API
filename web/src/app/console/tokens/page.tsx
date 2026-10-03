@@ -7,8 +7,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-import { createMyToken, deleteMyToken, listMyGroups, listMyTokens, updateMyToken } from '@/api/portal'
-import type { AccessToken, CreateTokenPayload, CreateTokenResult } from '@/api/types'
+import { createMyToken, deleteMyToken, getMyTokenKey, listMyGroups, listMyTokens, updateMyToken } from '@/api/portal'
+import type { AccessToken, CreateTokenPayload, CreateTokenResult, PortalGroup } from '@/api/types'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Display'
 import { DataTable, Pagination, type Column } from '@/components/ui/Table'
@@ -19,7 +19,7 @@ import { CopyButton } from '@/components/ui/Modal'
 import { useToast } from '@/lib/toast/toast-context'
 import { useSite } from '@/lib/site/site-context'
 import { formatDateTime } from '@/utils/format'
-import { formatYuanFromQuota, yuanToQuota } from '@/utils/money'
+import { formatDiscountLabel, formatYuanFromQuota, yuanToQuota } from '@/utils/money'
 
 const PAGE_SIZE = 20
 
@@ -32,9 +32,34 @@ export default function ConsoleTokensPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [created, setCreated] = useState<CreateTokenResult | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AccessToken | null>(null)
-  const [groups, setGroups] = useState<{ name: string; label: string; unlocked: boolean }[]>([])
+  const [groups, setGroups] = useState<PortalGroup[]>([])
 
   const { toast, toastError } = useToast()
+
+  /** 明文密钥查看态：点击「查看」后调接口取回原文并展示 + 一键复制 */
+  const [revealed, setRevealed] = useState<Record<number, string>>({})
+  const [revealing, setRevealing] = useState<number | null>(null)
+
+  async function handleRevealKey(token: AccessToken) {
+    // 已取回的直接显示（无需重复请求）；未取回的调用取明文接口
+    if (revealed[token.id]) {
+      setRevealed((prev) => {
+        const next = { ...prev }
+        delete next[token.id] // 再次点击 = 收起（回到掩码）
+        return next
+      })
+      return
+    }
+    setRevealing(token.id)
+    try {
+      const data = await getMyTokenKey(token.id)
+      setRevealed((prev) => ({ ...prev, [token.id]: data.key }))
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : '获取密钥失败')
+    } finally {
+      setRevealing(null)
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -82,12 +107,23 @@ export default function ConsoleTokensPage() {
     { title: '名称', render: (row) => <span className="font-medium text-ink">{row.name}</span> },
     {
       title: '密钥',
-      render: (row) => (
-        <span className="flex items-center gap-2 font-mono text-xs text-ink-2">
-          {row.masked_key}
-          <CopyButton text={row.masked_key} />
-        </span>
-      ),
+      render: (row) => {
+        const shown = revealed[row.id]
+        return (
+          <span className="flex items-center gap-2 font-mono text-xs text-ink-2">
+            <span className={shown ? 'text-ink' : ''}>{shown || row.masked_key}</span>
+            <button
+              type="button"
+              onClick={() => void handleRevealKey(row)}
+              disabled={revealing === row.id}
+              className="text-[13px] text-ink-3 transition hover:text-brand disabled:opacity-50"
+            >
+              {revealing === row.id ? '…' : shown ? '收起' : '查看原文'}
+            </button>
+            {shown && <CopyButton text={shown} label="复制" />}
+          </span>
+        )
+      },
     },
     { title: '状态', render: (row) => (row.status === 1 ? <Badge tone="ok">启用</Badge> : <Badge tone="off">停用</Badge>) },
     {
@@ -103,6 +139,11 @@ export default function ConsoleTokensPage() {
       title: '已用',
       align: 'right',
       render: (row) => <span className="text-ink-2">{formatYuanFromQuota(row.used_quota, quotaPerYuan)}</span>,
+    },
+    {
+      title: '周期预算',
+      width: 'w-48',
+      render: (row) => <BudgetCell token={row} quotaPerYuan={quotaPerYuan} />,
     },
     { title: '到期', render: (row) => <span className="text-ink-2">{row.expires_at ? formatDateTime(row.expires_at) : '永不过期'}</span> },
     {
@@ -187,7 +228,7 @@ function CreateTokenModal({
   onCreated,
 }: {
   open: boolean
-  groups: { name: string; label: string; unlocked: boolean }[]
+  groups: PortalGroup[]
   onClose: () => void
   onCreated: (result: CreateTokenResult) => void
 }) {
@@ -246,11 +287,22 @@ function CreateTokenModal({
             {groups.map((g) => (
               <option key={g.name} value={g.name} disabled={!g.unlocked}>
                 {g.label}
+                {g.is_agent ? `（代理拿货 · ${formatDiscountLabel(g.ratio)}）` : ''}
                 {!g.unlocked ? '（未解锁）' : ''}
               </option>
             ))}
           </Select>
         </Field>
+        {/* 分组 RPM 提示：仅当该分组下发且 >0 时显示（0/缺失 = 不限速，不显示） */}
+        {(() => {
+          const selected = groups.find((g) => g.name === group)
+          if (!selected?.rpm_limit || selected.rpm_limit <= 0) return null
+          return (
+            <p className="-mt-2 text-[12px] text-ink-3">
+              该分组每分钟请求上限：{selected.rpm_limit} 次/分钟
+            </p>
+          )
+        })()}
         <Field label="有效期" help="0 表示永不过期">
           <Input type="number" min={0} value={expiresInDays} onChange={(e) => setExpiresInDays(Number(e.target.value))} />
         </Field>
@@ -274,5 +326,54 @@ function CreateTokenModal({
         <Button variant="primary" loading={loading} onClick={handleSubmit}>创建</Button>
       </div>
     </Modal>
+  )
+}
+
+/* ── 周期预算展示（只读）──────────────────────────────────
+ *
+ * 后端令牌模型已有 budget_quota / budget_period / budget_window_start /
+ * budget_window_base 四个字段（见 internal/model/token.go，迁移 0043）。
+ * 本窗口已消耗 = used_quota − budget_window_base（负数按 0），与后端口径一致。
+ *
+ * 注意：tokenDTO 目前尚未把这四个字段下发给前端，因此此处对每行做判空：
+ * 后端补齐后本列会自动显示进度；未配置/未下发时显示「未设置」。
+ */
+
+/** 预算周期标识 → 中文短标签 */
+function budgetPeriodLabel(period: string): string {
+  switch (period) {
+    case 'daily':
+      return '每日'
+    case 'weekly':
+      return '每周'
+    case 'monthly':
+      return '每月'
+    default:
+      return period
+  }
+}
+
+/** 单行的周期预算：进度条 + 本周期已用/上限 */
+function BudgetCell({ token, quotaPerYuan }: { token: AccessToken; quotaPerYuan: number }) {
+  const limit = token.budget_quota ?? 0
+  const period = token.budget_period ?? ''
+  if (limit <= 0 || !period) {
+    return <span className="text-[12px] text-ink-3">未设置</span>
+  }
+  const used = Math.max(0, (token.used_quota ?? 0) - (token.budget_window_base ?? 0))
+  const pct = Math.min(100, Math.round((used / limit) * 100))
+  const tone = pct >= 100 ? 'bg-err' : pct >= 80 ? 'bg-warn' : 'bg-brand'
+  return (
+    <div className="min-w-[8rem]">
+      <div className="flex items-center justify-between gap-2 text-[11px] text-ink-3">
+        <span>{budgetPeriodLabel(period)}</span>
+        <span className="font-mono tabular-nums">
+          {formatYuanFromQuota(used, quotaPerYuan)} / {formatYuanFromQuota(limit, quotaPerYuan)}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-ink/10">
+        <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
   )
 }

@@ -23,7 +23,7 @@ import (
 	"errors"
 	"testing"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // newTestSensitiveWordRepo 构造基于临时数据库的敏感词仓储。

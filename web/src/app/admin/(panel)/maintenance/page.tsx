@@ -25,6 +25,7 @@ import {
   type MaintenanceCompareRow,
   type MaintenanceInspectResult,
   type MaintenanceOverview,
+  type MaintenanceRetryRatio,
 } from '@/api/maintenance'
 import { Badge, Card, Skeleton, SkeletonRows, StatCard } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
@@ -98,6 +99,29 @@ export default function AdminMaintenancePage() {
       setInspecting(false)
     }
   }
+
+  /** 折扣分组重试率的列定义 */
+  const retryRatioColumns: Column<MaintenanceRetryRatio>[] = [
+    { title: '分组', render: (row) => <span className="font-medium text-ink">{row.group}</span> },
+    { title: '倍率', align: 'right', render: (row) => <span className="tabular-nums text-ink-2">{row.ratio}%</span> },
+    { title: '上游调用', align: 'right', render: (row) => <span className="tabular-nums text-ink-2">{formatNumber(row.upstream_calls)}</span> },
+    { title: '计费请求', align: 'right', render: (row) => <span className="tabular-nums text-ink-2">{formatNumber(row.charged_requests)}</span> },
+    {
+      title: '重试率 r',
+      align: 'right',
+      render: (row) => (
+        <span className={`tabular-nums font-medium ${row.over_break_even ? 'text-err' : 'text-ink-2'}`}>
+          {row.retry_ratio.toFixed(3)}
+        </span>
+      ),
+    },
+    {
+      title: '状态',
+      align: 'center',
+      render: (row) =>
+        row.over_break_even ? <Badge tone="err">正在亏本</Badge> : <Badge tone="ok">正常</Badge>,
+    },
+  ]
 
   const usage24h = overview?.usage.last_24h
   const usage7d = overview?.usage.last_7d
@@ -190,6 +214,24 @@ export default function AdminMaintenancePage() {
           hint={usage7d && usage7d.avg_latency_ms ? `近 7d ${usage7d.avg_latency_ms} ms` : undefined}
         />
       </div>
+
+      {/* 折扣分组重试率：r = 上游调用次数 / 计费请求次数。
+          6 折档的净利本就薄，r 越过保本线（1.37）即正在亏本——必须让它可见。 */}
+      {overview && overview.retry_ratios.length > 0 && (
+        <Card padding="none">
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <h2 className="text-sm font-semibold text-ink">折扣分组重试率</h2>
+            <span className="text-xs text-ink-3">r 越过保本线即亏本；进程内累计，重启归零</span>
+          </div>
+          <DataTable
+            columns={retryRatioColumns}
+            rows={overview.retry_ratios}
+            loading={false}
+            rowKey={(row) => row.group}
+            emptyTitle="暂无折扣分组调用"
+          />
+        </Card>
+      )}
 
       {/* 数据库表行数 */}
       <Card padding="none">

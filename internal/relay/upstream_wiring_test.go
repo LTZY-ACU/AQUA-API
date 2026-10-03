@@ -27,9 +27,9 @@ import (
 	"strings"
 	"testing"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/channeltype"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
 )
 
 // TestPrepareChannelUpstream_Azure 验证 type_key=azure_openai 时：

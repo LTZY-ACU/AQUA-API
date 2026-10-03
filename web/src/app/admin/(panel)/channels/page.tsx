@@ -17,6 +17,8 @@ import {
   updateChannel,
 } from '@/api/admin'
 import type { Channel, ChannelPayload, ChannelTestResult, ChannelType } from '@/api/types'
+import { ChannelHealthPanel } from '@/components/admin/ChannelHealthPanel'
+import { ChannelKeyPool } from '@/components/admin/ChannelKeyPool'
 import { Badge, Card, EmptyState, Tabs } from '@/components/ui/Display'
 import { DataTable, Pagination, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
@@ -104,6 +106,25 @@ export default function AdminChannelsPage() {
       render: (row) => <span className="max-w-44 truncate text-[13px] text-ink-3" title={row.models.join(', ')}>{row.models.length > 0 ? `${row.models.length} 个模型` : '全部模型'}</span>,
     },
     {
+      // 密钥池运行态的"一览"信号：以「启用/总数」+ 异常数提示哪条渠道的凭据在掉队。
+      // 元数据来自渠道列表响应里的 key_pool 概览（后端一次 GROUP BY 下发，无额外请求）。
+      title: '密钥池',
+      align: 'right',
+      width: 'hidden sm:table-cell',
+      className: 'hidden sm:table-cell',
+      render: (row) => {
+        const pool = row.key_pool
+        if (!pool || pool.total === 0) return <span className="text-[13px] text-ink-3">单密钥</span>
+        const degraded = pool.disabled + pool.auto_removed
+        return (
+          <span className="inline-flex items-center gap-2 text-[13px]">
+            <span className="tabular-nums text-ink-2">{pool.enabled}/{pool.total}</span>
+            {degraded > 0 && <Badge tone="warn">{degraded} 异常</Badge>}
+          </span>
+        )
+      },
+    },
+    {
       title: '状态',
       render: (row) => (
         <span className={channelStatusBadgeClass(row.status)}>{channelStatusLabel(row.status)}</span>
@@ -133,6 +154,9 @@ export default function AdminChannelsPage() {
         </div>
         <Button variant="primary" onClick={() => setEditing('new')}>新建渠道</Button>
       </div>
+
+      {/* 健康概览：渠道状态分布 + 近 24h 全站调用健康度 */}
+      <ChannelHealthPanel />
 
       <Card padding="none">
         <DataTable columns={columns} rows={loading ? null : items} loading={loading} rowKey={(row) => row.id} emptyTitle="还没有渠道" />
@@ -321,7 +345,7 @@ function ChannelFormModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={channel ? '编辑渠道' : '新建渠道'} width={640}>
+    <Modal open={open} onClose={onClose} title={channel ? '编辑渠道' : '新建渠道'} width={760}>
       <div className="space-y-4">
         <Field label="渠道名称" required>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="给这个上游起个名字" />
@@ -362,6 +386,15 @@ function ChannelFormModal({
           <Switch checked={status === 1} onChange={(v) => setStatus(v ? 1 : 2)} />
         </label>
       </div>
+
+      {/* 密钥池运行态：仅编辑已有渠道时展示（新建时还没有渠道 ID，没有明细可查）。
+          放在表单下方独立分区，既不打乱"填表"的主线，又能就近观察凭据健康状况。 */}
+      {channel && (
+        <div className="mt-5 border-t border-line pt-4">
+          <ChannelKeyPool channelId={channel.id} />
+        </div>
+      )}
+
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>取消</Button>
         <Button variant="primary" loading={loading} onClick={handleSubmit}>{channel ? '保存' : '创建'}</Button>

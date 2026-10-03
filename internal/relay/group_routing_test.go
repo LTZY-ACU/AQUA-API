@@ -31,8 +31,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
 )
 
 // addChannelInGroup 向仓储写入一个指定分组的启用渠道。
@@ -210,13 +210,21 @@ func (r *recordingPriceRepo) GetByID(context.Context, uint64) (*model.ModelPrice
 	return nil, model.ErrModelPriceNotFound
 }
 
-func (r *recordingPriceRepo) List(_ context.Context, group string, enabledOnly bool) ([]*model.ModelPrice, error) {
+func (r *recordingPriceRepo) List(ctx context.Context, group string, enabledOnly bool) ([]*model.ModelPrice, error) {
+	// List 只返回分组默认价（channel_id = 0），委托给 ListForPricing 复用同一套过滤。
+	return r.ListForPricing(ctx, group, model.ChannelScopeAll, enabledOnly)
+}
+
+func (r *recordingPriceRepo) ListForPricing(_ context.Context, group string, channelID uint64, enabledOnly bool) ([]*model.ModelPrice, error) {
 	r.mu.Lock()
 	r.listed = append(r.listed, group)
 	r.mu.Unlock()
 
 	result := make([]*model.ModelPrice, 0, len(r.prices))
 	for _, price := range r.prices {
+		if price.ChannelID != model.ChannelScopeAll && price.ChannelID != channelID {
+			continue
+		}
 		if group != "" && price.Group != group {
 			continue
 		}

@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // epaySubMethodSettings 是"易支付已开通支付宝与微信"的一套支付设置。

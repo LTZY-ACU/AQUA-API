@@ -30,9 +30,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/config"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/store"
+	"github.com/LTZY-ACU/aqua-api/internal/config"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/store"
 )
 
 // fakeQIU 是一个最小的 QIU 服务替身（只需实现 startlogin 与 readlogin 两个端点）。

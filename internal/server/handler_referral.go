@@ -28,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -35,9 +36,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
-	"gitee.com/xiaosu4610/aqua-api/internal/server/middleware"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
 )
 
 // checkinStatusDTO 是签到状态的对外表示（GET/POST /api/user/checkin 共用）。
@@ -320,6 +321,23 @@ func (s *Server) rewardReferralOnRecharge(ctx context.Context, order *model.Paym
 	quota := order.Quota * int64(settings.Referral.RechargeRatio) / 100
 	if quota <= 0 {
 		return nil
+	}
+
+	// 月度上限：返利是从利润里出的纯成本，而 6 折代理档的净利本就薄。
+	// 不设上限时，一个高流水代理的返利会逐笔侵蚀掉那点毛利；
+	// 超过上限即不再发放，并留一条可观测的日志（否则站长根本不知道返利停了）。
+	if capQuota := settings.Referral.MonthlyRewardCapQuota; capQuota > 0 {
+		monthStart := time.Date(time.Now().Year(), time.Now().Month(), 1, 0, 0, 0, 0, time.Local)
+		spent, err := s.deps.Referrals.TotalRewardQuotaSince(ctx, inviterID, monthStart)
+		if err != nil {
+			return fmt.Errorf("server: 查询本月已返利额度失败: %w", err)
+		}
+		if spent+quota > capQuota {
+			slog.Warn("邀请返利已达本月上限，本次不再发放",
+				"inviter_id", inviterID, "order", order.TradeNo,
+				"本月已返", spent, "本次欲返", quota, "上限", capQuota)
+			return nil
+		}
 	}
 
 	reward := &model.ReferralReward{

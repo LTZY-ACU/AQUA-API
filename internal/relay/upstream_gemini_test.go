@@ -29,7 +29,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/channeltype"
+	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
 )
 
 // geminiSpec 是测试用的 Gemini 类型规格。

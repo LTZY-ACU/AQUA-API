@@ -52,7 +52,7 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/channeltype"
+	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
 )
 
 // SigV4 与 Bedrock 相关的常量。

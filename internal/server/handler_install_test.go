@@ -18,10 +18,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/config"
-	"gitee.com/xiaosu4610/aqua-api/internal/crypto"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/store"
+	"github.com/LTZY-ACU/aqua-api/internal/config"
+	"github.com/LTZY-ACU/aqua-api/internal/crypto"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/store"
 )
 
 // newInstallTestServer 装配一个"未安装"的测试服务（库里没有任何管理员）。

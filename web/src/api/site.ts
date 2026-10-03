@@ -12,7 +12,7 @@
  *   新增公开接口时在本文件追加函数，并同步 api/types.ts 的类型定义。
  */
 import { api } from './client'
-import type { ModelPlaza, PublicPaymentInfo, SiteStatus } from './types'
+import type { ModelPlaza, ModelQuoteResult, PublicPaymentInfo, SiteStatus } from './types'
 
 /** 站点信息缓存：多个页面共用，避免路由切换时重复请求（60s 内复用） */
 let cachedStatus: SiteStatus | null = null
@@ -73,6 +73,27 @@ export function peekSiteName(): string {
  */
 export function fetchModelPlaza(params: { group?: string; keyword?: string } = {}): Promise<ModelPlaza> {
   return api.get<ModelPlaza>('/models', { ...params })
+}
+
+/**
+ * GET /api/models/quote：公开费用试算（按 token 用量估算花费）。
+ *
+ * ⚠️ 契约见 docs/23 C5；该接口在后端【尚未落地】。调用方必须容错：
+ * 失败（404/网络错误等）时回退到前端本地换算（见 components/plaza/pricing.ts），
+ * 因此本函数不吞异常，交由调用方 catch 后降级。
+ *
+ * 参数里没有"调用次数"——按次计费的模型无法用它试算多份，调用方应对按次模式走本地计算。
+ */
+export interface ModelQuoteQuery {
+  model: string
+  group?: string
+  prompt_tokens?: number
+  completion_tokens?: number
+  cached_tokens?: number
+}
+
+export function fetchModelQuote(query: ModelQuoteQuery): Promise<ModelQuoteResult> {
+  return api.get<ModelQuoteResult>('/models/quote', { ...query })
 }
 
 /**

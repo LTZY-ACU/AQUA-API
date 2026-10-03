@@ -31,7 +31,7 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // checkinStreakLookback 是计算连续签到时最多回看的签到记录条数。
@@ -269,6 +269,20 @@ func (r *referralRepository) TotalRewardQuota(ctx context.Context, inviterID uin
 	if err := r.db.QueryRowContext(ctx,
 		"SELECT COALESCE(SUM(quota), 0) FROM referral_rewards WHERE inviter_id = ?", inviterID).Scan(&total); err != nil {
 		return 0, fmt.Errorf("store: 统计邀请奖励额度失败: %w", err)
+	}
+	return total, nil
+}
+
+// TotalRewardQuotaSince 统计某邀请人自指定时间起累计获得的返利额度。
+//
+// 与 TotalRewardQuota 的区别仅在于时间窗：本方法用于"本月已返多少"的判定，
+// 支撑月度返利上限（ReferralSettings.MonthlyRewardCapQuota）。
+func (r *referralRepository) TotalRewardQuotaSince(ctx context.Context, inviterID uint64, since time.Time) (int64, error) {
+	var total int64
+	if err := r.db.QueryRowContext(ctx,
+		"SELECT COALESCE(SUM(quota), 0) FROM referral_rewards WHERE inviter_id = ? AND created_at >= ?",
+		inviterID, since.Unix()).Scan(&total); err != nil {
+		return 0, fmt.Errorf("store: 统计本月邀请奖励额度失败: %w", err)
 	}
 	return total, nil
 }

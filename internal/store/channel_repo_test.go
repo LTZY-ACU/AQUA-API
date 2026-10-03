@@ -21,8 +21,8 @@ import (
 	"strings"
 	"testing"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/crypto"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/crypto"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // testEncryptionKey 是测试用密钥材料（非真实密钥）。

@@ -71,6 +71,18 @@ type ModelGroup struct {
 	//  1) 余额会被消费掉，按余额判定会让"充过 100 元"的用户在用掉一半后失去资格；
 	//  2) quota 是内部记账单位，其数值随兑换比例变动，不适合承载业务承诺。
 	UnlockMinRechargeCents int64
+	// RpmLimit 是本分组【每分钟允许的请求数上限】（RPM，迁移 0045；0 = 不限）。
+	//
+	// 为什么放在分组而不是令牌上：分组代表"套餐档位"（免费档 / 标准档 / 代理档），
+	// RPM 是套餐的一部分；挂到分组上，管理员调档一次即对该档全部令牌生效，
+	// 不必逐令牌维护——与倍率、门槛的归属维度保持一致。
+	//
+	// 它约束的是"调用速率"，与额度墙约束的"总量"互补：总量闸门挡不住短时高频
+	// （一个失控令牌几分钟就能吃掉整月毛利），速率闸门正是在这个维度兜底。
+	//
+	// 计数为【进程内固定 1 分钟窗口】（见 middleware.GroupRPMLimiter），
+	// 单实例部署下即精确的每分钟上限；多实例部署时各实例各算一份。
+	RpmLimit int
 	// AdminOnly 表示本分组【只能由管理员分发】（迁移 0039）。
 	//
 	// 为什么需要它：UnlockMinRechargeCents 能表达"充够钱自动解锁"，
@@ -100,6 +112,24 @@ func (g *ModelGroup) RequiresRechargeUnlock() bool {
 // RequiresAdminGrant 表示本分组是否只能由管理员分发（仅后台可分发的批发价分组）。
 func (g *ModelGroup) RequiresAdminGrant() bool {
 	return g != nil && g.AdminOnly
+}
+
+// Normalize 就地修正"有明确安全默认值"的越界字段（当前仅 RPM 上限）。
+//
+// 与 Validate 的分工：Validate 拒绝无法自动纠正的非法值（如倍率为 0），
+// Normalize 则把可安全解读的输入纠正好。负的 RPM 上限语义显而易见是"不限"，
+// 若直接拒绝，管理员每次改分组都要先自己发现并改掉一个负数；
+// 归一为 0 既省事，也不会把限制静默放宽（负数本就不是"限制"，而 0 才是"不限"）。
+//
+// 调用时机：仓储在 Create / Update 写库前调用（见 store/group_repo.go），
+// 保证落库的值永远是规范值，读回时无需再判断。
+func (g *ModelGroup) Normalize() {
+	if g == nil {
+		return
+	}
+	if g.RpmLimit < 0 {
+		g.RpmLimit = 0
+	}
 }
 
 // Validate 校验分组的必要字段。

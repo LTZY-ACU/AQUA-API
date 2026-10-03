@@ -31,9 +31,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
-	"gitee.com/xiaosu4610/aqua-api/internal/server/middleware"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
 )
 
 // corpusPreviewRunes 是样本列表里正文预览的字数。

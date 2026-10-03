@@ -217,6 +217,11 @@ const (
 	ProtocolVertex Protocol = "vertex"
 	// ProtocolBedrock AWS Bedrock（SigV4 签名）。
 	ProtocolBedrock Protocol = "bedrock"
+	// ProtocolCustomAsync 是「模板驱动的自定义异步任务上游」：
+	// 提交/查询路径与字段映射全部由渠道扩展配置给出，用于接入任意
+	// 「提交 → 轮询 → 取结果」形态的图像 / 视频 / 音乐生成服务。
+	// 适配器见 relay/async_custom.go，通过 POST /v1/tasks 的 provider 字段选用。
+	ProtocolCustomAsync Protocol = "custom_async"
 	// ProtocolPaLM Google PaLM 旧协议。
 	ProtocolPaLM Protocol = "palm"
 	// ProtocolOllama Ollama 原生（可切 OpenAI 兼容）。

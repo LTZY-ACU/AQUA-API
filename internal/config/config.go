@@ -34,6 +34,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -61,6 +62,15 @@ const (
 	// 可用 AQUA_RELAY_GROUP 指向新分组——否则所有不带分组的令牌都会因为
 	// "default 分组下已无渠道"而统一报 503。
 	DefaultRelayGroup = "default" // 默认路由分组
+
+	// 渠道自动禁用（按成功率）相关默认值。
+	//
+	// 取舍说明（重要）：最小样本数默认 0 = 【默认关闭该功能】。若给一个正数默认值，
+	// 存量部署升级后会在没有任何配置的情况下自动停用渠道，凌晨低峰或上游偶发抖动
+	// 都可能误伤正常渠道，属于"升级即故障"。Windows 与成功率仅在站长显式启用
+	// （设置最小样本数 > 0）后才真正参与判定。
+	DefaultChannelAutoDisableSuccessRate   = 0.5 // 成功率下限默认 0.5（50%）
+	DefaultChannelAutoDisableWindowMinutes = 15  // 统计窗口默认 15 分钟
 
 	EnvPrefix      = "AQUA_"    // 环境变量统一前缀
 	driverSQLite   = "sqlite"   // M1 阶段仅实现该驱动
@@ -143,6 +153,20 @@ type Config struct {
 	Retention RetentionConfig `json:"retention"` // 数据保留期相关
 	Health    HealthConfig    `json:"health"`    // 渠道健康巡检（自动延迟刷新）相关
 	QIU       QIUConfig       `json:"qiu"`       // QIU 科技账号登录相关
+
+	// AdminAllowCIDRs 是管理后台（/api/admin/**）的来源 IP 白名单，CIDR 文本列表。
+	//
+	// 语义：为空 = 不限制（存量部署升级后行为逐字不变）；非空时仅白名单来源可访问后台。
+	// 校验策略（重要）：任一非法 CIDR 都会让进程启动失败（见 Validate + ParseAdminAllowCIDRs），
+	// 绝不静默忽略——静默忽略会让站长误以为白名单已生效，实际后台仍对公网敞开，
+	// 这是一种危险的安全假象。
+	AdminAllowCIDRs []string `json:"admin_allow_cidrs"`
+
+	// ChannelHealth 配置「按成功率自动禁用渠道」后台任务的阈值与统计窗口。
+	//
+	// 与 Health 的分工：ChannelHealth 按调用成功率做【停用】的业务处分，
+	// Health 只是周期性【量一次延迟】并记下来，不做任何处分。
+	ChannelHealth ChannelHealthConfig `json:"channel_health"`
 }
 
 // RetentionConfig 描述各只写表的保留天数（0 = 永不清理）。
@@ -333,6 +357,23 @@ type PaymentConfig struct {
 	WeChatPayPlatformPublicKey string `json:"-"`
 }
 
+// ChannelHealthConfig 描述「按成功率自动禁用渠道」后台任务的阈值与统计窗口。
+//
+// 默认值取舍（重要）：MinRequests 默认 0，即【默认不启用】自动禁用逻辑。
+// 为什么不默认一个正数（如 20）：存量部署升级后若默认开启，凌晨低峰或上游偶发抖动
+// 就可能把正常渠道误停，等于"升级即故障"。站长显式设置正数才启用，意图明确。
+type ChannelHealthConfig struct {
+	// MinRequests 是判定所需的最小样本数；<= 0 表示不启用（默认）。
+	//
+	// 样本太少时的成功率没有统计意义（凌晨整窗可能只有一两次请求），
+	// 因此必须有此下限，避免"低峰误杀"。
+	MinRequests int `json:"auto_disable_min_requests"`
+	// SuccessRate 是成功率下限，取值 0~1；窗口内样本达标且成功率低于它才停用。
+	SuccessRate float64 `json:"auto_disable_success_rate"`
+	// WindowMinutes 是统计窗口（分钟）；<= 0 时由上层回退到内置默认窗口。
+	WindowMinutes int `json:"auto_disable_window_minutes"`
+}
+
 // Default 返回一份带完整默认值的配置。
 //
 // 设计意图：所有字段都有合理默认，保证「零配置可启动」。
@@ -386,6 +427,13 @@ func Default() *Config {
 		},
 		// 默认分组固定为 default：保证未显式配置时，路由行为与旧版本完全一致。
 		RelayGroup: DefaultRelayGroup,
+		// 渠道健康自动禁用：默认关闭（MinRequests=0），仅预置判定用到的成功率与窗口，
+		// 站长设置 AQUA_CHANNEL_AUTO_DISABLE_MIN_REQUESTS 后才真正启用。
+		ChannelHealth: ChannelHealthConfig{
+			MinRequests:   0,
+			SuccessRate:   DefaultChannelAutoDisableSuccessRate,
+			WindowMinutes: DefaultChannelAutoDisableWindowMinutes,
+		},
 	}
 }
 
@@ -461,6 +509,13 @@ func applyEnv(cfg *Config) {
 	setIfNotEmpty(&cfg.Log.Format, EnvPrefix+"LOG_FORMAT")
 	// 默认路由分组：换站点的渠道分组后用它指向新分组，避免"令牌全量 503"。
 	setIfNotEmpty(&cfg.RelayGroup, EnvPrefix+"RELAY_GROUP")
+	// 管理面来源 IP 白名单（逗号分隔的 CIDR 列表，如 "10.0.0.0/8,1.2.3.4/32"）。
+	// 未设置 = 不限制；设置后由 Validate 严格校验，非法即启动失败（fail-closed）。
+	setIfNotEmptyCSV(&cfg.AdminAllowCIDRs, EnvPrefix+"ADMIN_ALLOW_CIDRS")
+	// 渠道自动禁用阈值：最小样本数为 0（默认）时不启用该功能。
+	setIfNotEmptyInt(&cfg.ChannelHealth.MinRequests, EnvPrefix+"CHANNEL_AUTO_DISABLE_MIN_REQUESTS")
+	setIfNotEmptyFloat(&cfg.ChannelHealth.SuccessRate, EnvPrefix+"CHANNEL_AUTO_DISABLE_SUCCESS_RATE")
+	setIfNotEmptyInt(&cfg.ChannelHealth.WindowMinutes, EnvPrefix+"CHANNEL_AUTO_DISABLE_WINDOW_MINUTES")
 	setIfNotEmpty(&cfg.SMTP.Host, EnvPrefix+"SMTP_HOST")
 	setIfNotEmptyInt(&cfg.SMTP.Port, EnvPrefix+"SMTP_PORT")
 	setIfNotEmpty(&cfg.SMTP.Username, EnvPrefix+"SMTP_USERNAME")
@@ -548,6 +603,74 @@ func setIfNotEmpty(dst *string, key string) {
 	}
 }
 
+// setIfNotEmptyFloat 是 setIfNotEmpty 的浮点版本：解析失败时保留原值。
+//
+// 与 setIfNotEmptyInt 同样刻意不报错：单个数值写错不应让进程起不来，
+// 保留默认值继续启动更友好（取值范围另有 Validate 兜底）。
+func setIfNotEmptyFloat(dst *float64, key string) {
+	v, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(v) == "" {
+		return
+	}
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil {
+		return
+	}
+	*dst = parsed
+}
+
+// setIfNotEmptyCSV 在环境变量存在且非空时，按逗号切分（去空白、去空项）写入 dst。
+//
+// 用于 CIDR 列表这类"逗号分隔"的配置。丢弃空项是刻意的：
+// 否则 "10.0.0.0/8,,1.2.3.4/32" 中的空串会在后续解析里报出一个看不懂的错误。
+func setIfNotEmptyCSV(dst *[]string, key string) {
+	v, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(v) == "" {
+		return
+	}
+	items := make([]string, 0, 4)
+	for _, part := range strings.Split(v, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			items = append(items, trimmed)
+		}
+	}
+	if len(items) > 0 {
+		*dst = items
+	}
+}
+
+// ParseAdminAllowCIDRs 把配置里的 CIDR 文本解析为 netip.Prefix 列表。
+//
+// 语义：空输入（含全为空白项）返回 nil，表示"不限制"。
+// 任一非法条目都会返回带原文的错误——绝不静默跳过：静默跳过会让站长
+// 以为某个网段已放行，实际没有，属于难以察觉的安全配置失效。
+//
+// 返回值中的前缀已做 Masked 归一（如 10.1.2.3/8 → 10.0.0.0/8），
+// 避免主机位非零时 Prefix.Contains 的结果反直觉。
+func ParseAdminAllowCIDRs(entries []string) ([]netip.Prefix, error) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	prefixes := make([]netip.Prefix, 0, len(entries))
+	for _, raw := range entries {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(entry)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"配置错误：admin_allow_cidrs 条目 %q 不是合法 CIDR（形如 10.0.0.0/8 或 1.2.3.4/32）: %w",
+				entry, err)
+		}
+		prefixes = append(prefixes, prefix.Masked())
+	}
+	if len(prefixes) == 0 {
+		return nil, nil
+	}
+	return prefixes, nil
+}
+
 // Validate 校验配置取值的合法性。
 //
 // 设计原则：宁可启动失败，也不要带着错误配置运行——
@@ -587,6 +710,27 @@ func (c *Config) Validate() error {
 	// 属于最难排查的一类故障，因此在启动阶段就拦住。
 	if err := validateRelayGroup(c.RelayGroup); err != nil {
 		return err
+	}
+
+	// 管理面来源 IP 白名单：非法 CIDR 必须让启动失败（fail-closed），绝不静默放行。
+	// 若在此放行，站长会以为白名单已生效，实际后台仍对公网敞开——比不配置更危险。
+	if _, err := ParseAdminAllowCIDRs(c.AdminAllowCIDRs); err != nil {
+		return err
+	}
+
+	// 渠道自动禁用阈值：MinRequests <= 0 表示功能关闭（合法，也是默认）；
+	// 其余三个数值只做区间校验，避免出现"永远成立"或"永远不成立"的荒谬阈值。
+	if c.ChannelHealth.MinRequests < 0 {
+		return fmt.Errorf("配置错误：channel_health.auto_disable_min_requests=%d 不能为负数（0 表示不启用）",
+			c.ChannelHealth.MinRequests)
+	}
+	if c.ChannelHealth.SuccessRate < 0 || c.ChannelHealth.SuccessRate > 1 {
+		return fmt.Errorf("配置错误：channel_health.auto_disable_success_rate=%v 非法，合法范围 0~1",
+			c.ChannelHealth.SuccessRate)
+	}
+	if c.ChannelHealth.WindowMinutes < 0 {
+		return fmt.Errorf("配置错误：channel_health.auto_disable_window_minutes=%d 不能为负数",
+			c.ChannelHealth.WindowMinutes)
 	}
 
 	// SMTP 校验策略：只校验「填了就一定要合法」，不强制必须填。

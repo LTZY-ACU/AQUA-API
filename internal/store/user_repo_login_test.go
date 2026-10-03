@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // lockTestUser 建一个用户并返回 id，供各用例复用。

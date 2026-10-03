@@ -58,6 +58,9 @@ var implementedProtocols = map[Protocol]bool{
 	ProtocolGemini:    true,
 	ProtocolVertex:    true,
 	ProtocolBedrock:   true,
+	// CustomAsync 是模板驱动的异步任务上游（relay/async_custom.go）：
+	// 协议本身已实现（提交/轮询/字段映射），具体厂商差异由渠道配置表达。
+	ProtocolCustomAsync: true,
 }
 
 // TestTypes_必填字段非空 保证每条类型都具备后台展示与路由所需的最小信息。

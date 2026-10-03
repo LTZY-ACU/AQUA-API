@@ -43,9 +43,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
-	"gitee.com/xiaosu4610/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
 )
 
 // bearerPrefix 是 Authorization 头中令牌的标准前缀。
@@ -337,6 +337,35 @@ func TokenAuth(tokens model.TokenRepository, users model.UserRepository, reserve
 			}
 
 			needReserve = reserver != nil && owner.Quota != model.QuotaUnlimited
+		}
+
+		// ── 步骤 7.5：令牌周期预算闸门（可选能力）──────────────
+		//
+		// 令牌可配置「周期预算」（如每周最多消耗 ¥50）。这是额度墙之外的第二道闸门：
+		// 账号总量是"总闸"，令牌预算限制的是"单个凭据能跑多快"——
+		// 对代理档尤其重要：6 折净利本就薄，一个失控令牌的短时高频调用
+		// 足以吃掉整月毛利，而账号总量闸门对此完全无感（它看的是总量不是速率）。
+		//
+		// 用类型断言而非扩展 QuotaReserver 接口：预算判定是可选能力，
+		// 加进接口会强迫所有实现（含测试里的假实现）一起改，收益不抵成本。
+		// 未实现该方法时静默跳过，行为与引入本能力前逐字一致。
+		if reserver != nil && token != nil && !bodyless && !exemptFromQuota {
+			if budgetChecker, ok := reserver.(interface {
+				BudgetExceeded(ctx context.Context, tokenID uint64) (bool, error)
+			}); ok {
+				exceeded, berr := budgetChecker.BudgetExceeded(c.Request.Context(), token.ID)
+				if berr != nil {
+					// 查询失败不阻断调用（与额度预留的降级策略一致），但必须留错误日志：
+					// 静默降级会让"预算闸门失效"这件事完全不可见。
+					slog.Error("查询令牌预算失败，本次按未超限处理（预算闸门暂时失效）",
+						"error", berr, "token_id", token.ID)
+				} else if exceeded {
+					abortWithErrorKey(c, http.StatusTooManyRequests,
+						"quota.token_budget_exceeded", oai.TypeRateLimit, oai.CodeInsufficientQuota,
+						token.ID)
+					return
+				}
+			}
 		}
 
 		// ── 步骤 8：额度预留（避免并发超支）────────────────────

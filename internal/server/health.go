@@ -24,7 +24,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/version"
+	"github.com/LTZY-ACU/aqua-api/internal/version"
 )
 
 // 健康检查相关常量。

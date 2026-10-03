@@ -29,9 +29,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
-	"gitee.com/xiaosu4610/aqua-api/internal/store"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/store"
 )
 
 // newTestSensitiveDeps 构造敏感词过滤所需的仓储（临时 SQLite，跑过全部迁移）。

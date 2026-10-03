@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // newTestReferralRepo 构造邀请仓储与该库的用户仓储。

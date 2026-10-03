@@ -21,6 +21,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // TestTableRowCounts_ReturnsExistingTables 验证行数统计覆盖核心表且只返回存在的表。
@@ -179,6 +181,141 @@ func TestInspectSQLiteBackup_RejectsNonSQLite(t *testing.T) {
 
 	if _, err := InspectSQLiteBackup(context.Background(), path); err == nil {
 		t.Fatal("非 SQLite 文件应返回错误，实际返回 nil")
+	}
+}
+
+// TestReconcileUsage_收入成本毛利勾稽 验证对账聚合的收入、成本、毛利三者自洽。
+//
+// 测试重点（为什么测这些）：
+//   - 成本必须覆盖【按次计费】渠道：只填 per_call_price 的进价规则若被算成 0，
+//     对账表会显示"全是利润"，与真实账目背离（docs/17 缺口 1 的对账侧表现）；
+//   - 未录进价的请求成本按 0 计，但必须计入 unpriced_requests，不能混进"免费"；
+//   - 失败请求（status >= 400）不构成收入也不产生成本，必须被排除。
+func TestReconcileUsage_收入成本毛利勾稽(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	now := time.Now()
+
+	// 渠道 1（用于渠道维度的展示标签）
+	if _, err := st.DB().ExecContext(ctx,
+		`INSERT INTO channels (id, name, type, created_at, updated_at) VALUES (1, '测试渠道', 1, ?, ?)`,
+		now.Unix(), now.Unix()); err != nil {
+		t.Fatalf("写入样本渠道失败: %v", err)
+	}
+	// 令牌 7 归属分组 vip（usage_logs 不落分组，分组维度靠 token 关联）
+	if _, err := st.DB().ExecContext(ctx, `
+		INSERT INTO tokens (id, name, key_hash, key_enc, group_name, created_at, updated_at)
+		VALUES (7, '样本令牌', 'hash-7', 'enc', 'vip', ?, ?)`,
+		now.Unix(), now.Unix()); err != nil {
+		t.Fatalf("写入样本令牌失败: %v", err)
+	}
+	// 进价：img 为纯按次（只填 per_call_price）；chat 为按量（每 1M 输入 100 额度）
+	if _, err := st.DB().ExecContext(ctx, `
+		INSERT INTO channel_model_costs
+			(channel_id, model, prompt_price, cache_price, completion_price, per_call_price, created_at, updated_at)
+		VALUES (1, 'img', 0, 0, 0, 2000, ?, ?), (1, 'chat', 100, 0, 0, 0, ?, ?)`,
+		now.Unix(), now.Unix(), now.Unix(), now.Unix()); err != nil {
+		t.Fatalf("写入样本进价失败: %v", err)
+	}
+
+	insertUsage := func(modelName, upstream string, quota, prompt, completion int64, status int) {
+		t.Helper()
+		if _, err := st.DB().ExecContext(ctx, `
+			INSERT INTO usage_logs
+				(token_id, channel_id, model, upstream_model, prompt_tokens, completion_tokens, total_tokens, quota, status_code, created_at)
+			VALUES (7, 1, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			modelName, upstream, prompt, completion, prompt+completion, quota, status, now.Unix()); err != nil {
+			t.Fatalf("写入样本日志失败: %v", err)
+		}
+	}
+	// 3 次按次请求：收入 30000，成本 2000 × 3 = 6000
+	for i := 0; i < 3; i++ {
+		insertUsage("img", "img", 10_000, 0, 0, 200)
+	}
+	// 2 次按量请求：收入 10000，成本 2 × 1M × 100 / 1M = 200
+	for i := 0; i < 2; i++ {
+		insertUsage("chat", "", 5_000, 1_000_000, 0, 200)
+	}
+	// 1 次未录进价：收入 100，成本 0，但必须计入 unpriced
+	insertUsage("mystery", "", 100, 0, 0, 200)
+	// 1 次失败请求：不得计入收入与成本
+	insertUsage("img", "img", 999, 0, 0, 500)
+
+	from, to := now.Add(-24*time.Hour), now.Add(time.Hour)
+
+	// ── 渠道维度 ────────────────────────────────────────────────
+	rows, err := st.ReconcileUsage(ctx, from, to, "channel")
+	if err != nil {
+		t.Fatalf("渠道维度对账失败: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("渠道维度应只有 1 行，实际 %d（%+v）", len(rows), rows)
+	}
+	got := rows[0]
+	if got.Key != "1" || got.Label != "测试渠道" {
+		t.Fatalf("渠道行键/标签异常：key=%q label=%q", got.Key, got.Label)
+	}
+	if got.Requests != 6 {
+		t.Fatalf("成功请求数应为 6（失败请求应排除），实际 %d", got.Requests)
+	}
+	if got.RevenueQuota != 40_100 {
+		t.Fatalf("收入应为 30000+10000+100=40100，实际 %d", got.RevenueQuota)
+	}
+	if got.CostQuota != 6_200 {
+		t.Fatalf("成本应为按次 6000 + 按量 200 = 6200（按次不能是 0），实际 %d", got.CostQuota)
+	}
+	if got.PricedRequests != 5 || got.UnpricedRequests != 1 {
+		t.Fatalf("可/不可估成本请求数应为 5/1，实际 %d/%d", got.PricedRequests, got.UnpricedRequests)
+	}
+	if got.GrossProfitQuota() != got.RevenueQuota-got.CostQuota {
+		t.Fatalf("毛利必须等于收入−成本：%d", got.GrossProfitQuota())
+	}
+
+	// ── 分组维度（按 token 关联）────────────────────────────────
+	groupRows, err := st.ReconcileUsage(ctx, from, to, "group")
+	if err != nil {
+		t.Fatalf("分组维度对账失败: %v", err)
+	}
+	if len(groupRows) != 1 || groupRows[0].Key != "vip" {
+		t.Fatalf("分组维度应聚合到 vip，实际 %+v", groupRows)
+	}
+	if groupRows[0].RevenueQuota != 40_100 || groupRows[0].CostQuota != 6_200 {
+		t.Fatalf("分组维度金额应与渠道维度一致，实际 收入 %d / 成本 %d",
+			groupRows[0].RevenueQuota, groupRows[0].CostQuota)
+	}
+
+	// ── 模型维度（逐模型核对）──────────────────────────────────
+	modelRows, err := st.ReconcileUsage(ctx, from, to, "model")
+	if err != nil {
+		t.Fatalf("模型维度对账失败: %v", err)
+	}
+	byModel := make(map[string]model.UsageReconciliationRow, len(modelRows))
+	for _, row := range modelRows {
+		byModel[row.Key] = row
+	}
+	if img := byModel["img"]; img.Requests != 3 || img.RevenueQuota != 30_000 || img.CostQuota != 6_000 {
+		t.Fatalf("img 应按次算得成本 6000，实际 %+v", img)
+	}
+	if chat := byModel["chat"]; chat.CostQuota != 200 {
+		t.Fatalf("chat 成本应为 200，实际 %+v", chat)
+	}
+	if mystery := byModel["mystery"]; mystery.CostQuota != 0 || mystery.UnpricedRequests != 1 {
+		t.Fatalf("未录进价的模型应成本 0 且计入 unpriced，实际 %+v", mystery)
+	}
+
+	// 非法参数与空区间
+	if _, err := st.ReconcileUsage(ctx, from, to, "unknown"); err == nil {
+		t.Fatal("非法维度应报错")
+	}
+	if _, err := st.ReconcileUsage(ctx, to, from, "channel"); err == nil {
+		t.Fatal("起点不早于终点应报错")
+	}
+	empty, err := st.ReconcileUsage(ctx, now.Add(24*time.Hour), now.Add(48*time.Hour), "channel")
+	if err != nil {
+		t.Fatalf("空区间对账不应报错: %v", err)
+	}
+	if empty == nil || len(empty) != 0 {
+		t.Fatalf("空区间应返回空数组，实际 %#v", empty)
 	}
 }
 

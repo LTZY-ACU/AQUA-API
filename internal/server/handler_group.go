@@ -40,9 +40,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
-	"gitee.com/xiaosu4610/aqua-api/internal/server/middleware"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
 )
 
 // ---------------------------------------------------------------------------
@@ -65,6 +65,8 @@ type modelGroupDTO struct {
 	// AdminOnly 表示本分组只能由管理员分发（门户不下发、非管理员指定即 403）。
 	// 用于批发价分组（如"代理拿货"）：这类价格一旦能被自助拿到，价格体系就塌了。
 	AdminOnly bool `json:"admin_only"`
+	// RpmLimit 是本分组每分钟请求数上限（0 = 不限），由转发链路的 RPM 中间件强制执行。
+	RpmLimit int `json:"rpm_limit"`
 	// ChannelCount / PriceCount 是引用统计，便于管理员判断"这个分组能不能删"。
 	ChannelCount int   `json:"channel_count"`
 	PriceCount   int   `json:"price_count"`
@@ -85,6 +87,7 @@ func toModelGroupDTO(group *model.ModelGroup, channelCount, priceCount int) mode
 		Ratio:                  group.Ratio,
 		UnlockMinRechargeCents: group.UnlockMinRechargeCents,
 		AdminOnly:              group.AdminOnly,
+		RpmLimit:               group.RpmLimit,
 		Description:            group.Description,
 		Enabled:                group.Enabled,
 		ChannelCount:           channelCount,
@@ -164,6 +167,9 @@ type modelGroupUpsertRequest struct {
 	// AdminOnly 是"仅后台可分发的分组"开关。同样用指针区分未传与显式 false：
 	// 未传 = 保持原值（避免"只想改倍率"的一次 PUT 把批发价分组意外放开给所有用户）。
 	AdminOnly *bool `json:"admin_only"`
+	// RpmLimit 是每分钟请求数上限（0 = 不限）。用指针区分"未传"与"传 0"：
+	// 未传 = 保持原值，传 0 = 明确取消限流。
+	RpmLimit *int `json:"rpm_limit"`
 }
 
 // handleCreateGroup 处理 POST /api/admin/groups。
@@ -199,6 +205,9 @@ func (s *Server) handleCreateGroup(c *gin.Context) {
 	}
 	if req.AdminOnly != nil {
 		group.AdminOnly = *req.AdminOnly
+	}
+	if req.RpmLimit != nil {
+		group.RpmLimit = *req.RpmLimit
 	}
 
 	if err := s.deps.Groups.Create(c.Request.Context(), group); err != nil {
@@ -267,6 +276,9 @@ func (s *Server) handleUpdateGroup(c *gin.Context) {
 	}
 	if req.AdminOnly != nil {
 		group.AdminOnly = *req.AdminOnly
+	}
+	if req.RpmLimit != nil {
+		group.RpmLimit = *req.RpmLimit
 	}
 
 	if err := s.deps.Groups.Update(ctx, group); err != nil {
@@ -486,6 +498,15 @@ type portalGroupDTO struct {
 	Unlocked bool `json:"unlocked"`
 	// PaidAmountCents 是当前用户的累计充值（分），前端据此显示"还差多少解锁"。
 	PaidAmountCents int64 `json:"paid_amount_cents"`
+	// IsAgent 标记"这是你自己的代理拿货档"。
+	//
+	// 该档同样是 admin_only（不对公众开放），只因该用户被管理员显式指派才对他可见；
+	// 前端据此把它单独标注（如「战略代理 · 6折」），而不是混进普通分组里，
+	// 避免代理误选普通档（那样就享不到折扣了）。
+	IsAgent bool `json:"is_agent"`
+	// RpmLimit 是本分组每分钟请求上限（0 = 不限），由转发链路中间件强制执行。
+	// 前端据此提示"该分组每分钟最多 N 次"，避免用户不明原因地撞上 429。
+	RpmLimit int `json:"rpm_limit"`
 }
 
 // handleMyGroups 处理 GET /api/user/groups（当前用户可选的分组）。
@@ -528,16 +549,22 @@ func (s *Server) handleMyGroups(c *gin.Context) {
 	}
 
 	items := make([]portalGroupDTO, 0, len(groups))
+	// 该用户被指派的代理拿货档（空串 = 普通用户）
+	ownAgentGroup := strings.TrimSpace(user.AgentGroup)
 	for _, group := range groups {
 		// 只下发"确实有启用渠道在服务"的分组：选到空分组后所有请求都会
 		// 503（无可用渠道），而用户从界面上完全看不出原因。
 		if !served[group.Name] {
 			continue
 		}
+		isOwnAgentGroup := ownAgentGroup != "" && group.Name == ownAgentGroup
 		// 仅后台可分发的分组（批发价）对普通用户直接不下发：
 		// 让它出现在下拉里再置灰，等于把"存在一个更便宜的分组"明示给所有人，
 		// 反而会引来"为什么我不能用"的追问；服务端的 403 是真正的闸门。
-		if group.RequiresAdminGrant() {
+		//
+		// 例外：这个人就是被指派到该分组的代理 —— 对他而言这不是秘密，
+		// 且必须让他选得到，否则他看得到折扣价却拿不到折扣（广场价与扣费矛盾）。
+		if group.RequiresAdminGrant() && !isOwnAgentGroup {
 			continue
 		}
 		items = append(items, portalGroupDTO{
@@ -546,8 +573,12 @@ func (s *Server) handleMyGroups(c *gin.Context) {
 			Ratio:                  group.Ratio,
 			Description:            group.Description,
 			UnlockMinRechargeCents: group.UnlockMinRechargeCents,
-			Unlocked:               paid >= group.UnlockMinRechargeCents,
-			PaidAmountCents:        paid,
+			// 代理档由管理员指派即视为已解锁：不再要求"累计充值达标"，
+			// 因为它的门槛本就是"被授权"，而不是"充够钱"。
+			Unlocked:        isOwnAgentGroup || paid >= group.UnlockMinRechargeCents,
+			PaidAmountCents: paid,
+			IsAgent:         isOwnAgentGroup,
+			RpmLimit:        group.RpmLimit,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items, "paid_amount_cents": paid})
@@ -638,6 +669,8 @@ type plazaViewerDTO struct {
 	// Ratio 是该分组的计费倍率（百分比，100 = 不打折）。
 	// 60 即「拿货 6 折」，前端据此显示折扣文案。
 	Ratio int64 `json:"ratio"`
+	// RpmLimit 是该代理分组每分钟请求上限（0 = 不限）。
+	RpmLimit int `json:"rpm_limit"`
 }
 
 // plazaPriceDTO 是模型在某分组下的价格。
@@ -656,6 +689,11 @@ type plazaPriceDTO struct {
 	IsFree bool `json:"is_free"`
 	// Ratio 是该分组的计费倍率（百分比，100 = 1.0 倍），便于用户算实际价格。
 	Ratio int64 `json:"ratio"`
+	// UpdatedAt 是该价格规则的最近更新时间（Unix 秒，0 表示未知）。
+	//
+	// 广场据此展示"价格生效时间"，让用户知道报价是不是最新的——
+	// 改价后旧缓存页面上若没有时间戳，用户无法判断看到的是新价还是旧价。
+	UpdatedAt int64 `json:"updated_at"`
 }
 
 // plazaGroupDTO 是广场上的分组信息。
@@ -665,6 +703,8 @@ type plazaGroupDTO struct {
 	Ratio       int64  `json:"ratio"`
 	Description string `json:"description"`
 	ModelCount  int    `json:"model_count"`
+	// RpmLimit 是该分组每分钟请求上限（0 = 不限），供广场提示用户分组限速。
+	RpmLimit int `json:"rpm_limit"`
 }
 
 // handleModelPlaza 处理 GET /api/models（公开的模型广场数据）。
@@ -694,7 +734,7 @@ func (s *Server) handleModelPlaza(c *gin.Context) {
 		return
 	}
 
-	groups, groupLabels, groupRatios := s.plazaGroups(ctx)
+	groups, groupLabels, groupRatios, groupRPMs := s.plazaGroups(ctx)
 	// 批发价分组（仅后台分发）对公开广场完全不可见，包括模型归属信息
 	hiddenGroups := s.adminOnlyGroupNames(ctx)
 	// 例外：代理看自己的分组必须放行——对这个人而言批发价不是秘密。
@@ -857,6 +897,7 @@ func (s *Server) handleModelPlaza(c *gin.Context) {
 			Ratio:       groupRatios[name],
 			ModelCount:  count,
 			Description: groupLabels[name+"#desc"],
+			RpmLimit:    groupRPMs[name],
 		})
 	}
 
@@ -889,7 +930,7 @@ func (s *Server) resolvePlazaViewer(ctx context.Context, c *gin.Context) *plazaV
 	if err != nil || group == nil || !group.Enabled {
 		return nil
 	}
-	return &plazaViewerDTO{AgentGroup: group.Name, Label: group.Label(), Ratio: group.Ratio}
+	return &plazaViewerDTO{AgentGroup: group.Name, Label: group.Label(), Ratio: group.Ratio, RpmLimit: group.RpmLimit}
 }
 
 // plazaAgentPricePair 返回代理视图下的两档价格：代理价与原价。
@@ -925,6 +966,7 @@ func plazaAgentPricePair(prices []*model.ModelPrice, modelName, group string, ra
 		BillingMode:     matched.EffectiveBillingMode(),
 		IsFree:          matched.IsFree(),
 		Ratio:           100,
+		UpdatedAt:       unixOrZero(matched.UpdatedAt),
 	}
 	agent := &plazaPriceDTO{
 		Group:           group,
@@ -935,6 +977,7 @@ func plazaAgentPricePair(prices []*model.ModelPrice, modelName, group string, ra
 		BillingMode:     matched.EffectiveBillingMode(),
 		IsFree:          matched.IsFree(),
 		Ratio:           100,
+		UpdatedAt:       unixOrZero(matched.UpdatedAt),
 	}
 	return agent, list
 }
@@ -947,14 +990,15 @@ func scaleByRatio(base, ratio int64) int64 {
 	return base * ratio / 100
 }
 
-// plazaGroups 返回分组名列表、展示名映射与倍率映射。
+// plazaGroups 返回分组名列表、展示名映射、倍率映射与 RPM 上限映射。
 //
 // 与分组表解耦的必要性：历史部署里渠道可能使用了未登记的分组名，
 // 此时不能因为这些名字不在分组表里就把模型藏起来。
-// 因此这里对未知分组回退为"名字即展示名、倍率 1.0"。
-func (s *Server) plazaGroups(ctx context.Context) ([]string, map[string]string, map[string]int64) {
+// 因此这里对未知分组回退为"名字即展示名、倍率 1.0、不限速"。
+func (s *Server) plazaGroups(ctx context.Context) ([]string, map[string]string, map[string]int64, map[string]int) {
 	labels := make(map[string]string)
 	ratios := make(map[string]int64)
+	rpms := make(map[string]int)
 
 	names := make([]string, 0, 8)
 	if s.deps.Groups != nil {
@@ -963,6 +1007,7 @@ func (s *Server) plazaGroups(ctx context.Context) ([]string, map[string]string, 
 				names = append(names, group.Name)
 				labels[group.Name] = group.Label()
 				ratios[group.Name] = group.Ratio
+				rpms[group.Name] = group.RpmLimit
 				labels[group.Name+"#desc"] = group.Description
 			}
 		}
@@ -972,9 +1017,10 @@ func (s *Server) plazaGroups(ctx context.Context) ([]string, map[string]string, 
 		names = append(names, model.DefaultGroupName)
 		labels[model.DefaultGroupName] = "默认分组"
 		ratios[model.DefaultGroupName] = 100
+		rpms[model.DefaultGroupName] = 0
 	}
 	sort.Strings(names)
-	return names, labels, ratios
+	return names, labels, ratios, rpms
 }
 
 // plazaPricesFor 返回某模型在各分组下的价格。
@@ -1018,6 +1064,7 @@ func plazaPricesFor(prices []*model.ModelPrice, modelName string,
 			BillingMode:     matched.EffectiveBillingMode(),
 			IsFree:          matched.IsFree(),
 			Ratio:           groupRatioOrDefault(groupRatios, group),
+			UpdatedAt:       unixOrZero(matched.UpdatedAt),
 		})
 	}
 	return result
@@ -1042,4 +1089,169 @@ func groupRatioOrDefault(ratios map[string]int64, group string) int64 {
 		return ratio
 	}
 	return 100
+}
+
+// ---------------------------------------------------------------------------
+// 公开定价试算（GET /api/models/quote）
+// ---------------------------------------------------------------------------
+
+// tokenPriceScale 是 token 单价的分母（价格字段表示"每 100 万 token"）。
+//
+// 与 model 层 price_formula.go 的 quotaScale 同一口径；此处单独定义常量
+// 只是为了让本文件的分量折算可读——口径的唯一定义仍在 model 层。
+const tokenPriceScale int64 = 1_000_000
+
+// maxQuoteTokens 是试算入参 token 数的上限，仅用于防御异常输入导致的整数溢出。
+//
+// 取值 1 亿：任何真实单次调用的 token 数都远低于它；公开接口（无需登录）
+// 若接受无上限的 token 数，极端输入会让乘法溢出并返回无意义的负值。
+const maxQuoteTokens int64 = 100_000_000
+
+// modelQuoteResponse 是公开试算接口的响应。
+//
+// 金额单位说明（对外必须一致）：
+//   - `*_cost` 与 `*_unit_price` 均为站内【额度】整数（与全站记账同一单位）；
+//   - `*_unit_price` 是【每 100 万 token】的单价，与价格表的填写口径一致；
+//   - 前端按站点下发的 quota_per_yuan（1 元 = N 额度）折算成人民币展示，
+//     因此试算结果与"实际扣费"逐字同源，不会出现两套金额口径。
+type modelQuoteResponse struct {
+	Model           string `json:"model"`
+	Group           string `json:"group"`
+	BillingMode     string `json:"billing_mode"`
+	Currency        string `json:"currency"`
+	Ratio           int64  `json:"ratio"`
+	DiscountLabel   string `json:"discount_label"`
+	InputUnitPrice  int64  `json:"input_unit_price"`
+	OutputUnitPrice int64  `json:"output_unit_price"`
+	CachedUnitPrice int64  `json:"cached_unit_price"`
+	InputCost       int64  `json:"input_cost"`
+	OutputCost      int64  `json:"output_cost"`
+	CachedCost      int64  `json:"cached_cost"`
+	TotalCost       int64  `json:"total_cost"`
+}
+
+// handleModelQuote 处理 GET /api/models/quote（公开，无需登录）。
+//
+// 这些参数都是展示"按这个用量大概花多少钱"所需的最小信息，不涉及任何内部数据：
+// 只读取对外的售价规则（ModelPrice），绝不触碰上游进价（ChannelModelCost），
+// 因此不会泄露站长的采购成本。
+//
+// 与后台的 /api/admin/prices/quote 的差别：
+//   - 该接口公开可用，返回货币化（元/微元）结果，面向模型广场的"费用试算"；
+//   - 计费口径完全复用 Billing.Quote（总量按实际扣费同口径），
+//     分量（输入/缓存/输出）为便于展示单独折算，可能与总量差 1~2 额度（取整）。
+func (s *Server) handleModelQuote(c *gin.Context) {
+	if s.deps.Billing == nil {
+		oai.WriteError(c.Writer, http.StatusServiceUnavailable,
+			"计费模块未启用", oai.TypeServer, oai.CodeInternal)
+		return
+	}
+
+	modelName := strings.TrimSpace(c.Query("model"))
+	if modelName == "" {
+		oai.WriteError(c.Writer, http.StatusBadRequest,
+			"缺少 model 参数", oai.TypeInvalidRequest, "missing_model")
+		return
+	}
+
+	promptTokens := clampQuoteTokens(parseInt64Query(c, "prompt_tokens", 0))
+	completionTokens := clampQuoteTokens(parseInt64Query(c, "completion_tokens", 0))
+	cachedTokens := clampQuoteTokens(parseInt64Query(c, "cached_tokens", 0))
+
+	ctx := c.Request.Context()
+	group := strings.TrimSpace(c.Query("group"))
+
+	// 分组与倍率：空分组回退到计费组件的默认分组（与转发/计费同源）。
+	resolvedGroup := group
+	if resolvedGroup == "" {
+		resolvedGroup = s.deps.Billing.DefaultGroup()
+	}
+	if resolvedGroup == "" {
+		resolvedGroup = model.DefaultGroupName
+	}
+	ratio := int64(100)
+	if s.deps.Groups != nil {
+		if g, err := s.deps.Groups.GetByName(ctx, resolvedGroup); err == nil && g != nil && g.Ratio > 0 {
+			ratio = g.Ratio
+		}
+	}
+
+	resp := modelQuoteResponse{
+		Model:         modelName,
+		Group:         resolvedGroup,
+		Currency:      "CNY",
+		Ratio:         ratio,
+		DiscountLabel: groupDiscountLabel(ratio),
+	}
+
+	price := s.deps.Billing.PriceInfo(ctx, group, modelName)
+	if price == nil {
+		// 未定价：金额全 0，billing_mode 留空（前端据此显示"未定价"而非"免费"）。
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+	resp.BillingMode = price.EffectiveBillingMode()
+	if price.IsFree() {
+		// 显式免费：无论价格字段填了什么都不收费，金额一律为 0。
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+
+	// 总量与实际扣费同口径（Billing.Quote 内部已按倍率折算），单位同为「额度」。
+	resp.TotalCost = s.deps.Billing.Quote(ctx, group, modelName, promptTokens, completionTokens, cachedTokens)
+
+	if resp.BillingMode == model.BillingModePerCall {
+		// 按次计费：费用集中在 total，token 分量不参与，单价保持 0。
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+
+	// 按量计费：拆分输入 / 缓存 / 输出三个分量与单价，便于前端逐项展示。
+	effectiveCachePrice := price.CachePrice
+	if effectiveCachePrice <= 0 {
+		effectiveCachePrice = price.PromptPrice
+	}
+	cached := cachedTokens
+	if cached > promptTokens {
+		cached = promptTokens
+	}
+	uncached := promptTokens - cached
+
+	resp.InputCost = scaleByRatio(uncached*price.PromptPrice/tokenPriceScale, ratio)
+	resp.CachedCost = scaleByRatio(cached*effectiveCachePrice/tokenPriceScale, ratio)
+	resp.OutputCost = scaleByRatio(completionTokens*price.CompletionPrice/tokenPriceScale, ratio)
+
+	resp.InputUnitPrice = scaleByRatio(price.PromptPrice, ratio)
+	resp.OutputUnitPrice = scaleByRatio(price.CompletionPrice, ratio)
+	resp.CachedUnitPrice = scaleByRatio(effectiveCachePrice, ratio)
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// clampQuoteTokens 把 token 数夹到 [0, maxQuoteTokens]，防御异常输入导致的整数溢出。
+func clampQuoteTokens(tokens int64) int64 {
+	if tokens < 0 {
+		return 0
+	}
+	if tokens > maxQuoteTokens {
+		return maxQuoteTokens
+	}
+	return tokens
+}
+
+// groupDiscountLabel 依据分组倍率生成人类可读的折扣文案。
+//
+// 倍率是百分比整数：100 = 1.0 倍（原价）、60 = 6 折、150 = 1.5 倍。
+func groupDiscountLabel(ratio int64) string {
+	switch {
+	case ratio <= 0 || ratio == 100:
+		return "无折扣"
+	case ratio < 100:
+		if ratio%10 == 0 {
+			return fmt.Sprintf("%d折", ratio/10)
+		}
+		return fmt.Sprintf("%d.%d折", ratio/10, ratio%10)
+	default:
+		return fmt.Sprintf("倍率 %d%%", ratio)
+	}
 }

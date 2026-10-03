@@ -33,13 +33,73 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/corpus"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/corpus"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
 )
+
+// 路由可观测响应头（B9）。
+//
+// 意图（Why）：网关把请求"转发到了哪条渠道、试了几次、发给上游的模型名是什么"
+// 是排障与成本核对的一手信息。此前这些只存在于本站日志，使用者/接入方无从得知，
+// 出现"同一个模型两次结果不同"或"账单与预期不符"时无法自助定位。把它们以响应头
+// 回传，既不影响协议兼容（自定义头对客户端透明），又让"路由决策"可被观测。
+//
+// 取值约定：
+//   - X-Routed-Via     实际命中的渠道（渠道名 + #渠道ID），如 "OpenAI 官方 (#3)"；
+//   - X-Fallback-Attempts 为得到本次结果共尝试了几次（含换密钥/换渠道的重试）；
+//   - X-Upstream       实际发给上游的模型名（经渠道级模型映射改写后的名字）。
+const (
+	headerRoutedVia        = "X-Routed-Via"
+	headerFallbackAttempts = "X-Fallback-Attempts"
+	headerUpstreamModel    = "X-Upstream"
+)
+
+// routingHeaders 是一次成功响应的路由可观测信息集合。
+//
+// 抽成结构体而不是三个裸参数在各处传：这三个值来自同一处（forwardChat），
+// 且必须在 WriteHeader 之前一次性写入——散传容易漏掉某条回写路径（直通 / 适配器）。
+type routingHeaders struct {
+	// channelID 是实际命中渠道的主键；0 表示未知（不应出现）。
+	channelID uint64
+	// channelName 是渠道显示名，可为空（为空时只回传 ID）。
+	channelName string
+	// attempts 是本次请求的总尝试次数（1 表示一次成功，无重试）。
+	attempts int
+	// upstream 是实际发给上游的模型名（无映射时等于对外模型名）。
+	upstream string
+}
+
+// apply 把路由可观测头写入响应头。
+//
+// 调用约束（重要）：必须在 w.WriteHeader 之前调用，否则头已随状态行发出、无法再生效。
+// 采用 Set 而非 Add，保证与上游可能同名的头不会叠加出多值。
+func (h routingHeaders) apply(dst http.Header) {
+	if dst == nil {
+		return
+	}
+	if h.channelID != 0 || strings.TrimSpace(h.channelName) != "" {
+		via := strings.TrimSpace(h.channelName)
+		if h.channelID != 0 {
+			if via == "" {
+				via = "#" + strconv.FormatUint(h.channelID, 10)
+			} else {
+				via = via + " (#" + strconv.FormatUint(h.channelID, 10) + ")"
+			}
+		}
+		dst.Set(headerRoutedVia, via)
+	}
+	if h.attempts > 0 {
+		dst.Set(headerFallbackAttempts, strconv.Itoa(h.attempts))
+	}
+	if model := strings.TrimSpace(h.upstream); model != "" {
+		dst.Set(headerUpstreamModel, model)
+	}
+}
 
 // copyBufferBytes 是上游响应的拷贝缓冲区大小。
 //
@@ -209,6 +269,11 @@ type forwardTarget struct {
 	hasSpareKey bool
 	// hasSpareChannel 表示除本渠道外还有其他候选渠道，可用于渠道级重试。
 	hasSpareChannel bool
+	// attempt 是本次尝试在本请求内的序号（从 1 开始）。
+	//
+	// 用途：作为 X-Fallback-Attempts 回传给下游——"为得到结果一共试了几次"
+	// 是判断"渠道是否在频繁故障"的直观信号，比翻日志更即时。
+	attempt int
 }
 
 // forwardWithFallback 按路由策略选择渠道与密钥并转发，失败时按失败类型重试。
@@ -341,7 +406,9 @@ retryLoop:
 			credentialScope{Group: group, Model: modelName})
 		if !ok {
 			// 该渠道当前没有可用凭据（池内全部被禁用、冷却中、限速用满或额度用尽）：
-			// 直接放弃这个渠道，避免白白消耗一次尝试预算。
+			// 直接放弃这个渠道，避免白白消耗一次尝试预算。C4：若整条渠道的凭据余额
+			// 已全部耗尽，这里会留下明确日志，便于站长识别"渠道级预算熔断"。
+			r.logChannelSkipped(keyCtx, ch, modelName)
 			excludedChannels[ch.ID] = struct{}{}
 			continue
 		}
@@ -357,6 +424,7 @@ retryLoop:
 			keyMeta:         cred.Meta,
 			hasSpareKey:     retryPolicy.Enabled && hasSpareKey,
 			hasSpareChannel: retryPolicy.Enabled && r.hasOtherChannel(candidates, excludedChannels, ch.ID),
+			attempt:         keyAttempts,
 		}
 
 		// 占用在途计数（供 least_in_flight 使用）：与下方的 releaseKey 成对，
@@ -490,20 +558,22 @@ func (r *Relay) resolveChatCredential(ctx context.Context, ch *model.Channel, us
 				}
 
 				// 先按"当前是否可用"过滤（状态/冷却/限速/余额/额度窗口），再按本次请求的
-				// 分组与模型过滤（凭据可声明只服务某些分组/模型），最后交给策略挑选。
+				// 分组与模型过滤（凭据可声明只服务某些分组/模型），并叠加 (凭据, 模型)
+				// 级冷却（同一把密钥在模型 A 上失败，不牵连模型 B/C），最后交给策略挑选。
 				//
 				// 为什么要在这里提前过滤而不是只靠 SelectKey：下面的 hasSpareKey
 				// 直接由本切片的长度推断，若不过滤，一批"余额已耗尽"或"不支持该模型"的
 				// 凭据会让 hasSpareKey 误判为 true，进而触发无意义的密钥级重试。
-				usable := filterUsableKeysForRequest(available, time.Now(), scope)
+				usable := filterUsableKeysForRequest(available, time.Now(), scope, modelCooldownsFor(r))
 				if len(usable) == 0 {
 					// 过滤后无可用凭据（全部冷却/限速/禁用/余额耗尽/额度用满，
 					// 或都不服务本次的分组/模型）：让上层换渠道
 					return resolvedCredential{}, false, false
 				}
 
-				// 策略选择：五策略择优 + 会话粘性（内部会再做一次幂等的可用性过滤）。
-				picked, err := r.SelectKey(ctx, ch, usable, sessionHash)
+				// 策略选择：五策略择优 + 会话粘性；带模型名以便与预过滤共用
+				// (凭据, 模型) 级冷却语义（内部会再做一次幂等的可用性过滤）。
+				picked, err := r.selectKey(ctx, ch, usable, sessionHash, scope.Model)
 				if err != nil {
 					// 这是"故障"而非"业务上无可用凭据"：不记日志的话，
 					// 它会和正常冷却/额度耗尽混在一起，最终只表现为一句
@@ -903,14 +973,46 @@ func (r *Relay) forwardChat(w http.ResponseWriter, req *http.Request, target for
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// ── 失败分流（关键：决定"换密钥"、"换渠道"还是就此收手）────
-	switch kind, _, snippet := r.classifyKeyFailure(resp); kind {
-	case keyFailureCredential:
-		// 凭据不可用（失效/受限/被限流）：按失败类型决定"冷却"还是"摘除"。
-		//   - 429 走冷却、401/403/402 走长冷却（都【不】摘除，等待自动恢复）；
-		//   - 仅当上游明确表示凭据永久无效（如已吊销）才摘除。
-		// 注意：升级为 channel_keys 的临时状态，绝不因一次 429 把好凭据移出池子。
-		r.applyCredentialFailure(req.Context(), ch, target.keyID, target.keyFailCount, resp.StatusCode, snippet)
+	// 折扣分组的重试率统计：每次真实打到上游都计一次（含重试）。
+	// 计费请求数由 charged 标志区分（同一请求的多次重试只算一次计费），
+	// 因此 r = 上游调用次数 / 计费请求次数 才是真实成本放大率（见 billing.recordUpstreamCall）。
+	if r.billing != nil {
+		r.billing.recordUpstreamCall(group, false)
+	}
+	// 失败语义分类：决定"这次失败该往哪个方向重试"（见 failure_classify.go）。
+	//
+	// kind 沿用既有 classifyKeyFailure 的判定（区分"凭据 / 授权范围 / 无关"并读出响应体）；
+	// class 在此之上叠加"内容审核 / 限流 / 鉴权 / 渠道故障"的语义，作为重试方向的唯一依据。
+	kind, _, snippet := r.classifyKeyFailure(resp)
+	class, classBody := classifyUpstreamFailure(resp, snippet)
+	if len(classBody) > 0 {
+		snippet = classBody
+	}
+
+	switch class {
+	case failureClassContentFilter:
+		// 内容审核拦截：换密钥、换渠道都会被同样拦截，因此【既不重试也不换渠道】，
+		// 直接落到下方统一脱敏出口回传，避免白烧上游额度。
+		saveFailure(lastFailure, resp, snippet)
+
+	case failureClassRateLimited, failureClassCredential:
+		// 凭据级失败（429 限流 / 401·403·402 鉴权欠费）：
+		//   1) 走既有冷却（DB）与渠道策略（只冷却 / 自动摘除），并登记 (凭据, 模型) 级冷却；
+		//   2) 只换【同渠道的另一把凭据】——换渠道对限流无意义（只会把限流扩散到别的上游），
+		//      对鉴权失败同样无意义（错误来自凭据本身，而非上游整体），因此【禁止换渠道】。
+		//
+		// 注意：绝不因一次 429 把好凭据移出池子——冷却到期会自动回到调度。
+		cooldown := r.applyCredentialFailure(req.Context(), ch, target.keyID, target.keyFailCount, resp.StatusCode, snippet)
+		if class == failureClassRateLimited {
+			// 尊重上游 retry-after：429 若带该头，按上游给的时长冷却，而不是固定退避。
+			if hint := retryAfterCooldown(resp.Header, time.Now()); hint > 0 {
+				cooldown = hint
+				r.applyCredentialCooldown(req.Context(), target.keyID, hint,
+					fmt.Sprintf("上游限流（HTTP %d），按 retry-after 冷却约 %s",
+						resp.StatusCode, hint.Round(time.Second)))
+			}
+		}
+		r.markModelCooldown(target.keyID, modelName, cooldown)
 		// 留存响应，供所有重试用尽后写入本站调用日志（不再透传给下游）
 		saveFailure(lastFailure, resp, snippet)
 
@@ -919,46 +1021,50 @@ func (r *Relay) forwardChat(w http.ResponseWriter, req *http.Request, target for
 			drainAndClose(resp)
 			return forwardRetryKey
 		}
-		if target.hasSpareChannel {
-			drainAndClose(resp)
-			return forwardRetryChannel
-		}
 		// 已无退路（或该渠道/模型已关闭重试）：落到下方统一脱敏出口
 
-	case keyFailureEntitlement:
-		// 该账号没有这个模型 / 无权访问：不是密钥坏了，而是"这个模型不在可用范围内"。
+	case failureClassChannel:
+		// 上游 5xx / 超时属渠道级故障：给本次使用的凭据一个短冷却
+		// （故障期间不要反复把同一把凭据推到上游；冷却会自动到期、不改变凭据状态），
+		// 并优先换下一个渠道。
+		r.applyCredentialFailure(req.Context(), ch, target.keyID, target.keyFailCount, resp.StatusCode, nil)
+		// 留存本次失败：重试预算耗尽时用它决定回给下游的语义化错误码
+		// （上游 5xx → 本站 503），否则只能退化成含义模糊的 502。
 		//
-		// 为什么不换密钥重试：实测本部署的密钥池来自同质的免费账号，
-		// 授权集合完全一致，换多少把结果都一样，只会白白多花几秒。
-		// 因此只在"还有别的渠道"时才继续；否则落到下方统一脱敏出口。
-		saveFailure(lastFailure, resp, snippet)
+		// 这里才补读响应体：classifyKeyFailure 对 5xx 不读体（它与凭据无关），
+		// 但 5xx 恰是最需要留下证据的一类（"上游整体挂了"还是"该模型不存在"）。
+		// 读取上限 4KiB，且本响应随后就会被 drainAndClose 或整段读走，不会多占内存。
+		peek, _ := peekBody(resp, keyLevelPeekBytes)
+		saveFailure(lastFailure, resp, peek)
 
-		if target.hasSpareChannel {
-			// 但另一个渠道可能是别的上游，值得一试
-			drainAndClose(resp)
-			return forwardRetryChannel
-		}
-		// 无退路（或该渠道/模型已关闭重试）：落到下方统一脱敏出口
-
-	default:
-		if isRetryableStatus(resp.StatusCode) {
-			// 上游 5xx / 超时属渠道级故障，但也给本次使用的凭据一个短冷却：
-			// 故障期间不要反复把同一把凭据推到上游。冷却会自动到期，不改变凭据状态。
-			r.applyCredentialFailure(req.Context(), ch, target.keyID, target.keyFailCount, resp.StatusCode, nil)
-			// 留存本次失败：重试预算耗尽时用它决定回给下游的语义化错误码
-			// （上游 5xx → 本站 503），否则只能退化成含义模糊的 502。
-			//
-			// 这里才补读响应体：classifyKeyFailure 对 5xx 不读体（它与凭据无关），
-			// 但 5xx 恰是最需要留下证据的一类（"上游整体挂了"还是"该模型不存在"）。
-			// 读取上限 4KiB，且本响应随后就会被 drainAndClose 或整段读走，不会多占内存。
-			peek, _ := peekBody(resp, keyLevelPeekBytes)
-			saveFailure(lastFailure, resp, peek)
-		}
 		if isRetryableStatus(resp.StatusCode) && target.hasSpareChannel {
 			// 上游故障/过载，且还有别的渠道可试
 			drainAndClose(resp)
 			return forwardRetryChannel
 		}
+
+	default:
+		// 与凭据、渠道都无关：可能是授权范围问题（该账号没有这个模型），也可能是请求本身有误。
+		if kind == keyFailureEntitlement {
+			// 该账号没有这个模型 / 无权访问：不是密钥坏了，而是"这个模型不在可用范围内"。
+			//
+			// 为什么不换密钥重试：实测本部署的密钥池来自同质的免费账号，
+			// 授权集合完全一致，换多少把结果都一样，只会白白多花几秒。
+			// 因此只在"还有别的渠道"时才继续；否则落到下方统一脱敏出口。
+			saveFailure(lastFailure, resp, snippet)
+			if target.hasSpareChannel {
+				// 但另一个渠道可能是别的上游，值得一试
+				drainAndClose(resp)
+				return forwardRetryChannel
+			}
+		}
+	}
+
+	// 200 但空内容：视为可降级的失败（推理模型吃满 token 预算的真实坑），走渠道级重试。
+	// 仅对非流式判定：流式正文是 SSE 分片，无法在不破坏"逐字输出"的前提下判定空内容。
+	if resp.StatusCode == http.StatusOK && !wantStream && target.hasSpareChannel && isEmptyCompletion(resp) {
+		drainAndClose(resp)
+		return forwardRetryChannel
 	}
 
 	// 上游协议入站转换：Anthropic / Gemini / Codex 渠道的响应需改写回内部 OpenAI 协议
@@ -1025,9 +1131,19 @@ func (r *Relay) forwardChat(w http.ResponseWriter, req *http.Request, target for
 	recorder := corpus.RecorderFrom(req.Context())
 	tee := responseTee(sniffer, recorder)
 
+	// 路由可观测头（B9）：在写状态行之前统一构造并注入，覆盖直通与适配器两条回写路径。
+	// 必须在 WriteHeader 之前——状态行一旦发出，响应头无法再追加。
+	rh := routingHeaders{
+		channelID:   ch.ID,
+		channelName: ch.Name,
+		attempts:    target.attempt,
+		upstream:    upstreamModel,
+	}
+
 	if adapter == nil {
 		// 直通路径：入站与上游同为 OpenAI 协议，成功响应原样透传。
 		copyResponseHeaders(w.Header(), resp.Header)
+		rh.apply(w.Header())
 		w.WriteHeader(resp.StatusCode)
 		if !flushCopy(w, resp.Body, tee) && recorder != nil {
 			// 只转发了一部分（客户端断开 / 上游中断）：如实标注，
@@ -1037,7 +1153,7 @@ func (r *Relay) forwardChat(w http.ResponseWriter, req *http.Request, target for
 	} else {
 		// 转换路径：由适配器把上游的 OpenAI 响应改写为下游协议格式。
 		// 注意此时响应头由 writeAdapted 决定（各协议的 Content-Type 不同）。
-		r.writeAdapted(w, req, resp, adapter, sniffer, body)
+		r.writeAdapted(w, req, resp, adapter, sniffer, body, rh)
 	}
 
 	// 成功响应：清零该密钥的连续失败计数（"连续失败"语义要求成功即重置）

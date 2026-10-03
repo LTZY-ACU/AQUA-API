@@ -29,10 +29,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/config"
-	"gitee.com/xiaosu4610/aqua-api/internal/crypto"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/store"
+	"github.com/LTZY-ACU/aqua-api/internal/config"
+	"github.com/LTZY-ACU/aqua-api/internal/crypto"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/store"
 )
 
 // tokenGroupFixture 汇总令牌分组测试所需的仓储、会话与归属用户。
@@ -42,6 +42,7 @@ type tokenGroupFixture struct {
 	groups   model.ModelGroupRepository
 	orders   model.PaymentOrderRepository
 	channels model.ChannelRepository
+	users    model.UserRepository
 	adminTok string
 	userTok  string
 	userID   uint64
@@ -97,6 +98,7 @@ func newTokenGroupFixture(t *testing.T) *tokenGroupFixture {
 		groups:   store.NewModelGroupRepository(st.DB()),
 		orders:   store.NewPaymentOrderRepository(st.DB()),
 		channels: store.NewChannelRepository(st.DB(), cipher),
+		users:    users,
 		userID:   owner.ID,
 		adminID:  admin.ID,
 		adminTok: createTokenGroupSession(t, sessions, admin.ID),
@@ -563,6 +565,122 @@ func TestMyGroups_不下发仅后台分组(t *testing.T) {
 	}
 	if item := findGroupItem(body, "call_agent"); item != nil {
 		t.Fatalf("仅后台分发的分组不应下发给普通用户，实际下发：%v", item)
+	}
+}
+
+// assignAgentGroup 把用户指派到指定代理分组（等价于后台在用户页填「代理分组」）。
+//
+// 注意会话无需重建：SessionAuth 每次请求都重新 users.GetByID 载入用户，
+// 因此指派后立即生效——这正是"站长在后台改完，代理刷新页面就能用"的依据。
+func (fx *tokenGroupFixture) assignAgentGroup(t *testing.T, userID uint64, group string) {
+	t.Helper()
+	ctx := context.Background()
+	u, err := fx.users.GetByID(ctx, userID)
+	if err != nil {
+		t.Fatalf("读取用户失败: %v", err)
+	}
+	u.AgentGroup = group
+	if err := fx.users.Update(ctx, u); err != nil {
+		t.Fatalf("指派代理分组失败: %v", err)
+	}
+}
+
+// TestAgentGroup_代理可见并可选用自己那一档 锁住代理能真正拿到折扣的前提。
+//
+// 这是"广场显示 6 折"与"实际扣 6 折"之间的必经环节：
+// 代理只有在门户里看得到、且能建成挂在该分组上的令牌，折扣才会在计费时生效。
+// 缺失这一步的后果是——他看得到折扣价却永远拿不到折扣，广场价与实际扣费矛盾。
+func TestAgentGroup_代理可见并可选用自己那一档(t *testing.T) {
+	fx := newTokenGroupFixture(t)
+	fx.withAdminGrantOnlyGroup(t, "agent", 60)
+	fx.assignAgentGroup(t, fx.userID, "agent")
+
+	// ① 门户分组列表：应下发自己的档位，且标记为代理档、已解锁
+	rec, body := doBearerJSON(t, fx.srv, http.MethodGet, "/api/user/groups", fx.userTok, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("查询可选分组失败：%d %s", rec.Code, rec.Body.String())
+	}
+	item := findGroupItem(body, "agent")
+	if item == nil {
+		t.Fatal("被指派的代理应能看到自己的分组（否则他无法选到折扣档）")
+	}
+	if agent, _ := item["is_agent"].(bool); !agent {
+		t.Error("应标记 is_agent=true，供前端把它单独标注为代理档")
+	}
+	if unlocked, _ := item["unlocked"].(bool); !unlocked {
+		t.Error("代理档由管理员指派即视为已解锁（门槛是「被授权」而不是「充够钱」）")
+	}
+
+	// ② 创建令牌：挂在自己的档位上必须放行
+	rec, created := doBearerJSON(t, fx.srv, http.MethodPost, "/api/user/tokens", fx.userTok,
+		`{"name":"代理令牌","unlimited_quota":true,"group_name":"agent"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("代理应能给自己的令牌选自己的档位，实际 %d %s", rec.Code, rec.Body.String())
+	}
+	if got, _ := created["group_name"].(string); got != "agent" {
+		t.Fatalf("令牌分组应为 agent，实际 %q", got)
+	}
+}
+
+// TestAgentGroup_代理不能挂到别人的档位 锁住越权边界。
+//
+// 判据必须是"归属用户自己的 agent_group == 该分组名"，不能放宽成"是个代理就放行"：
+// 否则代理 A 能把令牌挂到代理 B 的档位（可能是更低的折扣）上，直接吃掉毛利。
+func TestAgentGroup_代理不能挂到别人的档位(t *testing.T) {
+	fx := newTokenGroupFixture(t)
+	fx.withAdminGrantOnlyGroup(t, "agent_a", 60)
+	fx.withAdminGrantOnlyGroup(t, "agent_b", 40) // 更低折扣，绝不能被他拿到
+	fx.assignAgentGroup(t, fx.userID, "agent_a")
+
+	rec, _ := doBearerJSON(t, fx.srv, http.MethodPost, "/api/user/tokens", fx.userTok,
+		`{"name":"越权尝试","unlimited_quota":true,"group_name":"agent_b"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("代理不得使用别人的档位，应 403，实际 %d %s", rec.Code, rec.Body.String())
+	}
+
+	// 别人的档位也不应出现在他的可选列表里
+	_, body := doBearerJSON(t, fx.srv, http.MethodGet, "/api/user/groups", fx.userTok, "")
+	if item := findGroupItem(body, "agent_b"); item != nil {
+		t.Fatalf("别人的代理档不应下发，实际下发：%v", item)
+	}
+}
+
+// TestAgentPrice_广场折后价与计费口径一致 锁住"看到多少就扣多少"。
+//
+// 广场的代理价与计费链路的实际扣费是两条独立实现：前者由 plazaAgentPricePair
+// 算，后者由 relay 的 applyRatio 算。两者一旦漂移，用户按广场价估算的花费
+// 就与实际账单对不上——这是最直接的投诉来源，必须用测试钉住。
+func TestAgentPrice_广场折后价与计费口径一致(t *testing.T) {
+	group := &model.ModelGroup{Name: "agent", Ratio: 60}
+	rows := []*model.ModelPrice{
+		{Model: "m-percall", Group: "agent", PerCallPrice: 2000, Enabled: true},
+		{Model: "m-token", Group: "agent", PromptPrice: 1_000_000, CompletionPrice: 3_000_000, Enabled: true},
+	}
+
+	for _, row := range rows {
+		agent, list := plazaAgentPricePair(rows, row.Model, "agent", group.Ratio)
+		if agent == nil || list == nil {
+			t.Fatalf("%s：应同时给出代理价与原价", row.Model)
+		}
+
+		// 原价必须是规则原值，否则"划线价"会变成假的原价
+		if list.PromptPrice != row.PromptPrice || list.CompletionPrice != row.CompletionPrice ||
+			list.PerCallPrice != row.PerCallPrice {
+			t.Fatalf("%s：原价应与规则原值一致，实际 %+v", row.Model, list)
+		}
+
+		// 代理价必须等于计费链路的算法结果（同一分组倍率 → 必须同一结果）
+		cases := []struct{ got, want int64 }{
+			{agent.PromptPrice, group.ApplyRatio(row.PromptPrice)},
+			{agent.CompletionPrice, group.ApplyRatio(row.CompletionPrice)},
+			{agent.PerCallPrice, group.ApplyRatio(row.PerCallPrice)},
+		}
+		for _, c := range cases {
+			if c.got != c.want {
+				t.Fatalf("%s：广场折后价 %d 与计费口径 %d 不一致（看到多少就该扣多少）",
+					row.Model, c.got, c.want)
+			}
+		}
 	}
 }
 

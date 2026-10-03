@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/config"
+	"github.com/LTZY-ACU/aqua-api/internal/config"
 )
 
 func testSender() *Sender {

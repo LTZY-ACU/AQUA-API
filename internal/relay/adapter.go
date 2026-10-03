@@ -37,8 +37,8 @@ import (
 	"net/http"
 	"strings"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/corpus"
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/corpus"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
 )
 
 // Adapter 描述「下游协议 ↔ 内部 OpenAI 协议」的双向转换能力。
@@ -248,7 +248,7 @@ func writeAdaptedError(w http.ResponseWriter, adapter Adapter, status int, messa
 //	后者会把整段回答攒到最后一次性下发，客户端的体验从"逐字出现"
 //	退化成"等半天蹦出全文"，与不经网关直连相比是明显倒退。
 func (r *Relay) writeAdapted(w http.ResponseWriter, req *http.Request, resp *http.Response,
-	adapter Adapter, sniffer *usageSniffer, requestBody []byte) {
+	adapter Adapter, sniffer *usageSniffer, requestBody []byte, rh routingHeaders) {
 
 	// 语料采集：与 usage 抓取器共用同一个写入目标（见 responseTee 的说明）。
 	// 未命中采集清单时为 nil，下面的写入行为与原先完全一致。
@@ -277,6 +277,8 @@ func (r *Relay) writeAdapted(w http.ResponseWriter, req *http.Request, resp *htt
 		}
 		_, _ = tee.Write(raw)
 		w.Header().Set("Content-Type", "application/json")
+		// B9：注入路由可观测头（必须在 WriteHeader 之前）。
+		rh.apply(w.Header())
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write(adapter.EncodeResponse(raw)); err != nil {
 			if recorder != nil {
@@ -303,6 +305,8 @@ func (r *Relay) writeAdapted(w http.ResponseWriter, req *http.Request, resp *htt
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
+	// B9：注入路由可观测头（流式同样必须在 WriteHeader 之前）。
+	rh.apply(w.Header())
 
 	w.WriteHeader(http.StatusOK)
 	flusher, canFlush := w.(http.Flusher)

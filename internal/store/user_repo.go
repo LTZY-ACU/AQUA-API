@@ -34,7 +34,7 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // 用户列表查询的条数约束。

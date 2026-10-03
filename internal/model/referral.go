@@ -193,6 +193,14 @@ type ReferralRepository interface {
 	// TotalRewardQuota 统计某邀请人累计已获得的邀请奖励额度。
 	TotalRewardQuota(ctx context.Context, inviterID uint64) (int64, error)
 
+	// TotalRewardQuotaSince 统计某邀请人自指定时间起累计获得的返利额度。
+	//
+	// 用途：月度返利上限（ReferralSettings.MonthlyRewardCapQuota）的判定依据——
+	// 需要知道"这个邀请人本月已经拿了多少"，才能在发放前决定是否封顶。
+	// 只统计充值返利与注册奖（不含签到）：签到是独立成本，且每次额度固定，
+	// 不该与代理返利的上限混在一起。
+	TotalRewardQuotaSince(ctx context.Context, inviterID uint64, since time.Time) (int64, error)
+
 	// ListRewards 分页查询某邀请人获得的奖励明细（按发放时间倒序）。
 	//
 	// 用途：财务板块的"返利明细"列表。返回项的 InviteeName 会被填充，

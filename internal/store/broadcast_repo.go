@@ -37,7 +37,7 @@ import (
 	"fmt"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // broadcastColumns 集中定义批次查询列，顺序必须与 scanEmailBroadcast 的扫描顺序严格一致。

@@ -1,0 +1,82 @@
+# Bug 报告表单（由 .github/ISSUE_TEMPLATE.md 升级而来）
+#
+# 意图：用结构化表单替代自由文本，保证「版本 / 复现步骤 / 期望与实际」三项齐全 ——
+# 缺任一项都会让定位变成多轮往返。
+# 安全漏洞不走这里：见 SECURITY.md 的私密报告通道。
+
+name: Bug 报告
+description: 报告一个可复现的问题（使用问题请优先加交流群）
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **安全漏洞请勿在此提交** —— 请走仓库 Security 标签页的私密报告通道（见 SECURITY.md）。
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: 问题描述
+      description: 一句话说明现象
+      placeholder: 例如：流式请求在第 30 秒被中断。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 一步步写清楚，便于我们照着复现
+      placeholder: |
+        1. 用令牌 X 调用 /v1/chat/completions
+        2. 传 stream=true
+        3. 观察第 30 秒连接被断开
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      description: 按照设计应当发生什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 实际发生了什么；请附错误信息 / HTTP 状态码 / 截图
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deploy
+    attributes:
+      label: 部署方式
+      options:
+        - 单二进制（systemd）
+        - Docker / Docker Compose
+        - 源码直接运行
+        - 其它（请在补充说明里写明）
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本号
+      description: 取自 /healthz 的 version 字段
+      placeholder: 例如 dev / v1.0.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充说明（可选）
+      description: 日志片段、相关配置等 —— **请务必抹掉密钥与令牌**
+      placeholder: 粘贴日志时请删除 sk-* 令牌、上游密钥、服务器地址等敏感信息。
+    validations:
+      required: false

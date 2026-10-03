@@ -30,8 +30,8 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/crypto"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/crypto"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // 列表查询的条数约束。

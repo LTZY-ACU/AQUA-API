@@ -26,7 +26,7 @@ import (
 	"fmt"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // emailCodeColumns 集中定义查询列，顺序必须与 scanEmailCode 严格一致。

@@ -105,6 +105,7 @@ export function ConfirmDialog({
 
 import { useState } from 'react'
 import { copyText } from '@/utils/clipboard'
+import { useToast } from '@/lib/toast/toast-context'
 
 interface CopyButtonProps {
   text: string
@@ -114,11 +115,16 @@ interface CopyButtonProps {
 
 export function CopyButton({ text, label = '复制', className }: CopyButtonProps) {
   const [copied, setCopied] = useState(false)
+  const { toastError } = useToast()
   async function handleCopy() {
     const ok = await copyText(text)
     if (ok) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
+    } else {
+      // 失败必须有明确反馈：否则用户看到按钮纹丝不动，会以为"无法复制"，
+      // 而真实的根因（剪贴板被占用/权限被拒）完全被静默吞掉。
+      toastError('复制失败：请手动选择并复制，或检查浏览器剪贴板权限')
     }
   }
   return (

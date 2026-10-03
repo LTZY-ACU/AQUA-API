@@ -27,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // 审计日志列表的分页约束：默认 20，上限 100（与后台其他列表保持一致）。

@@ -1,4 +1,4 @@
--- 迁移 0044：渠道健康巡检字段（最近一次的延迟、状态码与实际探测的模型）
+-- 迁移 0050：渠道健康巡检字段（最近一次的延迟、状态码与实际探测的模型）
 --
 -- 意图（Why）：
 --   channels 此前只有 last_test_at / last_test_ok 两个布尔量级的字段，且只有管理员
@@ -28,6 +28,13 @@
 -- 扩展（Extend）：
 --   想接入历史曲线：新增 channel_probe_logs 表并由巡检同时追加一行即可；
 --   调整巡检周期/并发：改 config.Health（不改表结构）。
+--
+-- 序号说明（合并时重排）：
+--   本脚本原为 0044 号，与另一条开发线上已发布的同名序号撞车。
+--   迁移版本号必须全局唯一（store.loadMigrations 发现重复会直接让进程启动失败），
+--   且已发布的序号不得改动（线上库的 schema_migrations 已经记过号），
+--   因此【保留对方已发布的 0043–0048，把本条顺延到 0049 之后】。
+
 ALTER TABLE channels ADD COLUMN latency_ms      INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE channels ADD COLUMN last_test_code  INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE channels ADD COLUMN last_test_model TEXT    NOT NULL DEFAULT '';

@@ -32,7 +32,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
 )
 
 // RateLimiter 是按 key（通常是客户端 IP）计数的滑动窗口限流器，并发安全。

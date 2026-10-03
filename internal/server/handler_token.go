@@ -32,9 +32,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
-	"gitee.com/xiaosu4610/aqua-api/internal/server/middleware"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
 )
 
 // tokenUpdateRequest 是更新令牌的请求体。
@@ -52,6 +52,12 @@ type tokenUpdateRequest struct {
 	// 语义与渠道的 key_strategy 一致：留空（字段缺失或空串）表示"不修改"，
 	// 避免前端只提交部分字段（如仅启停）时把已配置的分组意外清空。
 	GroupName *string `json:"group_name"`
+	// 周期预算（迁移 0043）。两者用指针区分"未提交"与"显式清零"：
+	//   - 同时提交 budget_quota>0 与合法 budget_period 即开启预算；
+	//   - budget_quota=0 或 budget_period="" 即关闭预算（任一即可）。
+	// 只提交其一时，另一项保持原值（前端一次提交两者，这里做兜底）。
+	BudgetQuota  *int64  `json:"budget_quota"`
+	BudgetPeriod *string `json:"budget_period"`
 }
 
 // handleMyListTokens 返回当前用户的令牌列表。
@@ -120,6 +126,63 @@ func (s *Server) handleMyDeleteToken(c *gin.Context) {
 		return
 	}
 	s.deleteToken(c, user.ID)
+}
+
+// handleMyTokenKey 返回当前用户某把令牌的【明文密钥】（用于创建后复制/找回）。
+//
+// 为什么需要它：令牌列表出于安全只回掩码（masked_key），但库里其实存了
+// 可解密的 key_enc——"明文只能创建时看一次"是产品取舍，不是技术限制。
+// 当用户在创建弹层没来得及复制、或复制失败时，必须有一个正式的找回入口，
+// 否则他只能删除重建（而重建会换掉 key，旧代码立刻失效）。
+//
+// 安全边界（三条都必须成立，缺一拒绝对外暴露明文）：
+//  1. 必须登录且令牌归属当前用户（loadOwnedToken 已校验归属）；
+//  2. 仅在请求明确表达"我要看明文"时才返回（本接口的存在本身就是该表达）；
+//  3. 每次取明文都写一条审计日志（谁、取了哪把），让"明文被看过"可查。
+func (s *Server) handleMyTokenKey(c *gin.Context) {
+	user, ok := s.requireCurrentUser(c)
+	if !ok {
+		return
+	}
+	id, ok := parseIDParam(c)
+	if !ok {
+		return
+	}
+
+	token, ok := s.loadOwnedToken(c, id, user.ID)
+	if !ok {
+		return
+	}
+	if strings.TrimSpace(token.Key) == "" {
+		// 密钥在库中无法解密（如 AQUA_APP_KEY 已变更）时，给出一个能定位问题的提示，
+		// 而不是返回一个空 key 让前端误以为"拿到了"。
+		writeUserError(c, http.StatusInternalServerError,
+			"token.key_unavailable", oai.TypeServer, "key_unavailable")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": token.ID, "key": token.Key})
+}
+
+// handleAdminTokenKey 返回任意令牌的【明文密钥】（管理员专用）。
+//
+// 与门户的 handleMyTokenKey 的区别仅在归属校验：管理员传 0 给 loadOwnedToken，
+// 可查看任意用户的令牌明文——这是后台"代客户复制/找回密钥"的合法能力。
+// 该接口已在 /admin 分组内、挂在 RequireAdmin 之后，天然是管理员专属。
+func (s *Server) handleAdminTokenKey(c *gin.Context) {
+	id, ok := parseIDParam(c)
+	if !ok {
+		return
+	}
+	token, ok := s.loadOwnedToken(c, id, 0)
+	if !ok {
+		return
+	}
+	if strings.TrimSpace(token.Key) == "" {
+		writeUserError(c, http.StatusInternalServerError,
+			"token.key_unavailable", oai.TypeServer, "key_unavailable")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": token.ID, "key": token.Key})
 }
 
 // createTokenAndRespond 创建令牌并返回（含一次性明文）。
@@ -241,6 +304,38 @@ func (s *Server) updateToken(c *gin.Context, ownerID uint64) {
 		}
 	}
 
+	// 周期预算：先合并"本次提交 + 原值"，再统一校验，最后整体覆盖。
+	// 校验在写库前完成，避免把非法组合（如有上限却无周期）交给仓储导致 500。
+	if req.BudgetQuota != nil || req.BudgetPeriod != nil {
+		quota := token.BudgetQuota
+		if req.BudgetQuota != nil {
+			quota = *req.BudgetQuota
+		}
+		period := token.BudgetPeriod
+		if req.BudgetPeriod != nil {
+			period = strings.TrimSpace(strings.ToLower(*req.BudgetPeriod))
+		}
+		if quota < 0 {
+			writeUserError(c, http.StatusBadRequest, "token.invalid_budget", oai.TypeInvalidRequest, "invalid_budget")
+			return
+		}
+		if period != "" && !model.IsValidBudgetPeriod(period) {
+			writeUserError(c, http.StatusBadRequest, "token.invalid_budget_period", oai.TypeInvalidRequest, "invalid_budget_period")
+			return
+		}
+		if quota > 0 && period == "" {
+			// 有上限却没有周期：语义不完整，拒绝而不是静默"永不触发"。
+			writeUserError(c, http.StatusBadRequest, "token.invalid_budget_period", oai.TypeInvalidRequest, "invalid_budget_period")
+			return
+		}
+		token.BudgetQuota = quota
+		token.BudgetPeriod = period
+		// 预算变更后重置窗口：起点清空（下次请求惰性锚定为新窗口）、基线取当前已用，
+		// 使新预算从"本周期已用 0"开始计算，而不是沿用旧窗口的累计消耗。
+		token.BudgetWindowStart = time.Time{}
+		token.BudgetWindowBase = token.UsedQuota
+	}
+
 	if err := s.deps.Tokens.Update(ctx, token); err != nil {
 		s.respondInternalError(c, "更新令牌失败")
 		return
@@ -336,7 +431,12 @@ func (s *Server) resolveTokenGroupName(c *gin.Context, raw string, ownerID uint6
 	// 仅后台可分发的分组（批发价）：判据是【发起请求的人】是否管理员，
 	// 而不是令牌归属者——后台代建令牌传的是目标用户 id，
 	// 按归属者判定会让代理令牌在后台也建不出来（功能等于废掉）。
-	if !s.checkGroupAdminGrant(c, group) {
+	//
+	// 例外：归属用户若已被管理员指派到该分组（users.agent_group == 分组名），
+	// 等价于"后台已经授权过这个人用这一档"，同样放行——
+	// 否则代理看得到自己的折扣价，却永远建不出能拿到该折扣的令牌，
+	// 广场价与实际扣费直接矛盾（这正是"代理拿不到折扣"的根因）。
+	if !s.checkGroupAdminGrant(c, group, ownerID) {
 		return "", false
 	}
 	return name, true
@@ -346,20 +446,33 @@ func (s *Server) resolveTokenGroupName(c *gin.Context, raw string, ownerID uint6
 //
 // 与 checkGroupUnlock 的分工（两者互不替代，也不叠加）：
 //   - checkGroupUnlock 看【令牌归属用户】的累计充值是否达标 —— 面向客户的资格门槛；
-//   - 本函数看【发起请求的人】是否管理员 —— 面向分发渠道的授权。
+//   - 本函数看【谁在授权使用】—— 面向分发渠道的授权。
 //
 // 为什么批发价分组需要单独一个维度：站长的原话是"代理只由后台创建，不要设充值门槛"
 // （门槛设高了会把小代理挡在门外）。而"分组是用户自选的"这条前提没变，
 // 所以必须有一道服务端闸门把"能自助拿到"这件事本身关掉。
 //
-// 管理员在后台"代客户建令牌"时，发起人是管理员 → 放行，令牌归到客户名下；
-// 客户自己建令牌时，发起人是他自己 → 403。这正是"只由后台分发"的准确语义。
-func (s *Server) checkGroupAdminGrant(c *gin.Context, group *model.ModelGroup) bool {
+// 放行的两种情况（都与"自助拿到"不相容，因此不破坏定价体系）：
+//  1. 发起人是管理员：后台"代客户建令牌"，令牌归到客户名下；
+//  2. 归属用户已被管理员显式指派到该分组（users.agent_group == group.Name）：
+//     指派动作本身就是后台授权，"这个人可以用这一档"已被管理员确认过。
+//
+// 注意判据是【归属用户自己的 agent_group】，不能放宽成"任意代理分组"：
+// 否则代理 A 就能把令牌挂到代理 B 的档位（可能是更低的折扣）上去。
+func (s *Server) checkGroupAdminGrant(c *gin.Context, group *model.ModelGroup, ownerID uint64) bool {
 	if !group.RequiresAdminGrant() {
 		return true
 	}
 	if actor, ok := middleware.CurrentUser(c); ok && actor.IsAdmin() {
 		return true
+	}
+	if ownerID != 0 && s.deps.Users != nil {
+		if owner, err := s.deps.Users.GetByID(c.Request.Context(), ownerID); err == nil &&
+			strings.TrimSpace(owner.AgentGroup) == group.Name {
+			return true
+		}
+		// 查询失败时不放行（fail-closed）：查不出身份就按普通用户处理。
+		// 与 checkGroupUnlock 同一取舍——放行的代价是任何人都可能借故障时机绕开定价。
 	}
 	oai.WriteError(c.Writer, http.StatusForbidden,
 		"该分组为定向开放，暂不支持自助选择；如需使用请联系管理员开通。",

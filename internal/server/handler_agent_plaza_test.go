@@ -32,10 +32,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/config"
-	"gitee.com/xiaosu4610/aqua-api/internal/crypto"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/store"
+	"github.com/LTZY-ACU/aqua-api/internal/config"
+	"github.com/LTZY-ACU/aqua-api/internal/crypto"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/store"
 )
 
 type agentPlazaFixture struct {

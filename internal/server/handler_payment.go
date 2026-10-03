@@ -50,10 +50,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
-	"gitee.com/xiaosu4610/aqua-api/internal/payment"
-	"gitee.com/xiaosu4610/aqua-api/internal/server/middleware"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/payment"
+	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
 )
 
 // maxNotifyBodyBytes 是支付回调请求体的读取上限。
@@ -691,9 +691,17 @@ func (s *Server) handlePaymentNotify(c *gin.Context) {
 
 	// 落库的回调原文先去掉 sign 等签名字段（见 scrubNotifyPayload 的说明）：
 	// 排查与对账需要的字段都保留，只不留存可被拿去重放实验的签名字符串。
-	if _, err := s.deps.Orders.MarkPaid(ctx, order.TradeNo, result.ProviderTradeNo, scrubNotifyPayload(body), time.Now()); err != nil {
+	transitioned, err := s.deps.Orders.MarkPaid(ctx, order.TradeNo, result.ProviderTradeNo, scrubNotifyPayload(body), time.Now())
+	if err != nil {
 		s.respondInternalError(c, "更新订单状态失败", err)
 		return
+	}
+	// 迟到支付：本地订单此前已因超时被关闭，但用户确实付了钱。
+	// MarkPaid 允许"已关闭 → 已支付"的补记（否则这笔钱会永久不到账），
+	// 这里必须留下日志：它是"钱晚到"的客观事实，运营与对账都需要看见。
+	if transitioned && order.Status == model.PaymentStatusClosed {
+		slog.Warn("收到迟到支付：订单此前已超时关闭，本次补记为已支付并正常入账",
+			"trade_no", order.TradeNo, "user_id", order.UserID, "amount_cents", order.Amount)
 	}
 	if err := s.creditOrder(ctx, order.TradeNo); err != nil {
 		// 入账失败：返回 500 让支付平台重试——重试会再次走到这里，

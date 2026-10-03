@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/crypto"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/crypto"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // channelKeyColumns 集中定义查询列，顺序必须与 scanChannelKey 的扫描顺序严格一致。
@@ -38,6 +38,7 @@ const channelKeyColumns = `id, channel_id, kind, key_enc, label, status, fail_co
 	`weight, priority, in_flight, cooldown_until, rpm_limit, window_start, window_count, ` +
 	`balance, balance_updated_at, ` +
 	`account_id, plan_type, quota_used_percent, quota_reset_at, quota_checked_at, ` +
+	`quota_secondary_used_percent, quota_secondary_reset_at, quota_primary_window_seconds, quota_secondary_window_seconds, ` +
 	`group_names, models`
 
 // channelKeyRepository 是 model.ChannelKeyRepository 的 SQL 实现，并发安全。
@@ -215,8 +216,10 @@ func (r *channelKeyRepository) ReplaceCredentials(ctx context.Context, channelID
 			INSERT INTO channel_keys
 				(channel_id, kind, key_enc, key_hash, label, status, fail_count, last_used_at, last_error,
 				 created_at, refresh_token_enc, access_token_enc, expires_at, account_hint, provider,
-				 balance, balance_updated_at, account_id, plan_type, quota_used_percent)
-			VALUES (?, ?, ?, ?, ?, ?, 0, 0, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				 balance, balance_updated_at, account_id, plan_type, quota_used_percent,
+				 quota_secondary_used_percent, quota_secondary_reset_at,
+				 quota_primary_window_seconds, quota_secondary_window_seconds)
+			VALUES (?, ?, ?, ?, ?, ?, 0, 0, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			channelID, string(input.Kind), keyEnc, hash, strings.TrimSpace(input.Label),
 			int(model.ChannelKeyStatusEnabled), now,
 			refreshEnc, accessEnc, unixOrZero(input.ExpiresAt),
@@ -225,7 +228,8 @@ func (r *channelKeyRepository) ReplaceCredentials(ctx context.Context, channelID
 			strings.TrimSpace(input.AccountID), strings.TrimSpace(input.PlanType),
 			// 新导入的凭据额度一律"未探测"：让探测任务去填，
 			// 而不是把 0（= 完全没用）当成事实写进去。
-			model.QuotaUsedPercentUnknown); err != nil {
+			// 两个窗口同一口径；窗口秒数未知记 0，由探测回填。
+			model.QuotaUsedPercentUnknown, model.QuotaUsedPercentUnknown, 0, 0, 0); err != nil {
 			return 0, 0, fmt.Errorf("store: 新增凭据失败: %w", err)
 		}
 		added++
@@ -773,17 +777,26 @@ func (r *channelKeyRepository) UpdateAccountMeta(ctx context.Context, id uint64,
 	return nil
 }
 
-// UpdateQuota 写入额度探测结果。
+// UpdateQuota 写入额度探测结果（主 / 次两个窗口一次性落库）。
 //
-// usedPercent 传 model.QuotaUsedPercentUnknown 表示"探测失败/上游不提供"，
+// 某个窗口的已用百分比传 model.QuotaUsedPercentUnknown 表示"该窗口置回未知"，
 // 此时把快照置回未知（并刷新 checked_at），避免界面继续展示一个越来越过时的旧值。
 //
 // resetAt 为零值时保留原重置时间？——不保留：额度窗口是会变的，
 // 保留旧的"重置时间"会让 QuotaExhausted 依据过期数据做判断。因此一并写入本次探测值。
-func (r *channelKeyRepository) UpdateQuota(ctx context.Context, id uint64, usedPercent int, resetAt, checkedAt time.Time) error {
-	if usedPercent < model.QuotaUsedPercentUnknown {
-		usedPercent = model.QuotaUsedPercentUnknown
+//
+// 两个窗口在同一条 UPDATE 内完成：它们来自同一次探测，拆成两条语句会在中间
+// 留下"主窗口已更新、次窗口还是旧值"的不一致快照。
+func (r *channelKeyRepository) UpdateQuota(ctx context.Context, id uint64, windows model.QuotaWindows) error {
+	primary := windows.PrimaryUsedPercent
+	if primary < model.QuotaUsedPercentUnknown {
+		primary = model.QuotaUsedPercentUnknown
 	}
+	secondary := windows.SecondaryUsedPercent
+	if secondary < model.QuotaUsedPercentUnknown {
+		secondary = model.QuotaUsedPercentUnknown
+	}
+	checkedAt := windows.CheckedAt
 	if checkedAt.IsZero() {
 		checkedAt = time.Now()
 	}
@@ -791,9 +804,17 @@ func (r *channelKeyRepository) UpdateQuota(ctx context.Context, id uint64, usedP
 		UPDATE channel_keys SET
 			quota_used_percent = ?,
 			quota_reset_at = ?,
-			quota_checked_at = ?
+			quota_checked_at = ?,
+			quota_secondary_used_percent = ?,
+			quota_secondary_reset_at = ?,
+			quota_primary_window_seconds = ?,
+			quota_secondary_window_seconds = ?
 		WHERE id = ?`,
-		usedPercent, unixOrZero(resetAt), checkedAt.Unix(), id)
+		primary, unixOrZero(windows.PrimaryResetAt), checkedAt.Unix(),
+		secondary, unixOrZero(windows.SecondaryResetAt),
+		normalizeWindowSeconds(windows.PrimaryWindowSeconds),
+		normalizeWindowSeconds(windows.SecondaryWindowSeconds),
+		id)
 	if err != nil {
 		return fmt.Errorf("store: 更新凭据 %d 的额度快照失败: %w", id, err)
 	}
@@ -805,6 +826,17 @@ func (r *channelKeyRepository) UpdateQuota(ctx context.Context, id uint64, usedP
 		return model.ErrChannelKeyNotFound
 	}
 	return nil
+}
+
+// normalizeWindowSeconds 把窗口时长收敛为非负数；负数（上游异常值）归零表示"未提供"。
+//
+// 归零而非夹到某个正数：0 在界面上有明确定义（退回默认文案），
+// 而一个凭空捏造的正数会被当成"上游真的这么说的"，反而更误导。
+func normalizeWindowSeconds(seconds int) int {
+	if seconds < 0 {
+		return 0
+	}
+	return seconds
 }
 
 // scanChannelKey 把一行数据映射为凭据对象，并完成解密。
@@ -839,6 +871,11 @@ func (r *channelKeyRepository) scanChannelKey(sc rowScanner) (*model.ChannelKey,
 		quotaUsed    int
 		quotaReset   int64
 		quotaChecked int64
+		// 次额度窗口与窗口时长（迁移 0048）
+		quotaSecondaryUsed    int
+		quotaSecondaryReset   int64
+		quotaPrimaryWindowSec int
+		quotaSecondaryWinSec  int
 		// 凭据级路由分叉（迁移 0038）：可服务的分组与模型（CSV，空 = 不限）
 		groupNames string
 		modelsCSV  string
@@ -850,6 +887,7 @@ func (r *channelKeyRepository) scanChannelKey(sc rowScanner) (*model.ChannelKey,
 		&weight, &priority, &inFlight, &cooldownEnd, &rpmLimit, &windowStart, &windowCount,
 		&balance, &balanceAt,
 		&accountID, &planType, &quotaUsed, &quotaReset, &quotaChecked,
+		&quotaSecondaryUsed, &quotaSecondaryReset, &quotaPrimaryWindowSec, &quotaSecondaryWinSec,
 		&groupNames, &modelsCSV); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, err
@@ -910,6 +948,11 @@ func (r *channelKeyRepository) scanChannelKey(sc rowScanner) (*model.ChannelKey,
 		QuotaUsedPercent: quotaUsed,
 		QuotaResetAt:     unixToExpiresAt(quotaReset),
 		QuotaCheckedAt:   unixToExpiresAt(quotaChecked),
+
+		QuotaSecondaryUsedPercent:   quotaSecondaryUsed,
+		QuotaSecondaryResetAt:       unixToExpiresAt(quotaSecondaryReset),
+		QuotaPrimaryWindowSeconds:   quotaPrimaryWindowSec,
+		QuotaSecondaryWindowSeconds: quotaSecondaryWinSec,
 
 		// 路由分叉：与渠道级同格式（CSV），解码规则一致故复用 encodeModels/decodeModels。
 		Groups: decodeModels(groupNames),

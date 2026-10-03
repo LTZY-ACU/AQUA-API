@@ -23,9 +23,9 @@
 
 ```bash
 # 1) 在网页上 fork 本仓库，然后：
-git clone https://gitee.com/<你的用户名>/AQUA-API.git
+git clone https://github.com/<你的用户名>/AQUA-API.git
 cd AQUA-API
-git remote add upstream https://gitee.com/xiaosu4610/AQUA-API.git
+git remote add upstream https://github.com/LTZY-ACU/AQUA-API.git
 
 # 2) 从最新 main 拉出工作分支
 git fetch upstream
@@ -72,7 +72,7 @@ cd web && npm run type-check && npm run build
 
 ## 五、报告问题
 
-- Bug 与安全漏洞：优先开 Issue，模板见 `.gitee/ISSUE_TEMPLATE.md`；
+- Bug 与安全漏洞：优先开 Issue，模板见 `.github/ISSUE_TEMPLATE.md`；
   安全问题请勿在公开 Issue 中附可利用细节，写明"已复现 + 影响面"即可。
 - 功能建议：开 Issue 并标注 `enhancement`。
 

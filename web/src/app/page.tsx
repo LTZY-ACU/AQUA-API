@@ -29,11 +29,12 @@ import { Button } from '@/components/ui/Button'
 import { CodeBlock } from '@/components/ui/Display'
 import { SiteFooter } from '@/components/site/SiteFooter'
 import { SiteHeader } from '@/components/site/SiteHeader'
+import { QqGroupEntry } from '@/components/site/QqGroupEntry'
 import { useAuth } from '@/lib/auth/auth-context'
 import { useSite } from '@/lib/site/site-context'
 import { formatDiscountLabel, formatYuanPerCall, formatYuanPerMillion } from '@/utils/money'
 
-const REPO_URL = 'https://gitee.com/xiaosu4610/AQUA-API'
+const REPO_URL = 'https://github.com/LTZY-ACU/AQUA-API'
 
 /* ── 小节头：等宽编号 + 标题 + 说明 ─────────────────────── */
 
@@ -110,6 +111,7 @@ function Hero() {
                 浏览模型与价格
               </Button>
             </Link>
+            <QqGroupEntry variant="button" />
           </div>
 
           <div className="mt-7 inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-line bg-card px-3.5 py-2.5 font-mono text-[12px] text-ink-2">
@@ -338,7 +340,7 @@ function ModelPreview() {
 const PRINCIPLES: [string, string][] = [
   ['计价写得明白', '每个模型的单价摆在模型广场上，按次 / 按量 / 免费三种模式，账单可逐条核对。'],
   ['用量自己说了算', '每次调用的模型、token、耗时、状态码都留档，你随时能查，我也改不了。'],
-  ['代码是开源的', '整套网关在 Gitee / GitHub 公开，木兰宽松版；哪天我不做了，你也能自己部署一套。'],
+  ['代码是开源的', '整套网关以 MIT 许可证在 GitHub 开源；哪天我不做了，你也能自己部署一套。'],
 ]
 
 const COSTS: [string, string][] = [
@@ -394,7 +396,7 @@ function Design() {
 
 const FAQS = [
   { q: '这站能一直开着吗？', a: '我会尽力。它的成本可控，我也不靠它赚钱，没有「融资烧完就跑」的问题。真有关停那天，我会提前公告并给出自己部署的完整方案。' },
-  { q: '为什么要开源？', a: '一是让你能验证我说的都是真的；二是万一我不做了，这套东西不会跟着消失。协议是木兰宽松版（Mulan PSL v2）。' },
+  { q: '为什么要开源？', a: '一是让你能验证我说的都是真的；二是万一我不做了，这套东西不会跟着消失。协议是 MIT。' },
   { q: '免费分组的模型会收费吗？', a: '免费分组里就是不计费的，我不搞「先免费养熟再收费」那套。当然，免费范围会随上游价格调整，但改之前会在公告里说。' },
   { q: '我的调用数据会被拿去用吗？', a: '不会。日志只用于计费和排障，存在我自己的服务器上。站点的隐私政策里写明了这一点。' },
   { q: '上游不稳定怎么办？', a: '密钥池 + 自动重试 + 冷却退避：一把密钥失败自动换下一把，整条渠道不行就换渠道再试。你还是只发一次请求。' },
@@ -451,7 +453,7 @@ function Cta() {
               : '注册免费，先跑通一个请求，再决定要不要留下。'}
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Link href={isLoggedIn ? '/console' : '/register'}>
             <Button variant="primary" size="lg">
               {isLoggedIn ? '进入控制台' : '注册并获取令牌'}
@@ -463,6 +465,7 @@ function Cta() {
               阅读源码 <AppIcon name="external" size={15} />
             </Button>
           </a>
+          <QqGroupEntry variant="card" className="w-full lg:w-72" />
         </div>
       </div>
     </section>

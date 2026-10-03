@@ -39,6 +39,7 @@ const GROUPS: ShellNavGroup[] = [
     title: '业务',
     items: [
       { label: '充值订单', href: '/admin/orders', icon: 'cart' },
+      { label: '财务对账', href: '/admin/finance', icon: 'wallet' },
       { label: '订阅账号', href: '/admin/oauth', icon: 'globe' },
       { label: '令牌管理', href: '/admin/tokens', icon: 'key' },
       { label: '用户管理', href: '/admin/users', icon: 'users' },

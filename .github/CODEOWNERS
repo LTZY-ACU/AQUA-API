@@ -1,0 +1,36 @@
+# CODEOWNERS —— 代码所有者（GitHub 用它决定「谁必须审核 PR」）
+#
+# 意图（Why）：
+#   仓库托管在组织 LTZY-ACU 下，要求「main 只有维护者能落任何改动，其他人可自由建分支提 PR」。
+#   分支保护已通过「推送白名单」硬性限制只有 @maintainers 团队能推送；
+#   本文件再定义「谁必须批准」：被列出的所有者不批准，PR 就无法合入受保护分支。
+#
+# 流转（Flow）：
+#   贡献者建分支 → 发 PR → GitHub 依据本文件指派审核人 → 所有者批准后（且满足
+#   分支保护要求）才可合并入 main。
+#
+# 扩展（Extend）：
+#   团队扩大后按路径细分所有者，例如把 /web/ 交给前端团队。
+#   注意：更具体（路径更长）的规则优先；最后一条通配 `*` 作为兜底。
+
+# ── 永久由维护者把关（触及即需维护者批准）────────────────────────
+# 法务与品牌：许可证、免责声明、商标、版权声明
+/LICENSE               @LTZY-ACU/maintainers
+/NOTICE                @LTZY-ACU/maintainers
+/DISCLAIMER.md         @LTZY-ACU/maintainers
+/TRADEMARK.md          @LTZY-ACU/maintainers
+# 协作与治理规则本身
+/CODE_OF_CONDUCT.md    @LTZY-ACU/maintainers
+/GOVERNANCE.md         @LTZY-ACU/maintainers
+/CONTRIBUTING.md       @LTZY-ACU/maintainers
+/SECURITY.md           @LTZY-ACU/maintainers
+# 仓库配置与自动化（防止有人改掉保护规则或 CI）
+/.github/              @LTZY-ACU/maintainers
+# 数据库迁移：只增不改，写错会让线上升级失败
+/internal/store/migrations/  @LTZY-ACU/maintainers
+# 支付与计费：直接关系到钱
+/internal/payment/     @LTZY-ACU/maintainers
+/internal/relay/billing*.go  @LTZY-ACU/maintainers
+
+# ── 兜底：任何其它改动也需维护者审核 ─────────────────────────────
+* @LTZY-ACU/maintainers

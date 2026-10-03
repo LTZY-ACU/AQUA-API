@@ -30,8 +30,8 @@ import (
 	"net/url"
 	"testing"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/config"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/config"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // generateRSAKeyPair 现场生成一把 2048 位 RSA 密钥对，

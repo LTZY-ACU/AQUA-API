@@ -25,8 +25,8 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/crypto"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/crypto"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // newTestTokenRepo 构造一个基于临时数据库的令牌仓储，并返回底层连接用于安全断言。

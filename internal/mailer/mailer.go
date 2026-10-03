@@ -40,7 +40,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/config"
+	"github.com/LTZY-ACU/aqua-api/internal/config"
 )
 
 // 网络超时参数。

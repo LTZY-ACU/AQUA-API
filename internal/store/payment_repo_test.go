@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // newTestOrderRepo 构造订单仓储并返回用户仓储（入账需要真实用户）。
@@ -208,6 +208,83 @@ func TestPaymentOrderRepository_MarkPaid_只跃迁一次(t *testing.T) {
 	}
 	if second {
 		t.Fatal("重复标记必须返回 false（状态跃迁只允许发生一次）")
+	}
+}
+
+// TestPaymentOrderRepository_MarkPaid_已关闭订单的迟到支付必须补记 是资损回归。
+//
+// 场景：订单到期被 CloseExpired 关成"已关闭"，用户随后才真正付款。
+// 此时钱已经从用户账户扣走，若 MarkPaid 拒绝补记（旧实现只允许"待支付 → 已支付"），
+// 回调链路会走到 CreditOrder 却因状态不是"已支付"而静默返回，最终应答 200
+// 让支付平台不再重试——用户付了钱、额度永远不到账。
+func TestPaymentOrderRepository_MarkPaid_已关闭订单的迟到支付必须补记(t *testing.T) {
+	repo, userRepo, userID := newTestOrderRepo(t)
+	ctx := context.Background()
+
+	order := newPendingOrder(userID, "pay2026010100000elateee", 700, 7_000_000)
+	if err := repo.Create(ctx, order); err != nil {
+		t.Fatalf("创建订单失败: %v", err)
+	}
+	// 订单过期后被自动关闭
+	if err := repo.UpdateStatus(ctx, order.TradeNo, model.PaymentStatusClosed); err != nil {
+		t.Fatalf("关闭订单失败: %v", err)
+	}
+
+	transitioned, err := repo.MarkPaid(ctx, order.TradeNo, "third-late", "迟到回调", time.Now())
+	if err != nil {
+		t.Fatalf("迟到支付补记不应报错: %v", err)
+	}
+	if !transitioned {
+		t.Fatal("已关闭订单收到支付成功回调时必须补记为已支付，否则用户付钱拿不到额度")
+	}
+
+	credited, err := repo.CreditOrder(ctx, order.TradeNo, time.Now())
+	if err != nil {
+		t.Fatalf("入账失败: %v", err)
+	}
+	if !credited {
+		t.Fatal("补记后必须能入账")
+	}
+
+	user, err := userRepo.GetByID(ctx, userID)
+	if err != nil {
+		t.Fatalf("读取用户失败: %v", err)
+	}
+	if user.Quota != 7_000_000 {
+		t.Fatalf("额度应入账 7000000，实际 %d", user.Quota)
+	}
+}
+
+// TestPaymentOrderRepository_MarkPaid_已退款订单不得被改回已支付 锁住反向资损。
+//
+// 已退款意味着钱已经退回用户；若允许它被改回"已支付"，会对同一笔钱再入账一次。
+func TestPaymentOrderRepository_MarkPaid_已退款订单不得被改回已支付(t *testing.T) {
+	repo, _, userID := newTestOrderRepo(t)
+	ctx := context.Background()
+
+	order := newPendingOrder(userID, "pay2026010100000frefund", 500, 5000)
+	if err := repo.Create(ctx, order); err != nil {
+		t.Fatalf("创建订单失败: %v", err)
+	}
+	// 历史退款：直接置为已退款（4）
+	if err := repo.UpdateStatus(ctx, order.TradeNo, model.PaymentStatus(4)); err != nil {
+		t.Fatalf("标记退款失败: %v", err)
+	}
+
+	transitioned, err := repo.MarkPaid(ctx, order.TradeNo, "third-x", "重复回调", time.Now())
+	if err != nil {
+		t.Fatalf("不应报错: %v", err)
+	}
+	if transitioned {
+		t.Fatal("已退款订单不得被改回已支付（会把退回用户的钱再入账一次）")
+	}
+
+	got, err := repo.GetByTradeNo(ctx, order.TradeNo)
+	if err != nil {
+		t.Fatalf("读取订单失败: %v", err)
+	}
+	if got.Status != model.PaymentStatus(4) {
+		t.Fatalf("状态应保持已退款，实际 %v", got.Status)
 	}
 }
 

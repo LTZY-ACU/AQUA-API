@@ -1,0 +1,99 @@
+# 申请加入开发组（Issue 表单）
+#
+# 意图（Why）：
+#   GitHub 组织没有「用户主动申请加入」的原生功能，只支持「管理员邀请 → 用户接受」。
+#   因此这里用一条 Issue 表单把「申请」标准化：申请人提交 → 维护者审核 → 通过后由
+#   维护者在组织里发出邀请（People → Invite member）。
+#
+# 流转（Flow）：
+#   申请人填表 → Issue（标签 join-request）→ 维护者审核 → 通过则邀请入组织并加入
+#   developers 团队（write 权限）→ 申请人接受邀请 → 完成。
+#
+# 扩展（Extend）：
+#   若将来改为「先只读试用」，把审核后的团队从 developers 改为 contributors 即可，
+#   本表单无需改动。
+
+name: 申请加入开发组
+description: 申请加入 LTZY-ACU 组织，参与 AQUA-API 的开发协作
+title: "[加入申请] "
+labels: ["join-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 说明
+
+        提交后由维护者审核，**不代表一定通过**。通过后我们会向你的 GitHub 账号发出
+        组织邀请，你需要点击接受才会生效。
+
+        > 如果你只是使用中遇到问题，**不需要申请加入** —— 请加交流群或提交 Bug 报告。
+
+  - type: input
+    id: github_username
+    attributes:
+      label: GitHub 用户名
+      description: 你的 GitHub 账号名（我们据此发出组织邀请，请确保准确）
+      placeholder: 例如 xiaosu4610
+    validations:
+      required: true
+
+  - type: dropdown
+    id: role
+    attributes:
+      label: 希望参与的方向
+      options:
+        - 后端（Go / 网关与计费）
+        - 前端（Next.js / 界面与交互）
+        - 文档与翻译
+        - 测试与质量
+        - 运维与部署
+        - 其它（请在下方说明）
+    validations:
+      required: true
+
+  - type: textarea
+    id: experience
+    attributes:
+      label: 相关经验与技能
+      description: 简要说明你熟悉的技术栈，以及与本项目相关的经验
+      placeholder: 例如：5 年 Go 后端，做过 API 网关与计费系统；熟悉 Next.js 与 Tailwind。
+    validations:
+      required: true
+
+  - type: textarea
+    id: plan
+    attributes:
+      label: 你打算做什么
+      description: 具体一点更好（要改哪个模块、解决什么问题）。泛泛的「想学习」较难通过。
+      placeholder: 例如：修复模型广场在移动端的筛选器错位，并补一条前端测试。
+    validations:
+      required: true
+
+  - type: input
+    id: weekly_time
+    attributes:
+      label: 每周可投入时间
+      placeholder: 例如 每周 5~10 小时
+    validations:
+      required: true
+
+  - type: textarea
+    id: other_projects
+    attributes:
+      label: 其它可参考的产出（可选）
+      description: 你的仓库、PR、文章等链接，便于我们了解你的水平
+      placeholder: 例如 https://github.com/xxx/yyy
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: agreements
+    attributes:
+      label: 确认事项
+      options:
+        - label: 我已阅读并同意《使用者须知与免责声明》与《品牌与商标声明》
+          required: true
+        - label: 我理解本仓库的 main 分支受保护，我只会提交到自己创建的分支并走 PR
+          required: true
+        - label: 我理解本项目按 MIT 许可证开源，我的贡献也将以同样许可证授权
+          required: true

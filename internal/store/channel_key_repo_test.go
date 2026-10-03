@@ -24,8 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/crypto"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/crypto"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // newTestKeyRepo 构造基于临时数据库的密钥池仓储，并返回底层连接用于安全断言。
@@ -683,6 +683,82 @@ func TestChannelKey_UpdateRouting_往返与清空(t *testing.T) {
 
 	// 更新不存在的凭据 → 返回 not found
 	if err := repo.UpdateRouting(ctx, 999999, []string{"vip"}, nil); !errors.Is(err, model.ErrChannelKeyNotFound) {
+		t.Fatalf("更新不存在的凭据应返回 ErrChannelKeyNotFound，实际 %v", err)
+	}
+}
+
+// TestChannelKey_额度窗口_双窗口落库往返 验证迁移 0048 新增列（主/次窗口 + 窗口时长）的读写。
+//
+// 重点：
+//  1. 新导入的凭据两个窗口都应落成"未探测"(-1)，而不是 0%（否则界面会显示"额度充足"）；
+//  2. 写入的 7 个字段必须能原样读回（列清单与扫描顺序一致，否则会静默错位）；
+//  3. 置回未知时重置时间一并清空，避免依据过期数据判定"是否恢复"。
+func TestChannelKey_额度窗口_双窗口落库往返(t *testing.T) {
+	repo, _ := newTestKeyRepo(t)
+	ctx := context.Background()
+
+	if _, _, err := repo.ReplaceAll(ctx, 1, []string{"nvapi-quota"}, nil); err != nil {
+		t.Fatalf("导入失败: %v", err)
+	}
+	keys, err := repo.ListByChannel(ctx, 1)
+	if err != nil || len(keys) != 1 {
+		t.Fatalf("读取密钥失败: %v", err)
+	}
+	if keys[0].QuotaUsedPercent != model.QuotaUsedPercentUnknown ||
+		keys[0].QuotaSecondaryUsedPercent != model.QuotaUsedPercentUnknown {
+		t.Fatalf("新导入的额度应为未知(-1): primary=%d secondary=%d",
+			keys[0].QuotaUsedPercent, keys[0].QuotaSecondaryUsedPercent)
+	}
+	if keys[0].QuotaKnown() || keys[0].QuotaSecondaryKnown() {
+		t.Fatal("新导入的凭据不应被判定为已探测")
+	}
+	id := keys[0].ID
+
+	primaryReset := time.Now().Add(2 * time.Hour).Truncate(time.Second)
+	secondaryReset := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+	if err := repo.UpdateQuota(ctx, id, model.QuotaWindows{
+		PrimaryUsedPercent:     70,
+		PrimaryResetAt:         primaryReset,
+		PrimaryWindowSeconds:   18000,
+		SecondaryUsedPercent:   88,
+		SecondaryResetAt:       secondaryReset,
+		SecondaryWindowSeconds: 604800,
+	}); err != nil {
+		t.Fatalf("写入额度快照失败: %v", err)
+	}
+
+	got, _ := repo.ListByChannel(ctx, 1)
+	k := got[0]
+	if k.QuotaUsedPercent != 70 || k.QuotaResetAt.Unix() != primaryReset.Unix() || k.QuotaPrimaryWindowSeconds != 18000 {
+		t.Fatalf("主窗口未正确落地: %+v", k)
+	}
+	if k.QuotaSecondaryUsedPercent != 88 || k.QuotaSecondaryResetAt.Unix() != secondaryReset.Unix() || k.QuotaSecondaryWindowSeconds != 604800 {
+		t.Fatalf("次窗口未正确落地: %+v", k)
+	}
+	if !k.QuotaKnown() || !k.QuotaSecondaryKnown() {
+		t.Fatal("写入后应判定为已探测")
+	}
+
+	// 置回未知：两个窗口一起恢复"未探测"，窗口时长与重置时间清零
+	if err := repo.UpdateQuota(ctx, id, model.QuotaWindows{
+		PrimaryUsedPercent:   model.QuotaUsedPercentUnknown,
+		SecondaryUsedPercent: model.QuotaUsedPercentUnknown,
+	}); err != nil {
+		t.Fatalf("置回未知失败: %v", err)
+	}
+	got, _ = repo.ListByChannel(ctx, 1)
+	if got[0].QuotaKnown() || got[0].QuotaSecondaryKnown() {
+		t.Fatalf("置回未知后不应判定为已探测: %+v", got[0])
+	}
+	if !got[0].QuotaResetAt.IsZero() || !got[0].QuotaSecondaryResetAt.IsZero() {
+		t.Fatal("置回未知时应一并清空重置时间（避免依据过期数据判定是否恢复）")
+	}
+	if got[0].QuotaPrimaryWindowSeconds != 0 || got[0].QuotaSecondaryWindowSeconds != 0 {
+		t.Fatal("未提供窗口时长时应落成 0")
+	}
+
+	// 更新不存在的凭据 → 返回 not found
+	if err := repo.UpdateQuota(ctx, 999999, model.QuotaWindows{PrimaryUsedPercent: 1}); !errors.Is(err, model.ErrChannelKeyNotFound) {
 		t.Fatalf("更新不存在的凭据应返回 ErrChannelKeyNotFound，实际 %v", err)
 	}
 }

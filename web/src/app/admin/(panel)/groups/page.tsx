@@ -10,6 +10,8 @@
  *
  * 扩展（Extend）：
  *   新增分组字段：同步 types.ts 的 ModelGroup / ModelGroupPayload 与弹层表单。
+ *   rpm_limit 后端尚未进入 ModelGroupPayload，这里用本地交叉类型 GroupWithRpm 承载，
+ *   接口沿用现有分组创建/更新，请求体多带一个 rpm_limit（见文件内注释）。
  */
 'use client'
 
@@ -25,12 +27,21 @@ import { Modal, ConfirmDialog } from '@/components/ui/Modal'
 import { useToast } from '@/lib/toast/toast-context'
 import { centsToYuan, formatNumber, yuanToCents } from '@/utils/format'
 
+/**
+ * 分组 + 后端新增的每分钟请求上限字段。
+ *
+ * 契约（后端将落地）：model_groups.rpm_limit INTEGER，0 = 不限。
+ * 为什么不改 types.ts 的 ModelGroup：该共享类型被大量页面引用，本轮并行开发期间
+ * 不宜改动；此处以交叉类型的方式局部承载，接口响应多出的字段天然被忽略。
+ */
+type GroupWithRpm = ModelGroup & { rpm_limit?: number }
+
 export default function AdminGroupsPage() {
-  const [items, setItems] = useState<ModelGroup[]>([])
+  const [items, setItems] = useState<GroupWithRpm[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [editing, setEditing] = useState<ModelGroup | null | 'new'>(null)
-  const [deleteTarget, setDeleteTarget] = useState<ModelGroup | null>(null)
+  const [editing, setEditing] = useState<GroupWithRpm | null | 'new'>(null)
+  const [deleteTarget, setDeleteTarget] = useState<GroupWithRpm | null>(null)
   const { toast, toastError } = useToast()
 
   // 分组数量极少，后端不分页，一次拉全量
@@ -63,7 +74,7 @@ export default function AdminGroupsPage() {
     }
   }
 
-  const columns: Column<ModelGroup>[] = [
+  const columns: Column<GroupWithRpm>[] = [
     { title: '标识', render: (row) => <span className="font-medium text-ink">{row.name}</span> },
     { title: '名称', render: (row) => <span className="text-ink-2">{row.label}</span> },
     {
@@ -72,6 +83,15 @@ export default function AdminGroupsPage() {
       render: (row) => (
         <span className="text-ink-2">
           {row.ratio} = {formatNumber(row.ratio / 100)} 倍
+        </span>
+      ),
+    },
+    {
+      title: 'RPM',
+      align: 'right',
+      render: (row) => (
+        <span className="text-ink-2">
+          {row.rpm_limit && row.rpm_limit > 0 ? `${formatNumber(row.rpm_limit)} / 分` : '不限'}
         </span>
       ),
     },
@@ -179,7 +199,7 @@ function GroupFormModal({
   onSaved,
 }: {
   open: boolean
-  group: ModelGroup | null
+  group: GroupWithRpm | null
   onClose: () => void
   onSaved: () => void
 }) {
@@ -190,6 +210,7 @@ function GroupFormModal({
   const [description, setDescription] = useState('')
   const [enabled, setEnabled] = useState(true)
   const [unlockYuan, setUnlockYuan] = useState('0')
+  const [rpmLimit, setRpmLimit] = useState('0')
   const [adminOnly, setAdminOnly] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -202,6 +223,7 @@ function GroupFormModal({
     setEnabled(group?.enabled ?? true)
     // 解锁门槛以「分」存取，表单按「元」输入，在边界上换算
     setUnlockYuan(String(centsToYuan(group?.unlock_min_recharge_cents ?? 0)))
+    setRpmLimit(String(group?.rpm_limit ?? 0))
     setAdminOnly(group?.admin_only ?? false)
   }, [open, group])
 
@@ -221,22 +243,31 @@ function GroupFormModal({
       toastError('解锁门槛必须是 ≥0 的数字（元）')
       return
     }
+    // RPM 是每分钟请求上限的整数计数，0 表示不限；小数没有意义
+    const rpmValue = rpmLimit.trim() === '' ? 0 : Number(rpmLimit)
+    if (!Number.isInteger(rpmValue) || rpmValue < 0) {
+      toastError('RPM 上限必须是 ≥0 的整数（0 = 不限）')
+      return
+    }
     setLoading(true)
     try {
       if (group) {
         // 标识创建后不可修改；其余字段用户显式选择，全量提交
-        const payload: Partial<ModelGroupPayload> = {
+        // rpm_limit 不在 ModelGroupPayload 中，故用交叉类型承载：接口复用现有更新接口，
+        // 请求体多带一个 rpm_limit（后端落地后即生效；未落地时被忽略）。
+        const payload: Partial<ModelGroupPayload> & { rpm_limit: number } = {
           display_name: displayName.trim(),
           ratio: ratioValue,
           description: description.trim(),
           enabled,
           unlock_min_recharge_cents: cents,
           admin_only: adminOnly,
+          rpm_limit: rpmValue,
         }
         await updateGroup(group.id, payload)
         toast('分组已更新')
       } else {
-        const payload: ModelGroupPayload = {
+        const payload: ModelGroupPayload & { rpm_limit: number } = {
           name: nameValue.toLowerCase(),
           display_name: displayName.trim(),
           ratio: ratioValue,
@@ -244,6 +275,7 @@ function GroupFormModal({
           enabled,
           unlock_min_recharge_cents: cents,
           admin_only: adminOnly,
+          rpm_limit: rpmValue,
         }
         await createGroup(payload)
         toast('分组已创建')
@@ -269,6 +301,10 @@ function GroupFormModal({
 
         <Field label="计费倍率" help="100 = 1.0 倍，150 = 1.5 倍；实际扣费 = 基础额度 × ratio / 100">
           <Input value={ratio} onChange={(e) => setRatio(e.target.value)} type="number" min={0} step="1" placeholder="100" />
+        </Field>
+
+        <Field label="RPM 上限" help="本分组每分钟允许的请求数上限；0 = 不限（默认）">
+          <Input value={rpmLimit} onChange={(e) => setRpmLimit(e.target.value)} type="number" min={0} step="1" placeholder="0" />
         </Field>
 
         <Field label="描述">

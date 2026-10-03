@@ -24,6 +24,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -87,13 +88,20 @@ type UsageLog struct {
 	// 计算口径：CompletionTokens / (总耗时 − 首 token 延迟)。
 	// 用总耗时会随回答变长而低估生成速度，因此必须扣除排队与首包时间。
 	TokensPerSecond float64
-	Quota           int64     // 本次消耗额度（内部单位）
-	LatencyMS       int       // 总耗时（毫秒）
-	IsStream        bool      // 是否流式请求
-	StatusCode      int       // 回写给客户端的状态码
-	Error           string    // 失败原因（已脱敏、简短）
-	RequestID       string    // 请求标识
-	CreatedAt       time.Time // 记录时间
+	Quota           int64  // 本次消耗额度（内部单位）
+	LatencyMS       int    // 总耗时（毫秒）
+	IsStream        bool   // 是否流式请求
+	StatusCode      int    // 回写给客户端的状态码
+	Error           string // 失败原因（已脱敏、简短）
+	RequestID       string // 请求标识
+	// PriceVersion 是本次计费所依据的【定价版本快照标识】（迁移 0047）。
+	//
+	// 为什么需要它：定价规则是就地更新的，改价之后历史账单无法再说明"当时按什么价算"。
+	// 记下当时的规则 ID 与版本时间（见 PriceSnapshotVersion），即可在事后定位到
+	// "这条账走的是哪一版价格"，为"改价后旧账仍可按旧价复算"提供锚点。
+	// 空串表示未采集（历史数据，或写入方尚未接线）。
+	PriceVersion string
+	CreatedAt    time.Time // 记录时间
 }
 
 // Validate 校验日志的必要字段。
@@ -238,6 +246,74 @@ type ModelFailureStat struct {
 	Model      string `json:"model"`       // 模型名
 	StatusCode int    `json:"status_code"` // 失败状态码（>= 400）
 	Count      int64  `json:"count"`       // 该 (模型, 状态码) 组合的出现次数
+}
+
+// 对账维度取值（真实成本对账）。
+//
+// 集中定义为常量：这些字符串会同时出现在查询参数与响应里，拼错时不会编译报错，
+// 只会静默回退到默认维度——属于最典型的"传了却没生效"。
+const (
+	// ReconcileDimGroup 按令牌归属分组聚合（usage_logs 不落分组，实现侧按 token 关联）。
+	ReconcileDimGroup = "group"
+	// ReconcileDimChannel 按上游渠道聚合。
+	ReconcileDimChannel = "channel"
+	// ReconcileDimModel 按模型聚合。
+	ReconcileDimModel = "model"
+)
+
+// IsValidReconcileDim 判断对账维度取值是否合法。
+func IsValidReconcileDim(dim string) bool {
+	switch dim {
+	case ReconcileDimGroup, ReconcileDimChannel, ReconcileDimModel:
+		return true
+	default:
+		return false
+	}
+}
+
+// UsageReconciliationRow 是「真实成本对账」在某一维度上的一行结果。
+//
+// 金额一律为整数【额度】单位（全站统一记账单位）：毛利 = 收入 − 成本，一次减法即可，
+// 不使用浮点参与累加，避免"用了一万次之后差一点"的账目漂移。
+type UsageReconciliationRow struct {
+	Dim   string // 维度：group / channel / model
+	Key   string // 维度取值（分组名 / 渠道 ID 字符串 / 模型名）
+	Label string // 展示标签（渠道维度为渠道名，其余与 Key 相同）
+	// Requests 是该维度下的成功请求数（口径见 store 层实现：仅 2xx/3xx）。
+	Requests     int64
+	RevenueQuota int64 // 收入额度（用户实扣额度合计，取自 usage_logs.quota）
+	// CostQuota 是成本额度（按上游进价估算）。
+	//
+	// 它按 (渠道, 上游模型名) 匹配 channel_model_costs 后逐行估算：
+	// 按次规则走"次数 × 每次单价"，因此按次计费渠道的成本不会被算成 0。
+	CostQuota int64
+	// PricedRequests / UnpricedRequests 分别是"能/不能估算成本"的请求数。
+	//
+	// 未录进价的请求成本按 0 计，但必须用这两个字段把"未知"显式暴露——
+	// 否则对账表会看起来"全是利润"，与真实账目背离（与密钥核算同一口径）。
+	PricedRequests   int64
+	UnpricedRequests int64
+}
+
+// GrossProfitQuota 返回毛利额度（收入 − 成本）。
+func (r UsageReconciliationRow) GrossProfitQuota() int64 {
+	return r.RevenueQuota - r.CostQuota
+}
+
+// PriceSnapshotVersion 生成一条定价规则的版本标识（形如 "123@1727000000"）。
+//
+// 用途：写入 usage_logs.price_version，作为"这条账按哪一版价格结算"的锚点。
+// 规则 ID + 规则更新时间能唯一定位到某一次改价之前/之后的规则状态；
+// 二者缺一时退化为能拿到的部分，【绝不返回错误】——版本锚点是记账的附加信息，
+// 不能因为它而阻断任何一次调用。
+func PriceSnapshotVersion(ruleID uint64, updatedAt time.Time) string {
+	if ruleID == 0 {
+		return ""
+	}
+	if updatedAt.IsZero() {
+		return strconv.FormatUint(ruleID, 10)
+	}
+	return strconv.FormatUint(ruleID, 10) + "@" + strconv.FormatInt(updatedAt.Unix(), 10)
 }
 
 // UsageLogRepository 定义调用日志的持久化与聚合操作。

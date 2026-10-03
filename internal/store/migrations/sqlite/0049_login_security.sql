@@ -1,4 +1,4 @@
--- 迁移 0043：登录安全字段（连续失败锁定 + 最近登录来源 + 会话来源与二次验证）
+-- 迁移 0049：登录安全字段（连续失败锁定 + 最近登录来源 + 会话来源与二次验证）
 --
 -- 意图（Why）：
 --   此前登录安全只有"进程内 IP/账号限流"三道闸：重启清零、不落库、不跨实例，
@@ -42,6 +42,13 @@
 --   scanSession / sessionRepository.Create 四处（见 user_repo.go 头部约定）。
 
 -- 用户侧：登录失败计数与锁定截止
+--
+-- 序号说明（合并时重排）：
+--   本脚本原为 0043 号，与另一条开发线上已发布的同名序号撞车。
+--   迁移版本号必须全局唯一（store.loadMigrations 发现重复会直接让进程启动失败），
+--   且已发布的序号不得改动（线上库的 schema_migrations 已经记过号），
+--   因此【保留对方已发布的 0043–0048，把本条顺延到 0049 之后】。
+
 ALTER TABLE users ADD COLUMN failed_logins  INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN locked_until   INTEGER NOT NULL DEFAULT 0;
 -- 用户侧：最近一次成功登录的来源（异地提醒基准）

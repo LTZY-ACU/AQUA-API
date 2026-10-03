@@ -50,7 +50,7 @@ import (
 	"sync"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/netguard"
+	"github.com/LTZY-ACU/aqua-api/internal/netguard"
 )
 
 // Vertex 服务账号鉴权相关常量。

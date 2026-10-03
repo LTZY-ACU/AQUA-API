@@ -26,11 +26,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log/slog"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/server/middleware"
+	"github.com/LTZY-ACU/aqua-api/internal/config"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
 )
 
 // loginUsernameKey 是登录接口的账号维度限流键（安全审计 P2-4）。
@@ -116,6 +120,10 @@ func (s *Server) registerRoutes() {
 	// 未登录或不带会话则完全按公开结果返回，与从前逐字一致。
 	api.GET("/models", middleware.SessionAuthOptional(s.deps.Sessions, s.deps.Users), s.handleModelPlaza)
 
+	// 公开定价试算（无需登录）：给定模型/分组/用量，返回折算后的预估费用。
+	// 只读对外的售价规则，不含任何上游成本信息；金额按站点兑换比例换算为元（微元）。
+	api.GET("/models/quote", s.handleModelQuote)
+
 	// 站点公告（无需登录）：前台横幅据此展示当前生效的公告。
 	api.GET("/announcements", s.handlePublicListAnnouncements)
 
@@ -196,6 +204,8 @@ func (s *Server) registerRoutes() {
 	portal := authed.Group("/user")
 	portal.GET("/tokens", s.handleMyListTokens)
 	portal.POST("/tokens", s.handleMyCreateToken)
+	// 取明文密钥（创建弹层没复制/复制失败时的正式找回入口）；归属校验在处理器内。
+	portal.GET("/tokens/:id/key", s.handleMyTokenKey)
 	portal.PATCH("/tokens/:id", s.handleMyUpdateToken)
 	portal.DELETE("/tokens/:id", s.handleMyDeleteToken)
 	// 可选分组（带"当前用户是否已解锁"标记）：令牌页的"所属分组"下拉据此置灰未解锁项。
@@ -232,6 +242,23 @@ func (s *Server) registerRoutes() {
 
 	// ── 管理后台（需管理员）──────────────────────────────────────
 	admin := authed.Group("/admin")
+
+	// 管理面网络边界白名单（可选）：必须在 RequireAdmin 之前。
+	//
+	// 顺序理由（为什么放在身份鉴权之前）：
+	//  1) 白名单判断只依赖来源 IP，与"你是谁"无关；先在网络层拒绝非白名单来源，
+	//     可省掉一次鉴权开销（查会话 + 载入用户 + 角色判断，含数据库往返）；
+	//  2) 对公网暴露的后台，未授权来源本就不该触碰到任何鉴权代码路径。
+	// 语义：未配置（空列表）时不挂任何中间件，行为与从前逐字一致。
+	if prefixes, err := config.ParseAdminAllowCIDRs(s.deps.Config.AdminAllowCIDRs); err != nil {
+		// fail-closed 兜底：正常情况下 config.Load 的 Validate 已拦截非法 CIDR 并让进程退出，
+		// 走不到这里。若真走到，宁可 403 拒绝全部后台请求，也绝不放行到鉴权与业务层。
+		slog.Error("管理面 CIDR 白名单解析失败，已拒绝全部后台请求", "error", err)
+		admin.Use(denyAllAdminRequests)
+	} else if len(prefixes) > 0 {
+		admin.Use(middleware.RequireAdminCIDR(prefixes))
+	}
+
 	admin.Use(middleware.RequireAdmin())
 	// 审计中间件：记录后台所有写操作（POST/PUT/PATCH/DELETE）。
 	// 必须挂在 RequireAdmin 之后，才能从上下文取到已鉴权的管理员身份；
@@ -285,6 +312,8 @@ func (s *Server) registerRoutes() {
 
 	admin.GET("/tokens", s.handleAdminListTokens)
 	admin.POST("/tokens", s.handleAdminCreateToken)
+	// 取明文密钥（后台代客户复制/找回）；RequireAdmin 已挂在 /admin 分组上。
+	admin.GET("/tokens/:id/key", s.handleAdminTokenKey)
 	admin.PUT("/tokens/:id", s.handleAdminUpdateToken)
 	admin.DELETE("/tokens/:id", s.handleAdminDeleteToken)
 
@@ -427,6 +456,12 @@ func (s *Server) registerRoutes() {
 	admin.POST("/orders/:tradeNo/mark-paid", s.handleAdminMarkOrderPaid)
 	admin.POST("/orders/:tradeNo/close", s.handleAdminCloseOrder)
 
+	// 真实成本对账（收入 − 上游成本 = 毛利）：按 分组 / 渠道 / 模型 聚合。
+	//
+	// 收入取自 usage_logs（用户实扣额度），成本按 (渠道, 上游模型名) 匹配进价估算，
+	// 按次计费渠道同样计入（否则面板会显示"全是利润"，与真实账目背离）。
+	admin.GET("/finance/reconciliation", s.handleAdminFinanceReconciliation)
+
 	// ── 模型 API（访问令牌鉴权）──────────────────────────────────
 	//
 	// gin.WrapF 把标准库风格的 http.HandlerFunc 适配为 gin 处理器。
@@ -436,6 +471,18 @@ func (s *Server) registerRoutes() {
 	// 第三个参数（计费组件）用于"请求前额度预扣"：额度不足直接 429，
 	// 避免并发请求全部通过检查后再各自扣费导致超支。
 	v1.Use(middleware.TokenAuth(s.deps.Tokens, s.deps.Users, s.deps.Billing))
+	// 分组 RPM 限流：按"本次请求所属分组"做固定 1 分钟窗口计数（见 middleware.GroupRPMLimiter）。
+	//
+	// 挂在 TokenAuth 之后：分组来自 TokenAuth 写入 request context 的值。
+	// 挂在敏感词过滤之前：超限的请求在读到请求体之前就被拒绝，省掉一次正文扫描。
+	// 默认分组 rpm_limit=0（不限）时"零成本"通过，行为与引入前逐字一致。
+	//
+	// 同一个中间件实例同时挂到 /v1 与 /v1beta：两条协议共用一张"分组 × 分钟"计数表，
+	// 否则用户可以改走另一协议绕过限流，速率上限形同虚设。
+	groupRPM := s.buildGroupRPMMiddleware()
+	if groupRPM != nil {
+		v1.Use(groupRPM)
+	}
 	// 内容合规过滤：在【鉴权之后、转发之前】扫描请求正文，命中敏感词即拒绝。
 	//
 	// 放在鉴权之后的原因：过滤本身要读完整请求体，未鉴权的请求没必要为其付出这个成本；
@@ -455,6 +502,14 @@ func (s *Server) registerRoutes() {
 	// 只提供这个端点，对 /v1/chat/completions 一律 404。支持它才能把这些
 	// 模型真正用起来，否则它们在清单里等于"上架了但调不通"。
 	v1.POST("/embeddings", gin.WrapF(s.deps.Relay.ServeEmbeddings))
+	// 图像 / 音频类入站端点：与对话接口共用同一套令牌鉴权、分组路由、密钥池、
+	// 失败重试与计费（见 relay/media.go）。它们是"非文本"的转发变体——
+	// 图像请求/响应为 JSON，TTS 响应为二进制音频流，ASR 入参为 multipart/form-data，
+	// 网关一律按原始字节透传（含 Content-Type）。
+	v1.POST("/images/generations", gin.WrapF(s.deps.Relay.ServeImageGenerations))
+	v1.POST("/audio/speech", gin.WrapF(s.deps.Relay.ServeAudioSpeech))
+	v1.POST("/audio/transcriptions", gin.WrapF(s.deps.Relay.ServeAudioTranscriptions))
+	v1.POST("/audio/translations", gin.WrapF(s.deps.Relay.ServeAudioTranslations))
 	// Anthropic Messages 协议：Claude 官方 SDK、Claude Code 等客户端默认走这里。
 	// 网关内部会把请求转换为 OpenAI 格式再转发，响应再转换回 Anthropic 格式。
 	v1.POST("/messages", gin.WrapF(s.deps.Relay.ServeAnthropicMessages))
@@ -472,7 +527,49 @@ func (s *Server) registerRoutes() {
 	// 因此用通配段承接，由适配器自行解析路径。
 	gemini := r.Group("/v1beta")
 	gemini.Use(middleware.TokenAuth(s.deps.Tokens, s.deps.Users, s.deps.Billing))
+	// Gemini 原生协议复用同一个分组 RPM 限流实例（与 /v1 共享计数，避免绕过）。
+	if groupRPM != nil {
+		gemini.Use(groupRPM)
+	}
 	// Gemini 原生协议同样受内容合规过滤约束（同一个组件，同一份词表）。
 	gemini.Use(s.sensitiveFilter.Middleware())
 	gemini.POST("/models/*action", gin.WrapF(s.deps.Relay.ServeGeminiGenerate))
+}
+
+// buildGroupRPMMiddleware 构造「分组 RPM 限流」中间件；未配置分组仓储时返回 nil。
+//
+// registerRoutes 只在启动时执行一次，因此这里构造的实例在整个进程生命周期内唯一，
+// 供 /v1 与 /v1beta 共用（见调用处的说明）。
+func (s *Server) buildGroupRPMMiddleware() gin.HandlerFunc {
+	if s.deps.Groups == nil {
+		return nil
+	}
+	return middleware.NewGroupRPMLimiter(s.deps.Groups, s.defaultGroupForRPM()).Middleware()
+}
+
+// defaultGroupForRPM 返回限流使用的默认分组名（与计费默认分组保持一致）。
+//
+// 必须与计费/路由的默认分组同源，否则不带分组的请求会"按 A 组计费、按 B 组限流"。
+func (s *Server) defaultGroupForRPM() string {
+	if s.deps.Billing != nil {
+		if group := s.deps.Billing.DefaultGroup(); group != "" {
+			return group
+		}
+	}
+	return model.DefaultGroupName
+}
+
+// denyAllAdminRequests 是白名单配置解析失败时的 fail-closed 兜底中间件：拒绝一切后台请求。
+//
+// 只在 config.ParseAdminAllowCIDRs 意外失败时挂载（正常应由启动校验拦截并让进程退出）。
+// 之所以"全拒"而不是"全放"：白名单配置损坏时放行，等于把后台直接暴露到公网，
+// 后果远比"后台暂时不可用"严重。
+func denyAllAdminRequests(c *gin.Context) {
+	c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+		"error": gin.H{
+			"message": "管理后台访问白名单配置无效，已拒绝全部请求（请检查 " + config.EnvPrefix + "ADMIN_ALLOW_CIDRS）",
+			"type":    "permission_error",
+			"code":    "ip_not_allowed",
+		},
+	})
 }

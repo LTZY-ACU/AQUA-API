@@ -270,6 +270,13 @@ type ReferralSettings struct {
 	CheckinEnabled bool
 	// CheckinDailyQuota 是每次签到发放的额度（0 表示只记天数、不发额度）。
 	CheckinDailyQuota int64
+	// MonthlyRewardCapQuota 是单个邀请人每月可获得的返利额度上限（0 = 不限）。
+	//
+	// 为什么需要它：返利是从利润里出的纯成本，而 6 折代理档的净利本就薄；
+	// 不设上限时，一个高流水代理的返利会逐笔侵蚀掉那点毛利。
+	// 上限按"月"而不是"累计"，因为代理的流水是持续的——累计上限会让
+	// 长期合作的大代理在几个月后彻底拿不到返利，违背"代理拿货"的初衷。
+	MonthlyRewardCapQuota int64
 }
 
 // 邀请返利 / 签到相关数值的取值上限。
@@ -286,6 +293,8 @@ const (
 	// 这些值会展示在页脚与协议页，超长会把版式撑破；同时它们来自后台表单，
 	// 设上限也是防止有人在设置里塞入异常内容（例如一整段 HTML）。
 	maxComplianceFieldLen = 200
+	// SettingKeyReferralMonthlyCap 是单月返利上限的存储键。
+	SettingKeyReferralMonthlyCap = "referral_monthly_cap_quota"
 )
 
 // TruncateComplianceField 归一化一个合规信息字段：裁剪空白并按字符数截断。
@@ -564,6 +573,7 @@ func (s SiteSettings) ToMap() map[string]string {
 		SettingKeyReferralRechargeRatio: strconv.Itoa(s.Referral.RechargeRatio),
 		SettingKeyCheckinEnabled:        strconv.FormatBool(s.Referral.CheckinEnabled),
 		SettingKeyCheckinDailyQuota:     strconv.FormatInt(s.Referral.CheckinDailyQuota, 10),
+		SettingKeyReferralMonthlyCap:    strconv.FormatInt(s.Referral.MonthlyRewardCapQuota, 10),
 
 		SettingKeySensitiveFilterEnabled: strconv.FormatBool(s.Safeguard.SensitiveFilterEnabled),
 
@@ -676,6 +686,11 @@ func loadReferralSettings(target *ReferralSettings, values map[string]string) {
 	if v, ok := values[SettingKeyCheckinDailyQuota]; ok {
 		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil && parsed >= 0 && parsed <= maxReferralQuota {
 			target.CheckinDailyQuota = parsed
+		}
+	}
+	if v, ok := values[SettingKeyReferralMonthlyCap]; ok {
+		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil && parsed >= 0 && parsed <= maxReferralQuota {
+			target.MonthlyRewardCapQuota = parsed
 		}
 	}
 }

@@ -82,6 +82,27 @@ html.dark {
   color-scheme: dark;
 }
 
+/* ── 深蓝·配色：与深色同为【暗色语义】，只把色值换成海军蓝 ──────────
+   为什么同时挂 .dark 再加 data-theme：
+     全站的暗色适配（dark: 工具类、color-scheme、图表按 isDark 取色）都判定在
+     .dark 上。深蓝若另起一套语义，就得逐个组件补一遍适配，必然漏。
+     这里让深蓝「复用暗色语义、只换色值」——选择器特异度 (0,2,1) 高于
+     html.dark 的 (0,1,1)，因此无需 !important，也不依赖声明顺序。
+   注意：必须给出 code-bg/code-fg，否则代码块会与页面底撞色。 */
+html.dark[data-theme="navy"] {
+  --color-surface: #0a1424;      /* 页面底：深海军蓝 */
+  --color-card: #0f1c30;         /* 卡片/面板底 */
+  --color-ink: #e3ecf7;          /* 主文字 */
+  --color-ink-2: #93a8c4;        /* 次文字 */
+  --color-ink-3: #5f7691;        /* 弱文字/占位 */
+  --color-line: #1a2a42;         /* 描边 */
+  --color-line-2: #263a56;       /* 强调描边 */
+  --color-brand: #38bdf8;        /* 品牌强调：天蓝（深底上做链接与强调） */
+  --color-on-brand: #052235;     /* 亮蓝底上用深墨字 */
+  --color-code-bg: #060f1c;      /* 代码块/终端：比页面底更深，保持「深底浅字」 */
+  --color-code-fg: #d7e6f5;
+}
+
 /* 基础层：页面底、默认文字、RTL 支持 */
 html {
   scroll-behavior: smooth;

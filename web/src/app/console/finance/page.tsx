@@ -2,6 +2,8 @@
  *
  * 意图（Why）：
  *   汇总卡（余额/消费/充值/返利）+ 返利流水与订单记录，用户对账不必来回翻页面。
+ *   待支付的订单额外给出「继续支付」：用户关掉收银台后仍可回到这里续付，
+ *   否则一笔未付订单只能作废重下，体验上就像"支付不能用了"。
  */
 'use client'
 
@@ -19,6 +21,9 @@ import { formatDateTime } from '@/utils/format'
 import { formatYuanFromQuota } from '@/utils/money'
 
 const PAGE_SIZE = 20
+
+/** 订单状态（与后端 PaymentStatus 对应）：1 待支付 / 2 已支付 / 3 已关闭 / 4 已退款 */
+const STATUS_PENDING = 1
 
 export default function ConsoleFinancePage() {
   const { refreshUser } = useAuth()
@@ -70,6 +75,24 @@ export default function ConsoleFinancePage() {
       ),
     },
     { title: '时间', render: (row) => <span className="text-ink-2">{formatDateTime(row.created_at)}</span> },
+    {
+      title: '操作',
+      align: 'right',
+      render: (row) =>
+        row.status === STATUS_PENDING && row.pay_url ? (
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = row.pay_url
+            }}
+            className="text-[13px] text-brand hover:underline"
+          >
+            继续支付
+          </button>
+        ) : (
+          <span className="text-ink-3">—</span>
+        ),
+    },
   ]
 
   return (

@@ -19,16 +19,19 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchModelPlaza } from '@/api/site'
 import type { ModelPlaza, PlazaModel, PlazaPrice, PlazaViewer } from '@/api/types'
 import { AppIcon } from '@/components/AppIcon'
-import { Badge, EmptyState, Skeleton, Tabs } from '@/components/ui/Display'
-import { Modal } from '@/components/ui/Modal'
+import { ModelDetailModal } from '@/components/plaza/ModelDetailModal'
+import { priceSummaryLabel } from '@/components/plaza/pricing'
 import { SiteFooter } from '@/components/site/SiteFooter'
 import { SiteHeader } from '@/components/site/SiteHeader'
+import { Badge, EmptyState, Skeleton, Tabs } from '@/components/ui/Display'
+import { Button } from '@/components/ui/Button'
 import { useSite } from '@/lib/site/site-context'
-import { formatDiscountLabel, formatYuanPerCall, formatYuanPerMillion } from '@/utils/money'
+import { formatDiscountLabel } from '@/utils/money'
 import { vendorLabel, vendorOf, vendorTone } from '@/utils/vendor'
 
 export default function ModelPlazaPage() {
   const [data, setData] = useState<ModelPlaza | null>(null)
+  const [error, setError] = useState(false)
   const [group, setGroup] = useState('all')
   const [keyword, setKeyword] = useState('')
   const [selected, setSelected] = useState<PlazaModel | null>(null)
@@ -37,8 +40,11 @@ export default function ModelPlazaPage() {
     try {
       const result = await fetchModelPlaza({ group: group === 'all' ? undefined : group, keyword: keyword || undefined })
       setData(result)
+      setError(false)
     } catch {
+      // 失败必须让用户看得见并能重试，而不是一直停在加载骨架（会让人以为页面卡死）
       setData(null)
+      setError(true)
     }
   }, [group, keyword])
 
@@ -103,7 +109,19 @@ export default function ModelPlazaPage() {
           </div>
         )}
 
-        {!data ? (
+        {error ? (
+          <div className="mt-6 rounded-lg border border-err/30 bg-err/5">
+            <EmptyState
+              title="模型广场加载失败"
+              description="网络或服务暂时不可用，请稍后重试。"
+              action={
+                <Button variant="secondary" size="sm" onClick={() => void load()}>
+                  重试
+                </Button>
+              }
+            />
+          </div>
+        ) : !data ? (
           <div className="mt-6 overflow-hidden rounded-lg border border-line">
             {Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={i} className="h-11 w-full rounded-none border-b border-line" />
@@ -173,6 +191,12 @@ function AgentBanner({ viewer }: { viewer: PlazaViewer }) {
         基础价 × {viewer.ratio}% = {discountLabel(viewer.ratio)}
       </span>
       <span className="text-[12px] text-ink-3">下方价格已按你的拿货折扣结算，与原价并排展示。</span>
+      {/* 分组 RPM 提示：仅当后端下发且 >0 时显示（0/缺失 = 不限速，不显示） */}
+      {viewer.rpm_limit && viewer.rpm_limit > 0 ? (
+        <span className="w-full text-[12px] text-ink-3">
+          该分组每分钟请求上限：{viewer.rpm_limit} 次/分钟
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -195,7 +219,7 @@ function ModelRow({ model, viewer, onOpen }: { model: PlazaModel; viewer?: Plaza
         {viewer ? (
           <AgentPriceCell price={price} listPrice={model.list_price} ratio={viewer.ratio} quotaPerYuan={quotaPerYuan} />
         ) : (
-          <span className="text-ink-2">{priceLabel(price, quotaPerYuan)}</span>
+          <span className="text-ink-2">{priceSummaryLabel(price, quotaPerYuan)}</span>
         )}
       </td>
       <td className="hidden px-4 py-2.5 text-right font-mono text-ink-3 md:table-cell">{model.channel_count}</td>
@@ -220,93 +244,16 @@ function AgentPriceCell({
     <span className="inline-flex items-center justify-end gap-2 align-middle">
       {listPrice && (
         <span className="text-[12px] text-ink-3 line-through decoration-ink-3/70">
-          {priceLabel(listPrice, quotaPerYuan)}
+          {priceSummaryLabel(listPrice, quotaPerYuan)}
         </span>
       )}
       <span className="inline-flex items-center gap-1.5 rounded border border-warn/40 bg-warn/15 px-2 py-0.5 font-mono text-[12px] font-medium text-warn">
-        {priceLabel(price, quotaPerYuan)}
+        {priceSummaryLabel(price, quotaPerYuan)}
         <span className="opacity-70">· {discountLabel(ratio)}</span>
       </span>
     </span>
   )
 }
 
-/** 价格摘要：按计费方式给出一行文案（一律换算成人民币展示） */
-function priceLabel(price: PlazaPrice | undefined, quotaPerYuan: number): string {
-  if (!price) return '待定价'
-  if (price.is_free || price.billing_mode === 'free') return '免费'
-  if (price.billing_mode === 'per_call') {
-    return price.per_call_price > 0 ? formatYuanPerCall(price.per_call_price, quotaPerYuan) : '按次'
-  }
-  const prompt = price.prompt_price
-  return prompt > 0 ? `${formatYuanPerMillion(prompt, quotaPerYuan)} 输入` : '按量'
-}
-
 /** 倍率（百分比）→ 折扣文案：60 → 6折、95 → 9.5折、100 → 原价 */
 const discountLabel = formatDiscountLabel
-
-/* ── 详情弹层 ───────────────────────────────────────────── */
-
-function ModelDetailModal({
-  model,
-  viewer,
-  onClose,
-}: {
-  model: PlazaModel | null
-  viewer?: PlazaViewer
-  onClose: () => void
-}) {
-  const { quotaPerYuan } = useSite()
-  if (!model) return null
-  return (
-    <Modal open onClose={onClose} title={model.model} width={560}>
-      <div className="flex items-center gap-2">
-        {viewer && <Badge tone="warn">{viewer.label}</Badge>}
-        {model.available ? <Badge tone="ok">可用</Badge> : <Badge tone="err">不可用</Badge>}
-        <Badge tone="off">{model.channel_count} 个启用渠道</Badge>
-        <Badge tone="info">{model.groups.length} 个分组</Badge>
-      </div>
-
-      {model.prices.length > 0 ? (
-        <div className="mt-4 overflow-hidden rounded-md border border-line">
-          <table className="w-full text-left text-[13px]">
-            <thead className="bg-surface">
-              <tr className="font-mono text-[11px] uppercase tracking-wider text-ink-3">
-                <th className="px-3 py-2 font-normal">分组</th>
-                <th className="px-3 py-2 text-right font-normal">{viewer ? '原价 / 代理价' : '价格'}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {model.prices.map((price) => (
-                <tr key={price.group}>
-                  <td className="px-3 py-2 font-mono text-ink-2">{price.group}</td>
-                  <td className="px-3 py-2 text-right text-ink-2">
-                    {viewer ? (
-                      <AgentPriceCell
-                        price={price}
-                        listPrice={model.list_price}
-                        ratio={viewer.ratio}
-                        quotaPerYuan={quotaPerYuan}
-                      />
-                    ) : price.is_free || price.billing_mode === 'free' ? (
-                      <Badge tone="info">免费</Badge>
-                    ) : price.billing_mode === 'per_call' ? (
-                      price.per_call_price > 0 ? formatYuanPerCall(price.per_call_price, quotaPerYuan) : '按次计费'
-                    ) : (
-                      <>
-                        输入 {formatYuanPerMillion(price.prompt_price, quotaPerYuan)} · 输出{' '}
-                        {formatYuanPerMillion(price.completion_price, quotaPerYuan)}
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="mt-4 text-sm text-ink-3">该模型暂未配置价格规则。</p>
-      )}
-    </Modal>
-  )
-}

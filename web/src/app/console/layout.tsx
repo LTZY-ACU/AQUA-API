@@ -10,6 +10,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 
 import { AppShell, type ShellNavGroup } from '@/components/AppShell'
+import { ComplianceGate } from '@/components/site/ComplianceGate'
 import { useAuth } from '@/lib/auth/auth-context'
 
 const GROUPS: ShellNavGroup[] = [
@@ -58,6 +59,8 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
 
   return (
     <AppShell groups={GROUPS} brand="用户门户">
+      {/* 首次进入控制台弹一次合规确认（自包含：内部判断路由与已确认状态） */}
+      <ComplianceGate />
       {children}
     </AppShell>
   )

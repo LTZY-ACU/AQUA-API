@@ -26,7 +26,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // maintenanceTables 是运维概览与备份校验共同关注的核心表清单。
@@ -315,4 +320,206 @@ func InspectSQLiteBackup(ctx context.Context, path string) (*BackupInspection, e
 	}
 
 	return inspection, nil
+}
+
+// ---------------------------------------------------------------------------
+// 真实成本对账（收入 − 成本 = 毛利）
+// ---------------------------------------------------------------------------
+
+// ReconcileUsage 聚合 [from, to) 内各维度（分组 / 渠道 / 模型）的请求数、收入、成本与毛利。
+//
+// 口径（三处必须一致，否则"对账"本身就是错的）：
+//  1. 只统计成功请求（2xx/3xx）：失败请求的额度已在结算时全额退还，既不构成收入，
+//     也不产生上游成本；
+//  2. 收入取 usage_logs.quota —— 它是"用户实扣额度"，是全站收入的唯一来源；
+//  3. 成本按 (渠道, 上游模型名) 匹配 channel_model_costs 后逐行估算，
+//     按次规则走"次数 × 每次单价"（与密钥核算共用 ComputeCost），
+//     因此按次计费渠道的成本不会被算成 0。
+//
+// 为什么放在 store 层：server 层只做协议转换，SQL 与聚合一律留在 store（分层铁律）。
+// 为什么先按 (维度, 渠道, 模型) 分组再在 Go 里折叠：成本匹配需要"渠道 + 上游模型名"，
+// 且要按按次/按 token 分流，无法用一条纯 SQL 表达；因此让 SQL 负责可下推的聚合，
+// 匹配与折叠加在 Go 里完成——逻辑集中，且可直接喂数据单测。
+func (s *Store) ReconcileUsage(ctx context.Context, from, to time.Time, dim string) (
+	[]model.UsageReconciliationRow, error) {
+	if !model.IsValidReconcileDim(dim) {
+		return nil, fmt.Errorf("store: 不支持的对账维度 %q（可选 group / channel / model）", dim)
+	}
+	if !to.After(from) {
+		return nil, fmt.Errorf("store: 对账时间窗非法（起点不早于终点）")
+	}
+
+	// 维度表达式：
+	//   - group：usage_logs 不落分组，分组是"令牌当时的归属"，按 token_id 关联读取；
+	//     令牌被删除或 group_name 为空时归入空串（展示层显示为默认分组）；
+	//   - channel：渠道 ID 转字符串作为分组键；
+	//   - model：直接用模型名。
+	keyExpr := "u.model"
+	switch dim {
+	case model.ReconcileDimGroup:
+		keyExpr = "COALESCE(t.group_name, '')"
+	case model.ReconcileDimChannel:
+		keyExpr = "CAST(u.channel_id AS TEXT)"
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+keyExpr+` AS dim_key, u.channel_id, u.model, u.upstream_model,
+		       COUNT(1),
+		       COALESCE(SUM(u.quota), 0),
+		       COALESCE(SUM(u.prompt_tokens), 0),
+		       COALESCE(SUM(u.completion_tokens), 0),
+		       COALESCE(SUM(u.cached_tokens), 0)
+		FROM usage_logs u
+		LEFT JOIN tokens t ON t.id = u.token_id
+		WHERE u.created_at >= ? AND u.created_at < ?
+		  AND u.status_code >= 200 AND u.status_code < 400
+		GROUP BY dim_key, u.channel_id, u.model, u.upstream_model`,
+		from.Unix(), to.Unix())
+	if err != nil {
+		return nil, fmt.Errorf("store: 对账聚合查询失败: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	// 进价与渠道名都是"小表全量读"，一次读进来在内存里匹配，逻辑直观且可单测。
+	costsByChannel, err := s.loadCostsByChannel(ctx)
+	if err != nil {
+		return nil, err
+	}
+	names, err := s.channelNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	byKey := make(map[string]*model.UsageReconciliationRow)
+	for rows.Next() {
+		var (
+			key                            string
+			channelID                      uint64
+			modelName, upstreamModel       string
+			requests, revenue              int64
+			promptTokens, completionTokens int64
+			cachedTokens                   int64
+		)
+		if err := rows.Scan(&key, &channelID, &modelName, &upstreamModel, &requests, &revenue,
+			&promptTokens, &completionTokens, &cachedTokens); err != nil {
+			return nil, fmt.Errorf("store: 读取对账聚合结果失败: %w", err)
+		}
+
+		item := byKey[key]
+		if item == nil {
+			item = &model.UsageReconciliationRow{
+				Dim:   dim,
+				Key:   key,
+				Label: reconcileLabel(dim, key, names),
+			}
+			byKey[key] = item
+		}
+
+		// 成本匹配用上游模型名（钱是上游按上游模型名收的）；为空表示未改写，回退对外名。
+		costModelName := strings.TrimSpace(upstreamModel)
+		if costModelName == "" {
+			costModelName = modelName
+		}
+		item.Requests += requests
+		item.RevenueQuota += revenue
+		if matched := model.MatchChannelModelCost(costsByChannel[channelID], costModelName); matched != nil {
+			item.CostQuota += matched.ComputeCost(promptTokens, completionTokens, cachedTokens, requests)
+			item.PricedRequests += requests
+		} else {
+			// 未录进价：成本按 0 计，但请求数单独累计——"未知"必须与"免费"区分开。
+			item.UnpricedRequests += requests
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: 遍历对账聚合结果失败: %w", err)
+	}
+
+	result := make([]model.UsageReconciliationRow, 0, len(byKey))
+	for _, item := range byKey {
+		result = append(result, *item)
+	}
+	// 收入从高到低：站长最先要看的永远是"哪一块业务在赚钱/亏钱"。
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].RevenueQuota != result[j].RevenueQuota {
+			return result[i].RevenueQuota > result[j].RevenueQuota
+		}
+		return result[i].Key < result[j].Key
+	})
+	return result, nil
+}
+
+// loadCostsByChannel 读取全部上游进价并按渠道分组。
+//
+// 规则数量小（每个渠道几条到几十条），一次全量读取比维护缓存更简单、也更容易解释
+// （与 channel_model_cost_repo.go 的取舍一致）。
+func (s *Store) loadCostsByChannel(ctx context.Context) (map[uint64][]*model.ChannelModelCost, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, channel_id, model, prompt_price, cache_price, completion_price, per_call_price
+		FROM channel_model_costs`)
+	if err != nil {
+		return nil, fmt.Errorf("store: 读取上游进价失败: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	byChannel := make(map[uint64][]*model.ChannelModelCost)
+	for rows.Next() {
+		var cost model.ChannelModelCost
+		if err := rows.Scan(&cost.ID, &cost.ChannelID, &cost.Model,
+			&cost.PromptPrice, &cost.CachePrice, &cost.CompletionPrice, &cost.PerCallPrice); err != nil {
+			return nil, fmt.Errorf("store: 读取上游进价字段失败: %w", err)
+		}
+		byChannel[cost.ChannelID] = append(byChannel[cost.ChannelID], &cost)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: 遍历上游进价失败: %w", err)
+	}
+	return byChannel, nil
+}
+
+// channelNames 返回 渠道 ID → 渠道名 的映射（对账表展示用；名字取不到不影响数字）。
+func (s *Store) channelNames(ctx context.Context) (map[uint64]string, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT id, name FROM channels")
+	if err != nil {
+		return nil, fmt.Errorf("store: 读取渠道名失败: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	names := make(map[uint64]string)
+	for rows.Next() {
+		var (
+			id   uint64
+			name string
+		)
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, fmt.Errorf("store: 读取渠道名字段失败: %w", err)
+		}
+		names[id] = name
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: 遍历渠道名失败: %w", err)
+	}
+	return names, nil
+}
+
+// reconcileLabel 生成某一维度分组的展示标签。
+func reconcileLabel(dim, key string, names map[uint64]string) string {
+	switch dim {
+	case model.ReconcileDimChannel:
+		if id, err := strconv.ParseUint(key, 10, 64); err == nil {
+			if name := names[id]; name != "" {
+				return name
+			}
+		}
+		return key
+	case model.ReconcileDimGroup:
+		if key == "" {
+			return "(默认分组)"
+		}
+		return key
+	default:
+		if key == "" {
+			return "(未知模型)"
+		}
+		return key
+	}
 }

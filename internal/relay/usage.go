@@ -40,9 +40,9 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/corpus"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/aqua-api/internal/corpus"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
 )
 
 // openAIUsage 对应一次调用最终采用的用量（内部统一为 OpenAI 口径）。
@@ -538,6 +538,11 @@ func (r *Relay) recordUsage(ctx context.Context, entry usageEntry) {
 	// 计费失败不会影响客户端：本方法内部只记录错误不返回错误，
 	// 用户不该因为"记账失败"而收到一个报错。
 	logEntry.Quota = r.settleQuota(writeCtx, entry)
+	// 定价版本快照：记录本次扣费所依据的计价规则版本（规则 ID@更新时间），
+	// 使日后改价后旧账仍可按当时的定价复算。取价与 settleQuota 同源（渠道专用价优先）。
+	if r.billing != nil {
+		logEntry.PriceVersion = r.billing.PriceVersionForChannel(writeCtx, entry.Group, entry.Model, entry.ChannelID)
+	}
 
 	if err := r.usageLogs.Create(writeCtx, logEntry); err != nil {
 		// 日志写入失败不影响用户，但要留下痕迹便于排查
@@ -639,9 +644,17 @@ func (r *Relay) settleQuota(ctx context.Context, entry usageEntry) int64 {
 	if requestID == "" {
 		// 未预留：退化路径。Charge 内部同样只记录错误不返回错误。
 		// 计费分组沿用 entry.Group（与选渠道同一分组），空值由 Billing 回退到默认分组。
-		return r.billing.Charge(ctx, entry.Group, entry.UserID, entry.TokenID, entry.Model,
+		// 同时带上 entry.ChannelID：本次实际命中的渠道可享受"渠道专用价优先"的取值。
+		charged := r.billing.ChargeForChannel(ctx, entry.Group, entry.UserID, entry.TokenID, entry.Model,
 			int64(entry.Usage.PromptTokens), int64(entry.Usage.CompletionTokens),
-			int64(entry.Usage.CachedTokens))
+			int64(entry.Usage.CachedTokens), entry.ChannelID)
+		// 折扣分组的重试率统计：本次产生了计费（charged > 0），记一笔"计费请求"。
+		// 上游调用次数已在 forwardChat 的每次真实调用时累加（见 openai.go），
+		// 两者相除即真实重试率 r = 上游调用次数 / 计费请求次数。
+		if charged > 0 {
+			r.billing.recordUpstreamCall(entry.Group, true)
+		}
+		return charged
 	}
 
 	// 请求失败（含上游 4xx/5xx、无可用渠道等）：全额退还预扣额度。
@@ -657,9 +670,11 @@ func (r *Relay) settleQuota(ctx context.Context, entry usageEntry) int64 {
 	// 成功：按实际用量结算。拿不到 usage 时传 QuotaUnknown（按预留量收）。
 	actual := int64(model.QuotaUnknown)
 	if hasUsage(entry.Usage) {
-		actual = r.billing.Quote(ctx, entry.Group, entry.Model,
+		// 结算价同样按"渠道专用价优先"取：与 Charge 路径口径一致，
+		// 否则会出现"按渠道 A 的专用价预留、却按分组默认价结算"的错账。
+		actual = r.billing.QuoteForChannel(ctx, entry.Group, entry.Model,
 			int64(entry.Usage.PromptTokens), int64(entry.Usage.CompletionTokens),
-			int64(entry.Usage.CachedTokens))
+			int64(entry.Usage.CachedTokens), entry.ChannelID)
 	}
 
 	reservation, err := r.billing.Settle(ctx, requestID, actual)
@@ -672,6 +687,10 @@ func (r *Relay) settleQuota(ctx context.Context, entry usageEntry) int64 {
 	}
 	if reservation == nil {
 		return 0
+	}
+	// 折扣分组的重试率统计：本次产生了计费（settled > 0），记一笔"计费请求"。
+	if reservation.Settled > 0 {
+		r.billing.recordUpstreamCall(entry.Group, true)
 	}
 	if actual >= 0 && reservation.Settled != actual {
 		// 补扣受限（可用额度不足）：此时按可用量扣减，账目有缺口，必须可被发现。

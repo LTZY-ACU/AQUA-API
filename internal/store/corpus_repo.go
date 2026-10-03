@@ -33,7 +33,7 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // corpusSamplePreviewBytes 是列表查询里正文预览的字节数。

@@ -16,9 +16,10 @@ import { useEffect, useState } from 'react'
 
 import { AppIcon } from '@/components/AppIcon'
 import { BrandLogo } from '@/components/BrandMark'
+import { QqGroupEntry } from '@/components/site/QqGroupEntry'
 import { useSite } from '@/lib/site/site-context'
 
-const REPO_URL = 'https://gitee.com/xiaosu4610/AQUA-API'
+const REPO_URL = 'https://github.com/LTZY-ACU/AQUA-API'
 
 /** 页脚链接矩阵：三栏，标题走等宽小字 */
 const COLUMNS: { title: string; links: { label: string; href: string; external?: boolean }[] }[] = [
@@ -43,7 +44,7 @@ const COLUMNS: { title: string; links: { label: string; href: string; external?:
   },
   {
     title: '开源',
-    links: [{ label: '源码仓库（Gitee）', href: REPO_URL, external: true }],
+    links: [{ label: '源码仓库（GitHub）', href: REPO_URL, external: true }],
   },
 ]
 
@@ -65,6 +66,9 @@ export function SiteFooter() {
             <p className="mt-3 max-w-xs text-[13px] leading-relaxed text-ink-3">
               OpenAI 兼容的 LLM API 网关：多协议上游统一、精细计费、全量日志，单二进制可自托管。
             </p>
+            <div className="mt-4">
+              <QqGroupEntry />
+            </div>
           </div>
 
           {COLUMNS.map((col) => (
@@ -100,7 +104,7 @@ export function SiteFooter() {
         {/* 合规条：版权 + 备案 + 联系邮箱 */}
         <div className="mt-10 flex flex-col gap-2 border-t border-line pt-6 text-xs text-ink-3 sm:flex-row sm:items-center sm:justify-between">
           <span>
-            © {year} {status?.operator_name || siteName} · 木兰宽松许可证 v2（Mulan PSL v2）
+            © {year} {status?.operator_name || siteName} · MIT 许可证
           </span>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             {status?.icp_license && (

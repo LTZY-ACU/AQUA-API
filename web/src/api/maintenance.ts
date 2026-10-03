@@ -58,6 +58,22 @@ export interface MaintenanceUsage {
   last_7d: MaintenanceUsageWindow
 }
 
+/** 单个折扣分组的重试率读数（与后端 maintenanceRetryRatioDTO 对应） */
+export interface MaintenanceRetryRatio {
+  /** 分组名 */
+  group: string
+  /** 计费倍率（百分比，<100 即折扣档） */
+  ratio: number
+  /** 累计上游调用次数（含重试） */
+  upstream_calls: number
+  /** 累计产生了计费的请求数 */
+  charged_requests: number
+  /** r = 上游调用次数 / 计费请求次数 */
+  retry_ratio: number
+  /** 已越过保本线（正在亏本） */
+  over_break_even: boolean
+}
+
 /** 运维概览响应 */
 export interface MaintenanceOverview {
   version: string
@@ -69,6 +85,8 @@ export interface MaintenanceOverview {
   disk: MaintenanceDiskInfo
   tables: MaintenanceTableRow[]
   usage: MaintenanceUsage
+  /** 折扣分组重试率（ratio < 100 的分组才计入；无折扣分组或尚无调用时为空数组） */
+  retry_ratios: MaintenanceRetryRatio[]
 }
 
 /** 备份与当前库的单表对比行 */

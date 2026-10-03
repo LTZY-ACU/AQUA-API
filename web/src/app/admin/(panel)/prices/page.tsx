@@ -3,20 +3,26 @@
  * 意图（Why）：
  *   每个模型在分组维度上的售价（每 1M token 的额度；按次计费为每次调用额度）。
  *   顶部 Tabs 按分组筛选，便于站长按「分组定价」核对是否配齐。
+ *   在此基础上支持「渠道专属价」：同一「模型 + 分组」可为某个渠道单独定价，
+ *   未配渠道专用价时回退该分组的默认价（优先级由后端 MatchModelPriceForChannel 决定）。
  *
  * 流转（Flow）：
- *   load() → listGroups() 构建筛选 Tabs + listPrices(group) 拉列表；
- *   新建/编辑走 PriceFormModal → createPrice / updatePrice；
+ *   load() → listGroups() 构建分组筛选 + listChannels() 构建渠道筛选，
+ *            再按 group / channel_id 拉列表（未选渠道只看分组默认价）；
+ *   新建/编辑走 PriceFormModal → createPrice / updatePrice（含 channel_id）；
  *   删除走 ConfirmDialog → deletePrice（删除后该模型按不计费处理）。
  *
  * 扩展（Extend）：
  *   新增计费方式：同步 types.ts 的 BillingMode 与弹层下拉、展示徽标文案。
+ *   渠道维度字段未写入共享 types.ts（避免与并行改动冲突），
+ *   本页用本地 interface（PriceRow / PricePayloadLocal）声明。
  */
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
 
-import { createPrice, deletePrice, listGroups, listPrices, updatePrice } from '@/api/admin'
+import { api } from '@/api/client'
+import { createPrice, deletePrice, listChannels, listGroups, listPrices, updatePrice } from '@/api/admin'
 import type { BillingMode, ModelPrice, ModelPricePayload } from '@/api/types'
 import { Badge, Card, Tabs } from '@/components/ui/Display'
 import { DataTable, type Column } from '@/components/ui/Table'
@@ -26,6 +32,31 @@ import { Modal, ConfirmDialog } from '@/components/ui/Modal'
 import { useToast } from '@/lib/toast/toast-context'
 import { useSite } from '@/lib/site/site-context'
 import { formatYuanPerCall, formatYuanPerMillion, quotaToYuanInput, yuanToQuota } from '@/utils/money'
+
+/** 渠道下拉选项（页面内声明，避免改动共享 types.ts）。 */
+interface ChannelOption {
+  id: number
+  name: string
+}
+
+/** 计价规则行：在共享 ModelPrice 之上补充渠道维度字段（后端已下发）。 */
+interface PriceRow extends ModelPrice {
+  /** 0 = 不限渠道（分组默认价）；>0 = 仅该渠道生效的专用价 */
+  channel_id?: number
+  /** 渠道显示名；不限渠道或渠道已删除时为空 */
+  channel_name?: string
+}
+
+/** GET /api/admin/prices 响应。 */
+interface PriceListResponse {
+  items: PriceRow[]
+  total: number
+}
+
+/** 新增/更新请求体：在共享 ModelPricePayload 之上补充 channel_id。 */
+interface PricePayloadLocal extends ModelPricePayload {
+  channel_id?: number
+}
 
 /** 生效计费方式 → 徽标配色与文案（free 免费 / token 按量 / per_call 按次） */
 function billingTone(mode: ModelPrice['effective_billing_mode']): 'ok' | 'info' | 'brand' {
@@ -42,13 +73,15 @@ const BILLING_LABEL: Record<string, string> = {
 
 export default function AdminPricesPage() {
   const { quotaPerYuan } = useSite()
-  const [items, setItems] = useState<ModelPrice[]>([])
+  const [items, setItems] = useState<PriceRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [groups, setGroups] = useState<string[]>([])
   const [group, setGroup] = useState('')
-  const [editing, setEditing] = useState<ModelPrice | null | 'new'>(null)
-  const [deleteTarget, setDeleteTarget] = useState<ModelPrice | null>(null)
+  const [channels, setChannels] = useState<ChannelOption[]>([])
+  const [channelFilter, setChannelFilter] = useState('')
+  const [editing, setEditing] = useState<PriceRow | null | 'new'>(null)
+  const [deleteTarget, setDeleteTarget] = useState<PriceRow | null>(null)
   const { toast, toastError } = useToast()
 
   // 分组列表用于构建筛选 Tabs；失败时只剩「全部」，不影响列表本身
@@ -58,18 +91,33 @@ export default function AdminPricesPage() {
       .catch(() => setGroups([]))
   }, [])
 
+  // 渠道列表供「按渠道筛选」与弹层下拉使用；失败时退化为只有「不限渠道」
+  useEffect(() => {
+    void listChannels({ size: 500 })
+      .then((data) => setChannels(data.items.map((c) => ({ id: c.id, name: c.name }))))
+      .catch(() => setChannels([]))
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await listPrices(group)
-      setItems(data.items)
+      // 未选渠道 → 只列分组默认价（不限渠道）；
+      // 选中渠道 → 列该渠道生效的价格（分组默认价 + 该渠道专用价）。
+      const data =
+        channelFilter === ''
+          ? await listPrices(group)
+          : await api.get<PriceListResponse>('/admin/prices', {
+              group,
+              channel_id: Number(channelFilter),
+            })
+      setItems(data.items as PriceRow[])
       setTotal(data.total)
     } catch {
       /* 401 统一处理 */
     } finally {
       setLoading(false)
     }
-  }, [group])
+  }, [group, channelFilter])
 
   useEffect(() => {
     void load()
@@ -87,9 +135,20 @@ export default function AdminPricesPage() {
     }
   }
 
-  const columns: Column<ModelPrice>[] = [
+  const columns: Column<PriceRow>[] = [
     { title: '模型', render: (row) => <span className="font-medium text-ink">{row.model}</span> },
     { title: '分组', render: (row) => <span className="text-ink-2">{row.group || '默认'}</span> },
+    {
+      title: '适用渠道',
+      render: (row) =>
+        row.channel_id ? (
+          <span className="text-ink-2" title={`渠道 #${row.channel_id}`}>
+            {row.channel_name || `渠道 #${row.channel_id}`}
+          </span>
+        ) : (
+          <span className="text-ink-3">不限渠道（分组默认价）</span>
+        ),
+    },
     {
       title: '计费方式',
       render: (row) => <Badge tone={billingTone(row.effective_billing_mode)}>{BILLING_LABEL[row.effective_billing_mode] ?? row.effective_billing_mode}</Badge>,
@@ -143,6 +202,24 @@ export default function AdminPricesPage() {
         onChange={setGroup}
       />
 
+      {/* 渠道筛选：不选 = 只看分组默认价；选中渠道 = 该渠道生效的价格集合 */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="w-64 shrink-0">
+          <Select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} aria-label="按渠道筛选">
+            <option value="">全部分组默认价（不限渠道）</option>
+            {channels.map((c) => (
+              <option key={c.id} value={String(c.id)}>
+                渠道：{c.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <p className="text-[12px] text-ink-3">
+          同一「模型 + 分组」可为某个渠道单独定价；选中渠道后展示该渠道生效的价格（分组默认价 + 该渠道专用价），
+          未配专用价时按分组默认价计费。
+        </p>
+      </div>
+
       <Card padding="none">
         <DataTable
           columns={columns}
@@ -157,6 +234,7 @@ export default function AdminPricesPage() {
       <PriceFormModal
         open={editing !== null}
         price={editing === 'new' ? null : editing}
+        channels={channels}
         onClose={() => setEditing(null)}
         onSaved={() => { setEditing(null); void load() }}
       />
@@ -179,11 +257,13 @@ export default function AdminPricesPage() {
 function PriceFormModal({
   open,
   price,
+  channels,
   onClose,
   onSaved,
 }: {
   open: boolean
-  price: ModelPrice | null
+  price: PriceRow | null
+  channels: ChannelOption[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -191,6 +271,8 @@ function PriceFormModal({
   const { quotaPerYuan } = useSite()
   const [model, setModel] = useState('')
   const [groupName, setGroupName] = useState('')
+  // 适用渠道：'0' = 不限渠道（分组默认价），其他为渠道 ID 字符串
+  const [channelID, setChannelID] = useState('0')
   const [billingMode, setBillingMode] = useState<BillingMode | ''>('')
   const [enabled, setEnabled] = useState(true)
   // 以下四个价格字段一律以【人民币】录入与展示（元 / 1M token，按次为 元/次），
@@ -206,6 +288,7 @@ function PriceFormModal({
     if (!open) return
     setModel(price?.model ?? '')
     setGroupName(price?.group ?? '')
+    setChannelID(String(price?.channel_id ?? 0))
     setBillingMode(price?.billing_mode ?? '')
     setEnabled(price?.enabled ?? true)
     setPromptPrice(quotaToYuanInput(price?.prompt_price, quotaPerYuan))
@@ -243,9 +326,10 @@ function PriceFormModal({
     }
     setLoading(true)
     try {
-      const payload: ModelPricePayload = {
+      const payload: PricePayloadLocal = {
         model: model.trim(),
         group: groupName.trim(),
+        channel_id: Number(channelID),
         billing_mode: billingMode,
         enabled,
         prompt_price: toQuota(prompt),
@@ -290,6 +374,20 @@ function PriceFormModal({
             </Select>
           </Field>
         </div>
+
+        <Field
+          label="适用渠道"
+          help="不限渠道 = 该模型在该分组的通用价；选具体渠道 = 仅该渠道生效的专用价（未配专用价时回退通用价）"
+        >
+          <Select value={channelID} onChange={(e) => setChannelID(e.target.value)}>
+            <option value="0">不限渠道（分组默认价）</option>
+            {channels.map((c) => (
+              <option key={c.id} value={String(c.id)}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="输入价（¥）" help="每 1M 输入 token 的价格（元）">

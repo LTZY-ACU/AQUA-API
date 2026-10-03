@@ -32,7 +32,7 @@ import (
 	"context"
 	"fmt"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // manualProvider 实现人工确认通道。

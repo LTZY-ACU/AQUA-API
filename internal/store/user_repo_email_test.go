@@ -24,7 +24,7 @@ import (
 	"errors"
 	"testing"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // newValidUser 构造一个能通过领域校验的合法用户，便于把焦点放在"邮箱"而非其它字段。

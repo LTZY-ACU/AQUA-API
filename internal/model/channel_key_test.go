@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseKeyList_多行与备注与去重(t *testing.T) {
@@ -241,5 +242,53 @@ func TestChannelKey_BalanceExhausted_语义(t *testing.T) {
 				t.Fatalf("Balance=%d 时 BalanceExhausted 应为 %v，实际 %v", tc.balance, tc.want, got)
 			}
 		})
+	}
+}
+
+// TestChannelKey_QuotaExhausted_仍以主窗口为准 是迁移 0048 的回归保护。
+//
+// 引入次窗口（每周）后调度判定必须【逐字不变】：只有主窗口已满才算耗尽，
+// 次窗口无论多满都不影响可用性——否则存量账号会在升级瞬间被错误跳过。
+func TestChannelKey_QuotaExhausted_仍以主窗口为准(t *testing.T) {
+	now := time.Now()
+	future := now.Add(2 * time.Hour)
+
+	// 次窗口已满、主窗口未满 → 不应判定耗尽（这是本次改动最关键的回归点）
+	k := &ChannelKey{
+		QuotaUsedPercent:          10,
+		QuotaResetAt:              future,
+		QuotaSecondaryUsedPercent: 100,
+		QuotaSecondaryResetAt:     future,
+	}
+	if k.QuotaExhausted(now) {
+		t.Fatal("次窗口已满不应导致账号被跳过（调度只看主窗口）")
+	}
+
+	// 主窗口已满且未到重置 → 耗尽
+	k = &ChannelKey{QuotaUsedPercent: 100, QuotaResetAt: future, QuotaSecondaryUsedPercent: 10}
+	if !k.QuotaExhausted(now) {
+		t.Fatal("主窗口已满且未到重置时应判定耗尽")
+	}
+
+	// 主窗口已满但重置时刻已过 → 视为已恢复（快照过时）
+	k = &ChannelKey{QuotaUsedPercent: 100, QuotaResetAt: now.Add(-time.Minute)}
+	if k.QuotaExhausted(now) {
+		t.Fatal("主窗口重置时刻已过应视为额度已恢复")
+	}
+
+	// 主窗口未探测 → 不施加任何额度约束（哪怕次窗口是 100）
+	k = &ChannelKey{QuotaUsedPercent: QuotaUsedPercentUnknown, QuotaSecondaryUsedPercent: 100}
+	if k.QuotaExhausted(now) {
+		t.Fatal("主窗口未探测时不应判定耗尽")
+	}
+}
+
+// TestChannelKey_QuotaSecondaryKnown_语义 验证次窗口"未知"判定与主窗口同构。
+func TestChannelKey_QuotaSecondaryKnown_语义(t *testing.T) {
+	if (&ChannelKey{QuotaSecondaryUsedPercent: QuotaUsedPercentUnknown}).QuotaSecondaryKnown() {
+		t.Fatal("-1 应表示次窗口未探测")
+	}
+	if !(&ChannelKey{QuotaSecondaryUsedPercent: 0}).QuotaSecondaryKnown() {
+		t.Fatal("已探测到的 0%（完全没用）应视为已知")
 	}
 }

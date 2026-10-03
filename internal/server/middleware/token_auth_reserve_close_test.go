@@ -21,7 +21,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
 )
 
 // TestTokenAuth_在途预留不重复扣减 锁死"可用额度不再减在途预留"这一修复。

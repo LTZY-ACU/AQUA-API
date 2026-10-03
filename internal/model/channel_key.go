@@ -430,6 +430,21 @@ type ChannelKey struct {
 	// QuotaCheckedAt 是上次探测额度的时刻；零值表示从未探测。
 	QuotaCheckedAt time.Time
 
+	// 以下为「订阅账号次额度窗口」（迁移 0048 新增）。
+	//
+	// 上游把额度拆成两条独立的线：主窗口（5 小时）与次窗口（每周）。
+	// 此前只落主窗口，站长在周额度将满时毫无预警——表现是"明明没怎么用，
+	// 账号却突然全满"。这里补上次窗口，供界面同时渲染两条进度条。
+	//
+	// 关键约束：次窗口【不】参与调度判定（QuotaExhausted 仍只看主窗口），
+	// 因此对存量数据而言升级后行为逐字不变；它纯粹是"给站长看的信息"。
+	//   - QuotaSecondaryUsedPercent 为 QuotaUsedPercentUnknown(-1) 表示未探测；
+	//   - 窗口秒数用于把进度条正确标注成"5 小时 / 每周"，0 表示上游未提供。
+	QuotaSecondaryUsedPercent   int
+	QuotaSecondaryResetAt       time.Time
+	QuotaPrimaryWindowSeconds   int
+	QuotaSecondaryWindowSeconds int
+
 	// 以下为「路由分叉」字段（迁移 0038 新增）。
 	//
 	// 用途：同一个上游接口下挂多把凭据时，它们能服务的分组与模型往往不同
@@ -483,6 +498,16 @@ func (k *ChannelKey) BalanceExhausted() bool {
 // 宁可让它试一次再由上游拒绝，也不要因为"没查过"就把好账号判定为不可用。
 func (k *ChannelKey) QuotaKnown() bool {
 	return k.QuotaUsedPercent >= 0
+}
+
+// QuotaSecondaryKnown 判断该凭据的次额度窗口是否已被探测过。
+//
+// 与 QuotaKnown 同构：只有"未知"与"已知"两种语义。
+// 单独提供它（而不是让调用方各自写 >= 0）是为了让 -1 这条规则只在领域层维护一处。
+//
+// 注意它【不】参与调度：次窗口未探测不影响可用性，只影响界面是否显示"未查询"。
+func (k *ChannelKey) QuotaSecondaryKnown() bool {
+	return k.QuotaSecondaryUsedPercent >= 0
 }
 
 // QuotaExhausted 判断该凭据的订阅额度是否已用满。
@@ -967,6 +992,30 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
+// QuotaWindows 是一次额度探测的完整结果（主 / 次两个窗口 + 探测时刻）。
+//
+// 为什么用一个结构体承载，而不是把参数排成一长串：
+//
+//	探测结果有 7 个值，且「已用百分比(int) / 重置时间(time.Time) / 窗口秒数(int)」
+//	的类型在按位置传参时极易串位（编译能过、语义出错，且这种错很难在评审时看出来）。
+//	结构体让调用点自带字段名，落库实现也能逐字段对齐，不会静默把主窗口的值写进次窗口。
+type QuotaWindows struct {
+	// PrimaryUsedPercent 主窗口已用百分比；QuotaUsedPercentUnknown 表示未探测。
+	PrimaryUsedPercent int
+	// PrimaryResetAt 主窗口重置时间；零值表示未知。
+	PrimaryResetAt time.Time
+	// PrimaryWindowSeconds 主窗口时长（秒）；0 表示上游未提供。
+	PrimaryWindowSeconds int
+	// SecondaryUsedPercent 次窗口已用百分比；QuotaUsedPercentUnknown 表示未探测。
+	SecondaryUsedPercent int
+	// SecondaryResetAt 次窗口重置时间；零值表示未知。
+	SecondaryResetAt time.Time
+	// SecondaryWindowSeconds 次窗口时长（秒）；0 表示上游未提供。
+	SecondaryWindowSeconds int
+	// CheckedAt 本次探测时刻；零值时由落库实现补当前时间。
+	CheckedAt time.Time
+}
+
 // ChannelKeyRepository 定义密钥池的持久化操作。
 //
 // 约定：所有方法的实现都必须保证密钥落库加密、读取解密；
@@ -1095,11 +1144,16 @@ type ChannelKeyRepository interface {
 	// 无条件写入会把已知套餐抹空。
 	UpdateAccountMeta(ctx context.Context, id uint64, accountID, planType string) error
 
-	// UpdateQuota 写入额度探测结果；usedPercent 传 QuotaUsedPercentUnknown 表示置回未知。
+	// UpdateQuota 写入额度探测结果（主 / 次两个窗口一起写）；某个窗口的已用百分比传
+	// QuotaUsedPercentUnknown 表示"该窗口置回未知"。
 	//
+	// 为什么两个窗口必须一次写入：它们来自同一次探测，分开写会在两次写入之间
+	// 留下"主窗口已更新、次窗口还是旧值"的不一致快照，界面会显示自相矛盾的数据。
 	// resetAt 与 checkedAt 一并写入（不做"空值保留"）：额度窗口本身会滚动，
 	// 保留旧的重置时间会让"额度是否已恢复"的判断依据过期数据。
-	UpdateQuota(ctx context.Context, id uint64, usedPercent int, resetAt, checkedAt time.Time) error
+	//
+	// 注意：本方法只落库，不改变调度判定——QuotaExhausted 仍以主窗口为准。
+	UpdateQuota(ctx context.Context, id uint64, windows QuotaWindows) error
 }
 
 // ErrChannelKeyNotFound 表示密钥不存在。

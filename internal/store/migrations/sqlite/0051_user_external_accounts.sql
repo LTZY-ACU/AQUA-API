@@ -1,4 +1,4 @@
--- 迁移 0045：第三方账号绑定（本站账号 ↔ 外部平台账号）
+-- 迁移 0051：第三方账号绑定（本站账号 ↔ 外部平台账号）
 --
 -- 意图（Why）：
 --
@@ -36,6 +36,13 @@
 -- 扩展（Extend）：
 --   接入第二个外部平台：复用本表，provider 换个标识即可，无需改表结构；
 --   需要"解除绑定"：加一条 DELETE 即可（注意保留至少一个登录方式的可恢复性）。
+--
+-- 序号说明（合并时重排）：
+--   本脚本原为 0045 号，与另一条开发线上已发布的同名序号撞车。
+--   迁移版本号必须全局唯一（store.loadMigrations 发现重复会直接让进程启动失败），
+--   且已发布的序号不得改动（线上库的 schema_migrations 已经记过号），
+--   因此【保留对方已发布的 0043–0048，把本条顺延到 0049 之后】。
+
 CREATE TABLE IF NOT EXISTS user_external_accounts (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id            INTEGER NOT NULL,

@@ -39,10 +39,10 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/corpus"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/netguard"
-	"gitee.com/xiaosu4610/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/aqua-api/internal/corpus"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/netguard"
+	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
 )
 
 // ErrNoAvailableChannel 表示当前没有任何可用渠道能处理请求的模型。

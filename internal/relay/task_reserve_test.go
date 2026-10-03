@@ -22,8 +22,8 @@ import (
 	"context"
 	"testing"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
 )
 
 // TestTaskService_Submit_释放中间件预留 验证任务提交会释放在途预留、不滞留额度。

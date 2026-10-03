@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/crypto"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/crypto"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // 令牌列表查询的条数约束（与渠道列表同样的保护思路：避免一次性拉全表）。
@@ -39,7 +39,7 @@ const (
 )
 
 // tokenColumns 集中定义查询列，顺序必须与 scanToken 的扫描顺序严格一致。
-const tokenColumns = `id, owner_id, name, key_hash, key_enc, status, expires_at, remain_quota, unlimited_quota, used_quota, models, created_at, updated_at, last_used_at, group_name`
+const tokenColumns = `id, owner_id, name, key_hash, key_enc, status, expires_at, remain_quota, unlimited_quota, used_quota, models, created_at, updated_at, last_used_at, group_name, budget_quota, budget_period, budget_window_start, budget_window_base`
 
 // tokenRepository 是 model.TokenRepository 的 SQL 实现，并发安全。
 type tokenRepository struct {
@@ -73,11 +73,15 @@ func (r *tokenRepository) Create(ctx context.Context, t *model.Token) error {
 	res, err := r.db.ExecContext(ctx, `
 		INSERT INTO tokens
 			(owner_id, name, key_hash, key_enc, status, expires_at, remain_quota, unlimited_quota,
-			 used_quota, models, created_at, updated_at, group_name)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 used_quota, models, created_at, updated_at, group_name,
+			 budget_quota, budget_period, budget_window_start, budget_window_base)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.OwnerID, t.Name, keyHash, keyEnc, int(t.Status), expiresAtToUnix(t.ExpiresAt),
 		t.RemainQuota, boolToInt(t.UnlimitedQuota), t.UsedQuota, encodeModels(t.Models),
 		t.CreatedAt.Unix(), t.UpdatedAt.Unix(), t.GroupName,
+		// 周期预算四列（迁移 0043）：默认 0/''，存量令牌行为不变。
+		// 窗口起点复用"0 表示零值时间"的转换（与 expires_at / last_used_at 同一口径）。
+		t.BudgetQuota, t.BudgetPeriod, expiresAtToUnix(t.BudgetWindowStart), t.BudgetWindowBase,
 	)
 	if err != nil {
 		// 唯一索引冲突通常意味着令牌 KEY 重复（随机生成几乎不可能，多为手工指定）
@@ -192,11 +196,14 @@ func (r *tokenRepository) Update(ctx context.Context, t *model.Token) error {
 		UPDATE tokens SET
 			owner_id = ?, name = ?, key_hash = ?, key_enc = ?, status = ?, expires_at = ?,
 			remain_quota = ?, unlimited_quota = ?, used_quota = ?, models = ?, updated_at = ?,
-			group_name = ?
+			group_name = ?,
+			budget_quota = ?, budget_period = ?, budget_window_start = ?, budget_window_base = ?
 		WHERE id = ?`,
 		t.OwnerID, t.Name, keyHash, keyEnc, int(t.Status), expiresAtToUnix(t.ExpiresAt),
 		t.RemainQuota, boolToInt(t.UnlimitedQuota), t.UsedQuota, encodeModels(t.Models),
-		t.UpdatedAt.Unix(), t.GroupName, t.ID,
+		t.UpdatedAt.Unix(), t.GroupName,
+		t.BudgetQuota, t.BudgetPeriod, expiresAtToUnix(t.BudgetWindowStart), t.BudgetWindowBase,
+		t.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("store: 更新令牌 %d 失败: %w", t.ID, err)
@@ -341,6 +348,68 @@ func (r *tokenRepository) ConsumeQuota(ctx context.Context, id uint64, amount in
 	return nil
 }
 
+// ResetBudgetWindow 惰性重置令牌的周期预算窗口（迁移 0043）。
+//
+// 为什么在同一条 SQL 里取 used_quota 作为基线：
+//
+//	"基线 = 重置时刻的 used_quota"是"本窗口已消耗归零"的定义。若拆成
+//	"先 SELECT used_quota、再 UPDATE 写入"，两次之间若被并发扣费插队，
+//	基线会落后于真实进度，导致新窗口平白多出一笔已耗（可能一开窗就被判超限）。
+//	用 `budget_window_base = used_quota` 由数据库在同一语句内读取，天然原子。
+//
+// 容错：令牌可能已被删除（受影响 0 行），与 RecordUsage 一致不视为错误——
+// 重置失败不该让鉴权主流程报错。
+func (r *tokenRepository) ResetBudgetWindow(ctx context.Context, id uint64, windowStart time.Time) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE tokens SET
+			budget_window_start = ?,
+			budget_window_base  = used_quota
+		WHERE id = ?`,
+		expiresAtToUnix(windowStart), id)
+	if err != nil {
+		return fmt.Errorf("store: 重置令牌 %d 预算窗口失败: %w", id, err)
+	}
+	return nil
+}
+
+// GroupSpendToday 聚合某分组在 [since, until) 区间内消耗的额度（只读）。
+//
+// 分组归属口径：按"请求实际命中的渠道所属分组"判定，与路由时的分组匹配语义
+// 完全一致（主分组 group_name 命中，或分组清单 group_names 含该分组）。
+// 这里刻意复用 channel_repo.go 的 `(',' || group_names || ',') LIKE ?` 写法与
+// escapeLike 转义，避免两处匹配规则漂移（一处改了另一处没改，就会出现
+// "能路由过去却统计不到"的诡异差异）。
+//
+// 只统计成功请求（status_code < 400）：失败调用通常不消耗上游额度，
+// 把它们算进"今天烧了多少"会把成本抬高到失真（与 SumUsageByChannelKey 同一口径）。
+// usage_logs.channel_id = 0 的行（选渠道前就失败）JOIN 不上，天然被排除。
+//
+// 用 COALESCE 兜底：无匹配行时 SUM 返回 NULL，直接扫进 int64 会报错。
+func (r *tokenRepository) GroupSpendToday(ctx context.Context, group string, since, until time.Time) (int64, error) {
+	group = strings.TrimSpace(group)
+	if group == "" {
+		// 未指定分组：无从归属，返回 0 而不是让调用方拿到一个全站合计（那更误导）。
+		return 0, nil
+	}
+
+	var total sql.NullInt64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(ul.quota), 0)
+		FROM usage_logs ul
+		JOIN channels c ON c.id = ul.channel_id
+		WHERE ul.created_at >= ? AND ul.created_at < ?
+		  AND ul.status_code < 400
+		  AND (c.group_name = ? OR (',' || c.group_names || ',') LIKE ? ESCAPE '\')`,
+		since.Unix(), until.Unix(), group, "%,"+escapeLike(group)+",%").Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("store: 统计分组 %s 的消耗失败: %w", group, err)
+	}
+	if !total.Valid {
+		return 0, nil
+	}
+	return total.Int64, nil
+}
+
 // scanToken 把一行数据映射为领域对象，并解密 KEY。
 func (r *tokenRepository) scanToken(sc rowScanner) (*model.Token, error) {
 	var (
@@ -359,11 +428,15 @@ func (r *tokenRepository) scanToken(sc rowScanner) (*model.Token, error) {
 		updatedAt      int64
 		lastUsedAt     int64
 		groupName      string
+		budgetQuota    int64
+		budgetPeriod   string
+		budgetWindowAt int64
+		budgetWindowBs int64
 	)
 
 	if err := sc.Scan(&id, &ownerID, &name, &keyHash, &keyEnc, &status, &expiresAt,
 		&remainQuota, &unlimitedQuota, &usedQuota, &modelsCSV, &createdAt, &updatedAt,
-		&lastUsedAt, &groupName); err != nil {
+		&lastUsedAt, &groupName, &budgetQuota, &budgetPeriod, &budgetWindowAt, &budgetWindowBs); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
@@ -390,6 +463,11 @@ func (r *tokenRepository) scanToken(sc rowScanner) (*model.Token, error) {
 		UpdatedAt:      time.Unix(updatedAt, 0),
 		LastUsedAt:     unixToExpiresAt(lastUsedAt), // 复用"0 表示零值时间"的转换
 		GroupName:      groupName,
+		// 周期预算四列（迁移 0043）：窗口起点同样复用"0 → 零值时间"的转换。
+		BudgetQuota:       budgetQuota,
+		BudgetPeriod:      budgetPeriod,
+		BudgetWindowStart: unixToExpiresAt(budgetWindowAt),
+		BudgetWindowBase:  budgetWindowBs,
 	}, nil
 }
 

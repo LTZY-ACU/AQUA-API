@@ -38,8 +38,8 @@ import (
 	"sync"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/config"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/config"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // healthProbeConfig 是巡检运行时的已归一配置。

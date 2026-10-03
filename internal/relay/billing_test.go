@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
-	"gitee.com/xiaosu4610/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
 )
 
 // fakePriceRepo 是内存版计价规则仓储。
@@ -32,6 +32,28 @@ func (f *fakePriceRepo) GetByID(context.Context, uint64) (*model.ModelPrice, err
 func (f *fakePriceRepo) List(_ context.Context, group string, enabledOnly bool) ([]*model.ModelPrice, error) {
 	result := make([]*model.ModelPrice, 0, len(f.prices))
 	for _, price := range f.prices {
+		// 与真实仓储一致：List 只返回分组默认价（channel_id = 0）。
+		if price.ChannelID != model.ChannelScopeAll {
+			continue
+		}
+		if group != "" && price.Group != group {
+			continue
+		}
+		if enabledOnly && !price.Enabled {
+			continue
+		}
+		result = append(result, price)
+	}
+	return result, nil
+}
+
+// ListForPricing 与真实仓储一致：返回分组默认价 + 指定渠道的专用价。
+func (f *fakePriceRepo) ListForPricing(_ context.Context, group string, channelID uint64, enabledOnly bool) ([]*model.ModelPrice, error) {
+	result := make([]*model.ModelPrice, 0, len(f.prices))
+	for _, price := range f.prices {
+		if price.ChannelID != model.ChannelScopeAll && price.ChannelID != channelID {
+			continue
+		}
 		if group != "" && price.Group != group {
 			continue
 		}
@@ -656,18 +678,27 @@ func TestBilling_结算接入_成功多退_失败退还_未知用量按预留收
 	}
 }
 
-// flakyPriceRepo 是"读库偶发失败"的计价仓储：fail 为 true 时 List 一律报错。
-// 嵌入 fakePriceRepo 复用其余方法，只覆盖 List。
+// flakyPriceRepo 是"读库偶发失败"的计价仓储：fail 为 true 时读价一律报错。
+// 嵌入 fakePriceRepo 复用其余方法，只覆盖读价方法。
 type flakyPriceRepo struct {
 	fakePriceRepo
 	fail bool
 }
 
+// 两个读价方法都要覆盖：计价主链路走 ListForPricing（分组默认价 + 渠道专用价），
+// 只覆盖 List 的话故障根本注不进去——用例会变成"看起来在测，其实一次都没失败"。
 func (f *flakyPriceRepo) List(ctx context.Context, group string, enabledOnly bool) ([]*model.ModelPrice, error) {
 	if f.fail {
 		return nil, errors.New("db down")
 	}
 	return f.fakePriceRepo.List(ctx, group, enabledOnly)
+}
+
+func (f *flakyPriceRepo) ListForPricing(ctx context.Context, group string, channelID uint64, enabledOnly bool) ([]*model.ModelPrice, error) {
+	if f.fail {
+		return nil, errors.New("db down")
+	}
+	return f.fakePriceRepo.ListForPricing(ctx, group, channelID, enabledOnly)
 }
 
 // TestBilling_冷启动读价失败不得缓存空价格 验证资损防护：

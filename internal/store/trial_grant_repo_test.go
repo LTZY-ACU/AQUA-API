@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // newTrialGrantFixture 在同一个临时库上构造试用额台账与用户仓储。

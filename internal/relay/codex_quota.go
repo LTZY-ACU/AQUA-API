@@ -33,8 +33,8 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/channeltype"
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // codexUsagePath 是 ChatGPT 的额度查询端点（相对 backend-api 根）。
@@ -57,15 +57,33 @@ const codexBackendOriginFallback = "https://chatgpt.com/backend-api"
 const codexQuotaTimeout = 20 * time.Second
 
 // CodexQuota 是一个订阅账号的额度快照。
+//
+// 上游把额度拆成两个【互相独立】的窗口：5 小时窗口（primary）与每周窗口（secondary）。
+// 只解析主窗口会在周额度将满时毫无预警——表现是"明明没怎么用，账号却突然全满"。
+// 因此这里两个窗口都取回，并各自带上窗口时长，供界面分别渲染两条进度条。
 type CodexQuota struct {
 	// PlanType 是套餐标识（plus / pro / team…）；空串表示上游未提供。
 	PlanType string `json:"plan_type"`
 	// Email 是账号邮箱；用于界面辨认"这是谁的账号"。
 	Email string `json:"email"`
-	// UsedPercent 是主窗口已用百分比（0~100）；QuotaUsedPercentUnknown 表示未取到。
+
+	// UsedPercent 是主窗口（5 小时）已用百分比（0~100）；QuotaUsedPercentUnknown 表示未取到。
 	UsedPercent int `json:"used_percent"`
 	// ResetAt 是主窗口的重置时间；零值表示上游未提供。
 	ResetAt time.Time `json:"reset_at"`
+	// PrimaryWindowSeconds 是主窗口时长（秒）；0 表示上游未提供。
+	PrimaryWindowSeconds int `json:"primary_window_seconds"`
+
+	// SecondaryUsedPercent 是次窗口（每周）已用百分比；QuotaUsedPercentUnknown 表示未取到。
+	//
+	// 注意：它【不】参与调度判定（QuotaExhausted 仍只看主窗口），
+	// 仅落库与展示，保证引入次窗口后既有调度行为逐字不变。
+	SecondaryUsedPercent int `json:"secondary_used_percent"`
+	// SecondaryResetAt 是次窗口的重置时间；零值表示上游未提供。
+	SecondaryResetAt time.Time `json:"secondary_reset_at"`
+	// SecondaryWindowSeconds 是次窗口时长（秒）；0 表示上游未提供。
+	SecondaryWindowSeconds int `json:"secondary_window_seconds"`
+
 	// LimitReached 表示上游明确告知"当前已触顶"。
 	LimitReached bool `json:"limit_reached"`
 }
@@ -160,36 +178,72 @@ func (r *Relay) QueryCodexQuota(ctx context.Context, channel *model.Channel, key
 	return toCodexQuota(&payload), nil
 }
 
-// toCodexQuota 把上游响应转成额度快照。
+// toCodexQuota 把上游响应转成额度快照（主 / 次两个窗口都填）。
 //
 // 缺失字段的处理：上游对"没有窗口"的账号会返回 null，
 // 此时把已用百分比记为"未知"而不是 0——0 是"完全没用"，
 // 两者在界面上的含义完全不同。
+//
+// 主窗口决定调度（触顶即记 100%），次窗口只落库展示；
+// 两个窗口各自独立解析，互不借用数值（否则周用量会被误当成 5 小时用量）。
 func toCodexQuota(payload *codexUsageResponse) *CodexQuota {
 	quota := &CodexQuota{
-		PlanType:     strings.TrimSpace(payload.PlanType),
-		Email:        strings.TrimSpace(payload.Email),
-		UsedPercent:  model.QuotaUsedPercentUnknown,
-		LimitReached: payload.RateLimit != nil && payload.RateLimit.LimitReached,
+		PlanType:             strings.TrimSpace(payload.PlanType),
+		Email:                strings.TrimSpace(payload.Email),
+		UsedPercent:          model.QuotaUsedPercentUnknown,
+		SecondaryUsedPercent: model.QuotaUsedPercentUnknown,
+		LimitReached:         payload.RateLimit != nil && payload.RateLimit.LimitReached,
 	}
-	if payload.RateLimit == nil || payload.RateLimit.PrimaryWindow == nil {
+	if payload.RateLimit == nil {
 		return quota
 	}
 
-	window := payload.RateLimit.PrimaryWindow
-	quota.UsedPercent = normalizeUsedPercent(window.UsedPercent)
-	switch {
-	case window.ResetAt > 0:
-		quota.ResetAt = time.Unix(window.ResetAt, 0)
-	case window.ResetAfterSeconds > 0:
-		quota.ResetAt = time.Now().Add(time.Duration(window.ResetAfterSeconds) * time.Second)
+	// 主窗口（5 小时）：驱动调度判定。
+	if window := payload.RateLimit.PrimaryWindow; window != nil {
+		quota.UsedPercent = normalizeUsedPercent(window.UsedPercent)
+		quota.PrimaryWindowSeconds = normalizeWindowSeconds(window.LimitWindowSecs)
+		quota.ResetAt = resolveResetAt(window.ResetAt, window.ResetAfterSeconds)
+		// 上游说"已触顶"但百分比还没到 100（窗口切换瞬间可能如此）：
+		// 以触顶为准，否则调度会把请求继续派给它并立刻失败。
+		if quota.LimitReached && quota.UsedPercent < 100 {
+			quota.UsedPercent = 100
+		}
 	}
-	// 上游说"已触顶"但百分比还没到 100（窗口切换瞬间可能如此）：
-	// 以触顶为准，否则调度会把请求继续派给它并立刻失败。
-	if quota.LimitReached && quota.UsedPercent < 100 {
-		quota.UsedPercent = 100
+
+	// 次窗口（每周）：仅展示与落库，不参与调度判定。
+	if window := payload.RateLimit.SecondaryWindow; window != nil {
+		quota.SecondaryUsedPercent = normalizeUsedPercent(window.UsedPercent)
+		quota.SecondaryWindowSeconds = normalizeWindowSeconds(window.LimitWindowSecs)
+		quota.SecondaryResetAt = resolveResetAt(window.ResetAt, window.ResetAfterSeconds)
 	}
 	return quota
+}
+
+// resolveResetAt 从上游给的"绝对时间 / 剩余秒数"里推导窗口重置时刻。
+//
+// 两个字段的优先级：绝对时间（reset_at）优先，缺失时才用剩余秒数换算——
+// 绝对时间不受本地时钟与请求耗时影响，比"now + 剩余秒"更准。
+// 都没有时返回零值（表示未知）。
+func resolveResetAt(resetAt int64, resetAfterSeconds int) time.Time {
+	switch {
+	case resetAt > 0:
+		return time.Unix(resetAt, 0)
+	case resetAfterSeconds > 0:
+		return time.Now().Add(time.Duration(resetAfterSeconds) * time.Second)
+	default:
+		return time.Time{}
+	}
+}
+
+// normalizeWindowSeconds 把上游给的窗口时长收敛为非负数。
+//
+// 负数没有意义（上游实现差异），归零表示"未提供"；
+// 界面上据此退回到默认文案（5 小时 / 每周），而不是显示一个负时长。
+func normalizeWindowSeconds(seconds int) int {
+	if seconds < 0 {
+		return 0
+	}
+	return seconds
 }
 
 // normalizeUsedPercent 把上游的百分比收敛到 0~100 的整数。

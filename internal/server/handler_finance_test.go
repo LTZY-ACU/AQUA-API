@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // newFinanceTestSite 准备一个已登录的用户，并返回其会话令牌与用户 id。

@@ -53,6 +53,16 @@ export function deleteMyToken(id: number): Promise<unknown> {
 }
 
 /**
+ * GET /api/user/tokens/{id}/key：取该令牌的明文密钥。
+ *
+ * 用途：创建弹层没来得及复制、或复制失败时的正式找回入口。
+ * 列表出于安全只回掩码（masked_key），本接口是唯一能拿到明文的路径。
+ */
+export function getMyTokenKey(id: number): Promise<{ id: number; key: string }> {
+  return api.get<{ id: number; key: string }>(`/user/tokens/${id}/key`)
+}
+
+/**
  * 读取门户可选的分组（用于创建令牌时选择「所属分组」）。
  *
  * 为什么不用公开的模型广场（GET /api/models）：广场不知道"你是谁"，

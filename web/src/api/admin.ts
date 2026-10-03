@@ -138,6 +138,15 @@ export function deleteToken(id: number): Promise<unknown> {
   return api.delete<unknown>(`/admin/tokens/${id}`)
 }
 
+/**
+ * GET /api/admin/tokens/{id}/key：取该令牌的明文密钥（管理员专用）。
+ *
+ * 用于后台"代客户复制/找回密钥"。该接口挂在 RequireAdmin 之后，天然是管理员专属。
+ */
+export function getTokenKey(id: number): Promise<{ id: number; key: string }> {
+  return api.get<{ id: number; key: string }>(`/admin/tokens/${id}/key`)
+}
+
 /* ── 用户 ───────────────────────────────────────────────── */
 
 /** GET /api/admin/users：用户列表 */

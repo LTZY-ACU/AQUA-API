@@ -1,5 +1,5 @@
 <!--
-  Pull Request 模板：发 PR 时默认填入。
+  Pull Request 模板：发 PR 时默认填入（GitHub）。
   合并方式约定见 CONTRIBUTING.md 第二节：保留提交序列，不 squash。
 -->
 

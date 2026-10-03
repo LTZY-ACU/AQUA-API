@@ -30,7 +30,7 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/channeltype"
+	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
 )
 
 // 领域错误定义。

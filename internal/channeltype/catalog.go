@@ -494,7 +494,41 @@ func Types() []Type {
 		},
 
 		// ═══════════════════════════════════════════════════════════════
-		// 图像生成（全部未实现）
+		// 通用异步任务上游（模板驱动，已实现）
+		// ═══════════════════════════════════════════════════════════════
+		{
+			Key: "custom_async", Label: "自定义异步任务上游（通用）", Category: CategoryAggregator,
+			Protocol: ProtocolCustomAsync, AuthMode: AuthBearer,
+			BaseURLEditable: true,
+			ExtraFields: []ExtraField{
+				{Key: "async_submit_path", Label: "提交路径", Required: true,
+					Placeholder: "/v1/video/generations",
+					Help:        "提交任务的相对路径，拼在渠道基础地址之后。"},
+				{Key: "async_submit_method", Label: "提交方法", Placeholder: "POST",
+					Help: "默认 POST。"},
+				{Key: "async_poll_path", Label: "查询路径", Required: true,
+					Placeholder: "/v1/tasks/{id}",
+					Help:        "查询任务状态的相对路径；{id} 会被替换为上游任务号。"},
+				{Key: "async_id_path", Label: "任务号字段路径", Placeholder: "data.id",
+					Help: "提交响应里任务号的点路径（如 data.id、data.0.task_id）；留空则依次尝试顶层 id / task_id / taskId。"},
+				{Key: "async_status_path", Label: "状态字段路径", Placeholder: "data.status",
+					Help: "识别不了的状态会按「进行中」处理，不会误判为失败。"},
+				{Key: "async_progress_path", Label: "进度字段路径", Placeholder: "data.progress",
+					Help: "0~100 的进度点路径，可选；也接受 \"50%\" 这种字符串。"},
+				{Key: "async_result_url_path", Label: "结果地址字段路径", Placeholder: "data.output.images.0.url",
+					Help: "结果 URL 的点路径，支持数组下标。"},
+				{Key: "async_error_path", Label: "失败原因字段路径", Placeholder: "data.fail_reason",
+					Help: "可选；留空时统一显示「上游任务失败」。"},
+				{Key: "async_status_map", Label: "状态词映射", Placeholder: "completed=success,running=running",
+					Help: "把上游状态词映射到本地语义：success / failed / canceled / running / queued。"},
+			},
+			Caps:      CapImage | CapVideo | CapMusic | CapAsyncTask,
+			Available: true,
+			Notes:     "通用异步上游：自填「提交路径 / 查询路径 / 字段点路径」即可接入任意「提交 → 轮询 → 取结果」形态的图像、视频、音乐生成服务；不含任何厂商私有约定，全由配置驱动。调用时在 POST /v1/tasks 里指定 provider 为 custom_async。",
+		},
+
+		// ═══════════════════════════════════════════════════════════════
+		// 图像生成（厂商私有格式，适配器待实现）
 		// ═══════════════════════════════════════════════════════════════
 		{
 			Key: "midjourney", Label: "Midjourney", Category: CategoryImage,
@@ -686,8 +720,8 @@ func Types() []Type {
 			Protocol: ProtocolOpenAI, AuthMode: AuthBearer,
 			DefaultBaseURL: "https://api.groq.com/openai/v1",
 			Caps:           CapAudio,
-			Available:      false,
-			Notes:          "Groq 托管的 Whisper 系列识别模型，接口为 OpenAI 兼容，但本网关尚未开放语音转发。",
+			Available:      true,
+			Notes:          "Groq 托管的 Whisper 系列识别模型，接口为 OpenAI 兼容；网关已开放 /v1/audio/transcriptions 与 /v1/audio/translations 转发，可直接复用 OpenAI 适配器。",
 		},
 		{
 			Key: "minimax_tts", Label: "MiniMax 语音合成", Category: CategoryAudio,

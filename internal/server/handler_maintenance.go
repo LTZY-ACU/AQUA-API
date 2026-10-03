@@ -29,9 +29,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
-	"gitee.com/xiaosu4610/aqua-api/internal/store"
-	"gitee.com/xiaosu4610/aqua-api/internal/version"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/store"
+	"github.com/LTZY-ACU/aqua-api/internal/version"
 )
 
 // 运维接口相关常量。
@@ -60,6 +60,21 @@ type maintenanceOverviewResponse struct {
 	Disk          maintenanceDiskDTO     `json:"disk"`           // 磁盘水位
 	Tables        []maintenanceTableDTO  `json:"tables"`         // 各表行数
 	Usage         maintenanceUsageDTO    `json:"usage"`          // 调用健康度
+	// RetryRatios 是各折扣分组的重试率快照（ratio < 100 的分组才计入）。
+	//
+	// 这是"代理档是否正在亏本"的直接读数：r 越过保本线时 OverBreakEven 为 true，
+	// 前端据此把它标红。没有折扣分组或尚无调用时为空数组。
+	RetryRatios []maintenanceRetryRatioDTO `json:"retry_ratios"`
+}
+
+// maintenanceRetryRatioDTO 是单个折扣分组的重试率读数（见 relay.RetryRatioSnapshot）。
+type maintenanceRetryRatioDTO struct {
+	Group           string  `json:"group"`            // 分组名
+	Ratio           int64   `json:"ratio"`            // 计费倍率（百分比，<100 即折扣档）
+	UpstreamCalls   int64   `json:"upstream_calls"`   // 累计上游调用次数（含重试）
+	ChargedRequests int64   `json:"charged_requests"` // 累计产生了计费的请求数
+	RetryRatio      float64 `json:"retry_ratio"`      // r = 上游调用次数 / 计费请求次数
+	OverBreakEven   bool    `json:"over_break_even"`  // 已越过保本线（正在亏本）
 }
 
 // maintenanceDatabaseDTO 描述数据库驱动与体积。
@@ -181,6 +196,22 @@ func (s *Server) handleMaintenanceOverview(c *gin.Context) {
 	resp.Usage = maintenanceUsageDTO{
 		Last24h: toMaintenanceUsageWindowDTO(health.Last24h),
 		Last7d:  toMaintenanceUsageWindowDTO(health.Last7d),
+	}
+
+	// 折扣分组重试率：来自计费组件的内存快照（进程内累计，重启归零）。
+	// 取不到（计费未注入）时留空数组，不阻断整页。
+	resp.RetryRatios = []maintenanceRetryRatioDTO{}
+	if s.deps.Billing != nil {
+		for _, snap := range s.deps.Billing.RetryRatioSnapshots() {
+			resp.RetryRatios = append(resp.RetryRatios, maintenanceRetryRatioDTO{
+				Group:           snap.Group,
+				Ratio:           snap.Ratio,
+				UpstreamCalls:   snap.UpstreamCalls,
+				ChargedRequests: snap.ChargedRequests,
+				RetryRatio:      snap.RetryRatio,
+				OverBreakEven:   snap.OverBreakEven,
+			})
+		}
 	}
 
 	c.JSON(http.StatusOK, resp)

@@ -16,8 +16,8 @@
 //
 // 注入示例：
 //
-//	go build -ldflags "-X gitee.com/xiaosu4610/aqua-api/internal/version.Version=v1.0.0 \
-//	                   -X gitee.com/xiaosu4610/aqua-api/internal/version.GitCommit=abc1234" \
+//	go build -ldflags "-X github.com/LTZY-ACU/aqua-api/internal/version.Version=v1.0.0 \
+//	                   -X github.com/LTZY-ACU/aqua-api/internal/version.GitCommit=abc1234" \
 //	         ./cmd/aqua
 package version
 

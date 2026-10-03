@@ -50,8 +50,8 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/channeltype"
-	"gitee.com/xiaosu4610/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
+	"github.com/LTZY-ACU/aqua-api/internal/oai"
 )
 
 // anthropicDefaultMaxTokens 是 OpenAI 请求未提供 max_tokens 时的保守默认值。

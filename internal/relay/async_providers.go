@@ -41,7 +41,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // 上游响应体的读取上限。
@@ -59,13 +59,19 @@ const (
 	ProviderMidjourney = "midjourney"
 	// ProviderOpenAIImage 是 OpenAI 兼容图像接口的适配器。
 	ProviderOpenAIImage = "openai_image"
+	// ProviderCustomAsync 是模板驱动的通用异步适配器（见 async_custom.go）。
+	//
+	// 它不绑定具体厂商：提交/查询路径与字段映射全部来自渠道扩展配置，
+	// 站长据此接入任意"提交 → 轮询 → 取结果"形态的上游。
+	ProviderCustomAsync = "custom_async"
 )
 
 // newBuiltinProviders 返回全部内置适配器。
 //
 // 切片顺序即"自动选择"的优先级：同一类别有多个适配器时取靠前者。
 // 把 Midjourney 排在前面，是因为它是真正的异步接口，更适合任务语义；
-// openai_image 属于兼容性兜底。
+// openai_image 属于兼容性兜底；custom_async 放在最后作为"通用兜底"——
+// 它需要站长显式配置路径才可用，因此不应抢占更专用适配器的自动选择。
 func newBuiltinProviders(client *http.Client) []TaskProvider {
 	if client == nil {
 		client = http.DefaultClient
@@ -73,6 +79,7 @@ func newBuiltinProviders(client *http.Client) []TaskProvider {
 	return []TaskProvider{
 		&midjourneyProvider{client: client},
 		&openAIImageProvider{client: client},
+		&customAsyncProvider{client: client},
 	}
 }
 

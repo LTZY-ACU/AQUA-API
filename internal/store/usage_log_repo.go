@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // 日志列表查询的条数约束。
@@ -43,7 +43,7 @@ const defaultSeriesDays = 7
 // usageLogColumns 集中定义查询列，顺序必须与 scanUsageLog 的扫描顺序严格一致。
 const usageLogColumns = `id, user_id, token_id, channel_id, channel_key_id, model, upstream_model, prompt_tokens, completion_tokens,
 	total_tokens, cached_tokens, reasoning_tokens, first_token_ms, tokens_per_second,
-	quota, latency_ms, is_stream, status_code, error, request_id, created_at`
+	quota, latency_ms, is_stream, status_code, error, request_id, price_version, created_at`
 
 // usageLogRepository 是 model.UsageLogRepository 的 SQL 实现，并发安全。
 type usageLogRepository struct {
@@ -71,13 +71,13 @@ func (r *usageLogRepository) Create(ctx context.Context, log *model.UsageLog) er
 		INSERT INTO usage_logs
 			(user_id, token_id, channel_id, channel_key_id, model, upstream_model, prompt_tokens, completion_tokens, total_tokens,
 			 cached_tokens, reasoning_tokens, first_token_ms, tokens_per_second,
-			 quota, latency_ms, is_stream, status_code, error, request_id, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 quota, latency_ms, is_stream, status_code, error, request_id, price_version, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		log.UserID, log.TokenID, log.ChannelID, log.ChannelKeyID, log.Model, log.UpstreamModel,
 		log.PromptTokens, log.CompletionTokens, log.TotalTokens,
 		log.CachedTokens, log.ReasoningTokens, log.FirstTokenMS, log.TokensPerSecond,
 		log.Quota, log.LatencyMS, boolToInt(log.IsStream), log.StatusCode,
-		log.Error, log.RequestID, log.CreatedAt.Unix(),
+		log.Error, log.RequestID, log.PriceVersion, log.CreatedAt.Unix(),
 	)
 	if err != nil {
 		return fmt.Errorf("store: 写入调用日志失败: %w", err)
@@ -468,6 +468,7 @@ func scanUsageLog(sc rowScanner) (*model.UsageLog, error) {
 		statusCode       int
 		errMsg           string
 		requestID        string
+		priceVersion     string
 		createdAt        int64
 	)
 
@@ -475,7 +476,7 @@ func scanUsageLog(sc rowScanner) (*model.UsageLog, error) {
 		&promptTokens, &completionTokens, &totalTokens,
 		&cachedTokens, &reasoningTokens, &firstTokenMS, &tokensPerSecond,
 		&quota, &latencyMS,
-		&isStream, &statusCode, &errMsg, &requestID, &createdAt); err != nil {
+		&isStream, &statusCode, &errMsg, &requestID, &priceVersion, &createdAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
@@ -503,6 +504,7 @@ func scanUsageLog(sc rowScanner) (*model.UsageLog, error) {
 		StatusCode:       statusCode,
 		Error:            errMsg,
 		RequestID:        requestID,
+		PriceVersion:     priceVersion,
 		CreatedAt:        time.Unix(createdAt, 0),
 	}, nil
 }

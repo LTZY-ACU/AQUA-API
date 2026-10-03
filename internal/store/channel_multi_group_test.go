@@ -9,7 +9,7 @@ import (
 	"context"
 	"testing"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // TestChannelRepository_多分组_创建读回与匹配 覆盖清单落库与按分组查询。

@@ -27,12 +27,12 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // modelPriceColumns 集中定义查询列，顺序必须与 scanModelPrice 的扫描顺序严格一致。
 const modelPriceColumns = `id, model, prompt_price, cache_price, completion_price, per_call_price,
-	billing_mode, group_name, enabled, remark, created_at, updated_at`
+	billing_mode, group_name, channel_id, enabled, remark, created_at, updated_at`
 
 // modelPriceRepository 是 model.ModelPriceRepository 的 SQL 实现，并发安全。
 type modelPriceRepository struct {
@@ -59,10 +59,10 @@ func (r *modelPriceRepository) Create(ctx context.Context, price *model.ModelPri
 	res, err := r.db.ExecContext(ctx, `
 		INSERT INTO model_prices
 			(model, prompt_price, cache_price, completion_price, per_call_price, billing_mode,
-			 group_name, enabled, remark, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 group_name, channel_id, enabled, remark, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		price.Model, price.PromptPrice, price.CachePrice, price.CompletionPrice, price.PerCallPrice,
-		price.BillingMode, price.Group,
+		price.BillingMode, price.Group, price.ChannelID,
 		boolToInt(price.Enabled), price.Remark, price.CreatedAt.Unix(), price.UpdatedAt.Unix(),
 	)
 	if err != nil {
@@ -97,19 +97,44 @@ func (r *modelPriceRepository) GetByID(ctx context.Context, id uint64) (*model.M
 	return price, nil
 }
 
-// List 查询计价规则。
+// List 查询「分组默认价」规则（仅 channel_id = 0 的行）。
+//
+// 为什么显式排除渠道专用价：后台的价格广场与试算都基于本方法的结果做
+// MatchModelPrice 匹配，若把某渠道的专用价混进来，"某个渠道的折扣价"
+// 会被当成分组统一价展示给所有人。转发计费请用 ListForPricing。
 //
 // 返回顺序为"具体 → 笼统"（由 SQL 计算出的排序键保证）：
 // 精确匹配的规则排在前，通配规则排在后，便于人工核对"哪条会生效"。
 func (r *modelPriceRepository) List(ctx context.Context, group string, enabledOnly bool) ([]*model.ModelPrice, error) {
-	var (
-		conditions []string
-		args       []any
-	)
+	conditions := []string{"channel_id = 0"}
+	args := make([]any, 0, 2)
 	if group = strings.TrimSpace(group); group != "" {
 		conditions = append(conditions, "group_name = ?")
 		args = append(args, group)
 	}
+	return r.queryPrices(ctx, conditions, args, enabledOnly)
+}
+
+// ListForPricing 查询「分组默认价 + 指定渠道专用价」（channel_id ∈ {0, channelID}）。
+//
+// 供转发计费使用：返回集合既含默认价又含本渠道专用价，由
+// model.MatchModelPriceForChannel 决定"专用价优先、默认价兜底"的取值优先级。
+// channelID 为 0（ChannelScopeAll）时等价于 List（只有默认价）。
+func (r *modelPriceRepository) ListForPricing(ctx context.Context, group string, channelID uint64, enabledOnly bool) ([]*model.ModelPrice, error) {
+	conditions := []string{"channel_id IN (0, ?)"}
+	args := []any{channelID}
+	if group = strings.TrimSpace(group); group != "" {
+		conditions = append(conditions, "group_name = ?")
+		args = append(args, group)
+	}
+	return r.queryPrices(ctx, conditions, args, enabledOnly)
+}
+
+// queryPrices 按给定条件查询计价规则，供 List / ListForPricing 共用。
+//
+// 抽出来的原因：两者的分组/启用过滤与排序口径必须完全一致，
+// 各写一遍迟早会漂移（例如某天只给其中一个加了排序键）。
+func (r *modelPriceRepository) queryPrices(ctx context.Context, conditions []string, args []any, enabledOnly bool) ([]*model.ModelPrice, error) {
 	if enabledOnly {
 		conditions = append(conditions, "enabled = 1")
 	}
@@ -158,10 +183,10 @@ func (r *modelPriceRepository) Update(ctx context.Context, price *model.ModelPri
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE model_prices SET
 			model = ?, prompt_price = ?, cache_price = ?, completion_price = ?, per_call_price = ?,
-			billing_mode = ?, group_name = ?, enabled = ?, remark = ?, updated_at = ?
+			billing_mode = ?, group_name = ?, channel_id = ?, enabled = ?, remark = ?, updated_at = ?
 		WHERE id = ?`,
 		price.Model, price.PromptPrice, price.CachePrice, price.CompletionPrice, price.PerCallPrice,
-		price.BillingMode, price.Group,
+		price.BillingMode, price.Group, price.ChannelID,
 		boolToInt(price.Enabled), price.Remark, price.UpdatedAt.Unix(), price.ID,
 	)
 	if err != nil {
@@ -209,6 +234,7 @@ func scanModelPrice(sc rowScanner) (*model.ModelPrice, error) {
 		perCallPrice    int64
 		billingMode     string
 		group           string
+		channelID       uint64
 		enabled         int
 		remark          string
 		createdAt       int64
@@ -216,7 +242,7 @@ func scanModelPrice(sc rowScanner) (*model.ModelPrice, error) {
 	)
 
 	if err := sc.Scan(&id, &modelName, &promptPrice, &cachePrice, &completionPrice, &perCallPrice,
-		&billingMode, &group, &enabled, &remark, &createdAt, &updatedAt); err != nil {
+		&billingMode, &group, &channelID, &enabled, &remark, &createdAt, &updatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
@@ -232,6 +258,7 @@ func scanModelPrice(sc rowScanner) (*model.ModelPrice, error) {
 		PerCallPrice:    perCallPrice,
 		BillingMode:     billingMode,
 		Group:           group,
+		ChannelID:       channelID,
 		Enabled:         enabled != 0,
 		Remark:          remark,
 		CreatedAt:       time.Unix(createdAt, 0),

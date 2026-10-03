@@ -30,7 +30,7 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/xiaosu4610/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/model"
 )
 
 // orderColumns 集中定义查询列，顺序必须与 scanPaymentOrder 的扫描顺序严格一致。
@@ -153,8 +153,18 @@ func (r *paymentOrderRepository) Count(ctx context.Context, query model.PaymentO
 
 // MarkPaid 把订单置为已支付（幂等）。
 //
-// 关键：WHERE 中的 status = 待支付 就是"入账只发生一次"的落地形式。
-// 回调重复到达时，第二次的 RowsAffected 为 0，调用方据此跳过加额度。
+// 关键：WHERE 中的状态条件就是"入账只发生一次"的落地形式。
+// 回调重复到达时（订单已是已支付），第二次的 RowsAffected 为 0，调用方据此跳过加额度。
+//
+// 允许的来源状态是【待支付】与【已关闭】，而不是只有待支付——这是资损修复的关键：
+//
+//	订单到期（默认 30 分钟）会被 CloseExpired 置为"已关闭"，但用户很可能在这之后才真正付款：
+//	他可能把收银台页面开着慢慢操作、或支付平台回调延迟。此时钱已经从用户账户扣走，
+//	若因为"本地订单已关闭"而拒绝标记，回调处理会走到 CreditOrder 却因状态不是已支付而
+//	静默返回，最终应答 200 让支付平台不再重试——用户付了钱、额度永远不到账，且无任何告警。
+//	因此只要验签通过且金额一致（判定在 server 层），就必须补记为已支付。
+//
+// 「已退款(4)」绝不允许被改回已支付：那会把一笔已退回用户的钱再算一次入账。
 func (r *paymentOrderRepository) MarkPaid(ctx context.Context, tradeNo, providerTradeNo, payload string, paidAt time.Time) (bool, error) {
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE payment_orders SET
@@ -163,9 +173,10 @@ func (r *paymentOrderRepository) MarkPaid(ctx context.Context, tradeNo, provider
 			notify_payload = CASE WHEN ? = '' THEN notify_payload ELSE ? END,
 			paid_at = ?,
 			updated_at = ?
-		WHERE trade_no = ? AND status = ?`,
+		WHERE trade_no = ? AND status IN (?, ?)`,
 		int(model.PaymentStatusPaid), providerTradeNo, providerTradeNo, payload, payload,
-		paidAt.Unix(), time.Now().Unix(), tradeNo, int(model.PaymentStatusPending),
+		paidAt.Unix(), time.Now().Unix(), tradeNo,
+		int(model.PaymentStatusPending), int(model.PaymentStatusClosed),
 	)
 	if err != nil {
 		return false, fmt.Errorf("store: 标记订单 %s 已支付失败: %w", tradeNo, err)

@@ -119,6 +119,66 @@ func TestToCodexQuota_字段映射与缺失处理(t *testing.T) {
 	}
 }
 
+// TestToCodexQuota_双窗口解析 覆盖"两个都有 / 只有主窗口 / 都缺失"三种形态。
+//
+// 为什么必须钉住：此前只读取主窗口、把次窗口（每周）丢弃，
+// 结果是周额度将满时没有任何预警（"明明没怎么用，账号却突然全满"）。
+// 同时要保证缺失的窗口记为"未知"(-1)，而不是被 0 冒充成"完全没用"。
+func TestToCodexQuota_双窗口解析(t *testing.T) {
+	t.Run("两个窗口都有", func(t *testing.T) {
+		var payload codexUsageResponse
+		if err := json.Unmarshal([]byte(`{
+			"plan_type": "pro",
+			"rate_limit": {
+				"primary_window": {"used_percent": 20.4, "limit_window_seconds": 18000, "reset_after_seconds": 3600},
+				"secondary_window": {"used_percent": 88.0, "limit_window_seconds": 604800, "reset_after_seconds": 7200}
+			}
+		}`), &payload); err != nil {
+			t.Fatalf("解析样例失败: %v", err)
+		}
+		quota := toCodexQuota(&payload)
+		if quota.UsedPercent != 20 || quota.PrimaryWindowSeconds != 18000 {
+			t.Errorf("主窗口解析不符: used=%d win=%d", quota.UsedPercent, quota.PrimaryWindowSeconds)
+		}
+		if quota.SecondaryUsedPercent != 88 || quota.SecondaryWindowSeconds != 604800 {
+			t.Errorf("次窗口解析不符: used=%d win=%d", quota.SecondaryUsedPercent, quota.SecondaryWindowSeconds)
+		}
+		if quota.ResetAt.IsZero() || quota.SecondaryResetAt.IsZero() {
+			t.Error("两个窗口都应能从 reset_after_seconds 推导出重置时间")
+		}
+	})
+
+	t.Run("只有主窗口", func(t *testing.T) {
+		var payload codexUsageResponse
+		if err := json.Unmarshal([]byte(`{
+			"rate_limit": {"primary_window": {"used_percent": 50, "reset_at": 1893456000}}
+		}`), &payload); err != nil {
+			t.Fatalf("解析样例失败: %v", err)
+		}
+		quota := toCodexQuota(&payload)
+		if quota.UsedPercent != 50 {
+			t.Errorf("主窗口应为 50，实际 %d", quota.UsedPercent)
+		}
+		if quota.ResetAt.Unix() != 1893456000 {
+			t.Errorf("主窗口重置时间应优先取绝对时间 reset_at，实际 %v", quota.ResetAt)
+		}
+		if quota.SecondaryUsedPercent != -1 {
+			t.Errorf("缺失的次窗口应记为未知(-1)，实际 %d", quota.SecondaryUsedPercent)
+		}
+		if !quota.SecondaryResetAt.IsZero() {
+			t.Errorf("缺失的次窗口重置时间应为零值，实际 %v", quota.SecondaryResetAt)
+		}
+	})
+
+	t.Run("两个都缺失", func(t *testing.T) {
+		quota := toCodexQuota(&codexUsageResponse{})
+		if quota.UsedPercent != -1 || quota.SecondaryUsedPercent != -1 {
+			t.Errorf("两个窗口都应记为未知(-1)，实际 primary=%d secondary=%d",
+				quota.UsedPercent, quota.SecondaryUsedPercent)
+		}
+	})
+}
+
 // TestToCodexQuota_触顶优先 覆盖"上游说触顶但百分比未到 100"的窗口切换瞬间。
 func TestToCodexQuota_触顶优先(t *testing.T) {
 	var payload codexUsageResponse

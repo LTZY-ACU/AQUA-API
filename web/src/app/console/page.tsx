@@ -17,7 +17,7 @@ import { Card, Skeleton, StatCard } from '@/components/ui/Display'
 import { EChart } from '@/components/ui/EChart'
 import { useAuth } from '@/lib/auth/auth-context'
 import { useSite } from '@/lib/site/site-context'
-import { useTheme } from '@/lib/theme/theme-context'
+import { useTheme, isDarkScheme } from '@/lib/theme/theme-context'
 import { areaGradient, chartStyles } from '@/utils/chart'
 import { formatYuanFromQuota } from '@/utils/money'
 
@@ -49,8 +49,9 @@ export default function ConsoleOverviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 图表配色随主题切换：ECharts 用 canvas，不认 CSS 变量，必须按 isDark 显式取色
-  const cs = useMemo(() => chartStyles(resolved === 'dark'), [resolved])
+  // 图表配色随主题切换：ECharts 用 canvas，不认 CSS 变量，必须显式取色。
+  // 用 isDarkScheme 而非 === 'dark'：深蓝也是暗色语义，漏判会让图表退化成浅色配色。
+  const cs = useMemo(() => chartStyles(isDarkScheme(resolved)), [resolved])
 
   const trendOption = useMemo(() => {
     const series = usage?.series ?? []

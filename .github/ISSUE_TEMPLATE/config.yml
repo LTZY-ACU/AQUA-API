@@ -1,0 +1,24 @@
+# 新建 Issue 时的入口配置
+#
+# 意图：把「提问」引导到更合适的渠道（群聊 / 私密漏洞通道 / 文档），
+# 并强制使用模板，避免出现「只有一句话、无法定位」的 Issue。
+
+# 关闭「空白 Issue」：必须选一个模板，保证信息完整度
+blank_issues_enabled: false
+
+contact_links:
+  - name: 加入交流群（QQ 群 1103667832）
+    url: https://qm.qq.com/q/hHfKssRkdi
+    about: 使用问题、交流讨论、反馈建议请优先加群，响应更快。
+
+  - name: 报告安全漏洞（私密通道）
+    url: https://github.com/LTZY-ACU/AQUA-API/security/advisories/new
+    about: 请勿公开提交安全漏洞，走私密通道，详见 SECURITY.md。
+
+  - name: 先查常见问题与文档
+    url: https://github.com/LTZY-ACU/AQUA-API#常见问题
+    about: 提问前先看 README 的「常见问题」，多数问题这里已有答案。
+
+  - name: 参与开发（Fork + PR 协作说明）
+    url: https://github.com/LTZY-ACU/AQUA-API/blob/main/GOVERNANCE.md
+    about: 了解角色权限、分支规则与如何申请成为协作者。

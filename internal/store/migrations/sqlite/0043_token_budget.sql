@@ -1,0 +1,53 @@
+-- 迁移 0043：访问令牌的「周期预算」（滚动窗口）
+--
+-- 意图（Why）：
+--   本站的代理档只有 6 折，净利本就很薄。令牌现有的额度模型只有一个"总量"概念
+--   （remain_quota 扣到 0 为止），它挡不住"一把令牌在短短几天内把整月额度一次性跑穿"
+--   这种情形——总量还没耗尽，但站长的上游现金已经被这笔流水吃掉了。
+--   本迁移给令牌再加一道独立的"周期闸门"：在一个固定周期（日/周/月）内最多消耗若干额度，
+--   周期一到自动翻篇。它与 remain_quota 是【并列】的两道墙，任一触顶都应被拒绝：
+--     · remain_quota = 总量墙（"这把令牌一共能用多少"）；
+--     · budget_quota = 周期墙（"这把令牌每个周期能用多少"）。
+--
+--   为什么要用【可重置的周期窗口】而不是把上限做成累计值：
+--     累计上限对长期用户是"用完即死"——一个长期稳定合作的用户一旦在头一个月用满，
+--     此后永远无法再调用，只能靠站长手工改额度。周期窗口让额度"每个周期自动回血"，
+--     既限制了短期暴冲，又不惩罚长期正常使用。
+--
+-- 取值语义：
+--   budget_quota        周期预算额度（内部单位）。0 = 不限（默认，也是全部历史数据的取值）。
+--                       仅当 period 合法且本列为正数时预算闸门才生效。
+--   budget_period       周期类型：'' / 'daily' / 'weekly' / 'monthly'。
+--                       '' = 不启用预算；其余取值对应"自窗口起点起"的 1 天 / 7 天 / 1 个自然月。
+--                       刻意用"自窗口起点起"的相对窗口（而非自然日/自然周的零点）：
+--                       它天然把重置时刻分散到各令牌的首次使用时刻，避免每天零点
+--                       全站令牌同时重置造成的写尖峰；且实现上无需处理时区与周边界。
+--   budget_window_start 当前窗口起点（Unix 秒）。0 = 尚未锚定（首次使用该能力时惰性写入 now）。
+--   budget_window_base  窗口基线：窗口起点时刻该令牌的 used_quota 快照。
+--                       本窗口已消耗 = used_quota − budget_window_base（负数按 0 处理）。
+--
+--   为什么用"used_quota 基线差"而不是新增一个自增计数器：
+--     令牌额度有三条写入路径——响应后扣费（ConsumeQuota）、请求前预扣（Reserve）、
+--     结算退补（Settle/Release）。它们各自独立改 used_quota。若另起一个"窗口已用"计数器，
+--     就必须同步改动上述全部路径（其中预扣与退补在 quota_repo.go 里直连 SQL），
+--     任何一处漏改都会让周期预算静默失效。复用 used_quota 的增量做差，
+--     则"谁改了 used_quota、本窗口消耗就跟着动"，无需触碰任何既有扣费路径。
+--
+-- 兼容性：
+--   只加列、给常量默认值 0/''，SQLite 允许对已有表直接 ADD COLUMN；
+--   既有令牌四列一次性获得默认值，预算闸门默认【关闭】，转发与计费行为与迁移前逐字一致。
+--
+-- 流转（Flow）：
+--   tokens.budget_* →
+--     model.Token.EvaluateBudget(now) 判定窗口与是否超限（纯函数，可测）
+--       → store.tokenRepository.ResetBudgetWindow（窗口过期时惰性重置起点与基线）
+--       → relay.Billing.BudgetExceeded（鉴权阶段调用，超限则拒绝放行）
+--
+-- 扩展（Extend）：
+--   若要支持"按分组/按用户"的周期预算，把同样的四列搬到对应表即可，
+--   判定与重置逻辑（model 层的纯函数 + store 的一次 UPDATE）可原样复用。
+
+ALTER TABLE tokens ADD COLUMN budget_quota        INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tokens ADD COLUMN budget_period       TEXT    NOT NULL DEFAULT '';
+ALTER TABLE tokens ADD COLUMN budget_window_start INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tokens ADD COLUMN budget_window_base  INTEGER NOT NULL DEFAULT 0;

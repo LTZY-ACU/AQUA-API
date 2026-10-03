@@ -86,6 +86,68 @@ func (s TokenStatus) IsValid() bool {
 	}
 }
 
+// 令牌「周期预算」的周期取值。
+//
+// 存库为小写字符串（见迁移 0043），便于后台直接展示与做多语言文案。
+// 窗口口径统一为"自窗口起点起的相对时长"（日=1 天、周=7 天、月=1 个自然月），
+// 而不是自然日/自然周的零点：这样各令牌的重置时刻天然分散，
+// 不会在每天零点形成全站同时重置的写尖峰，也无需处理时区与周边界。
+const (
+	// BudgetPeriodDaily 每日窗口（自窗口起点起 1 天）。
+	BudgetPeriodDaily = "daily"
+	// BudgetPeriodWeekly 每周窗口（自窗口起点起 7 天）。
+	BudgetPeriodWeekly = "weekly"
+	// BudgetPeriodMonthly 每月窗口（自窗口起点起 1 个自然月）。
+	BudgetPeriodMonthly = "monthly"
+)
+
+// IsValidBudgetPeriod 判断预算周期取值是否合法。
+//
+// 空串表示"不启用预算"，不算合法周期——调用方需自行区分""与非法值。
+func IsValidBudgetPeriod(period string) bool {
+	switch period {
+	case BudgetPeriodDaily, BudgetPeriodWeekly, BudgetPeriodMonthly:
+		return true
+	default:
+		return false
+	}
+}
+
+// budgetWindowEnd 返回以 start 为起点的窗口结束时刻（右开区间）。
+//
+// period 非法时返回 start 本身（等价于"零长度窗口"）；调用方应先经
+// IsValidBudgetPeriod 过滤，此处只为让函数在任意输入下都有确定行为。
+func budgetWindowEnd(start time.Time, period string) time.Time {
+	switch period {
+	case BudgetPeriodDaily:
+		return start.AddDate(0, 0, 1)
+	case BudgetPeriodWeekly:
+		return start.AddDate(0, 0, 7)
+	case BudgetPeriodMonthly:
+		return start.AddDate(0, 1, 0)
+	default:
+		return start
+	}
+}
+
+// BudgetDecision 是一次「周期预算」判定的结果（纯值对象，便于测试与日志）。
+type BudgetDecision struct {
+	// Enabled 表示该令牌是否启用了预算闸门；为 false 时其余字段无意义，
+	// 调用方应直接放行——这与引入预算能力前的行为逐字一致。
+	Enabled bool
+	// Exceeded 表示当前窗口已消耗是否已达到预算上限（仅在 Enabled 且非 NeedReset 时有意义）。
+	Exceeded bool
+	// NeedReset 表示窗口尚未锚定或已过期，调用方应把窗口重置为 WindowStart
+	// 并把基线对齐到当前 used_quota；本窗口已消耗随之归零，本次判定视为未超限。
+	NeedReset bool
+	// WindowStart 是判定后应生效的窗口起点（NeedReset 时为 now，否则为既有起点）。
+	WindowStart time.Time
+	// Used 是当前窗口已消耗（= used_quota − 窗口基线，负数按 0 处理）。
+	Used int64
+	// Limit 是窗口预算上限（= budget_quota）。
+	Limit int64
+}
+
 // Token 表示一个访问令牌。
 //
 // 安全约定（与 Channel 一致）：
@@ -105,7 +167,30 @@ type Token struct {
 
 	RemainQuota    int64 // 剩余额度（内部单位）
 	UnlimitedQuota bool  // 是否不限额度（为 true 时忽略 RemainQuota）
-	UsedQuota      int64 // 已用额度（内部单位）
+	UsedQuota      int64 // 已用额度（内部单位，累计值）
+
+	// ── 周期预算（滚动窗口，迁移 0043）────────────────────────
+	//
+	// 为什么需要它：RemainQuota 是"总量墙"，挡不住一把令牌在短期内把整月额度跑穿。
+	// BudgetQuota 是与之【并列】的"周期墙"：每个周期内最多消耗这么多额度，
+	// 周期一到自动翻篇（惰性重置，不依赖定时任务）。
+	//
+	// 为什么用可重置的周期窗口而不是累计上限：累计上限会让长期用户"用完即死"，
+	// 一旦某个月用满就再也无法调用；周期窗口既压住短期暴冲，又不惩罚长期正常使用。
+
+	// BudgetQuota 是周期预算额度（内部单位）；0 表示不限（默认，存量行为不变）。
+	BudgetQuota int64
+	// BudgetPeriod 是预算周期：daily / weekly / monthly；空串表示不启用预算。
+	BudgetPeriod string
+	// BudgetWindowStart 是当前窗口起点；零值表示尚未锚定（首次使用该能力时惰性写入 now）。
+	BudgetWindowStart time.Time
+	// BudgetWindowBase 是窗口起点时刻的 UsedQuota 快照（窗口基线）。
+	//
+	// 本窗口已消耗 = UsedQuota − BudgetWindowBase（负数按 0 处理）。
+	// 之所以取"基线差"而不是单列一个自增计数器：令牌额度有响应后扣费、请求前预扣、
+	// 结算退补三条写入路径，复用 UsedQuota 的增量可让三条路径"自动"计入本窗口消耗，
+	// 无需逐一改造（否则漏改一条就会让周期预算静默失效）。
+	BudgetWindowBase int64
 
 	// Models 是允许使用的模型白名单；为空表示不限制。
 	Models []string
@@ -166,6 +251,23 @@ func (t *Token) Validate() error {
 	}
 	if t.UsedQuota < 0 {
 		return fmt.Errorf("令牌已用额度不能为负数: %d", t.UsedQuota)
+	}
+
+	// 周期预算校验：
+	//   - 预算额度与窗口基线不能为负；
+	//   - 填了周期就必须是已知取值，否则预算会"看起来配了却不生效"；
+	//   - 开了预算（quota > 0）却不给周期，同样是无意义的配置，直接拒绝。
+	if t.BudgetQuota < 0 {
+		return fmt.Errorf("令牌周期预算额度不能为负数: %d", t.BudgetQuota)
+	}
+	if t.BudgetWindowBase < 0 {
+		return fmt.Errorf("令牌预算窗口基线不能为负数: %d", t.BudgetWindowBase)
+	}
+	if t.BudgetPeriod != "" && !IsValidBudgetPeriod(t.BudgetPeriod) {
+		return fmt.Errorf("令牌预算周期非法: %q（可选 daily/weekly/monthly）", t.BudgetPeriod)
+	}
+	if t.BudgetQuota > 0 && t.BudgetPeriod == "" {
+		return errors.New("令牌启用周期预算（budget_quota > 0）时必须指定 budget_period")
 	}
 
 	return nil
@@ -252,6 +354,62 @@ func (t *Token) AvailableQuota() int64 {
 		return QuotaUnlimited
 	}
 	return t.RemainQuota
+}
+
+// BudgetEnabled 判断该令牌是否启用了「周期预算闸门」。
+//
+// 启用条件（三者同时满足，否则一律视为未启用、行为与引入预算前逐字一致）：
+//   - 非"不限额度"令牌（UnlimitedQuota=false）：不限额度意味着站长明确不做任何限制；
+//   - BudgetQuota > 0：0 表示不限预算；
+//   - BudgetPeriod 是合法周期（daily/weekly/monthly）。
+func (t *Token) BudgetEnabled() bool {
+	return t != nil && !t.UnlimitedQuota && t.BudgetQuota > 0 && IsValidBudgetPeriod(t.BudgetPeriod)
+}
+
+// BudgetWindowUsed 返回当前窗口已消耗的额度（内部单位）。
+//
+// 口径：UsedQuota − BudgetWindowBase，负数按 0 处理。
+// 负数只可能来自"窗口重置后对上一窗口的退还"，此时按 0 计更保守（不会凭空放宽预算）。
+func (t *Token) BudgetWindowUsed() int64 {
+	used := t.UsedQuota - t.BudgetWindowBase
+	if used < 0 {
+		return 0
+	}
+	return used
+}
+
+// EvaluateBudget 在给定时刻判定该令牌的周期预算状态（纯函数，不触碰存储）。
+//
+// 返回的 BudgetDecision 供调用方决定"放行 / 拒绝 / 先重置窗口"：
+//   - Enabled=false：未启用预算，直接放行；
+//   - NeedReset=true：窗口尚未锚定或已过期，调用方应调用存储层把窗口起点重置为
+//     decision.WindowStart 并把基线对齐到当前 used_quota，随后放行（新窗口从零开始）；
+//   - 其余情况：Exceeded 表示本窗口已消耗是否达到上限。
+//
+// 窗口是否过期用"右开区间"判定：now >= 窗口结束时刻即视为过期，
+// 恰好落在结束时刻的那次调用属于新窗口（避免边界上仍被旧窗口拒绝）。
+func (t *Token) EvaluateBudget(now time.Time) BudgetDecision {
+	if !t.BudgetEnabled() {
+		return BudgetDecision{}
+	}
+	start := t.BudgetWindowStart
+	if start.IsZero() || !now.Before(budgetWindowEnd(start, t.BudgetPeriod)) {
+		// 尚未锚定（首次启用）或已越过窗口结束：需要惰性重置，本次放行。
+		return BudgetDecision{
+			Enabled:     true,
+			NeedReset:   true,
+			WindowStart: now,
+			Limit:       t.BudgetQuota,
+		}
+	}
+	used := t.BudgetWindowUsed()
+	return BudgetDecision{
+		Enabled:     true,
+		Exceeded:    used >= t.BudgetQuota,
+		WindowStart: start,
+		Used:        used,
+		Limit:       t.BudgetQuota,
+	}
 }
 
 // AllowsModel 判断令牌是否被允许访问指定模型。
@@ -367,6 +525,25 @@ type TokenRepository interface {
 	//
 	// 退还（amount < 0）用于异步任务失败时回滚提交阶段已扣的额度。
 	ConsumeQuota(ctx context.Context, id uint64, amount int64, at time.Time) error
+
+	// ResetBudgetWindow 惰性重置令牌的周期预算窗口：把窗口起点设为 windowStart，
+	// 并把窗口基线对齐到当前 used_quota（等价于"本窗口已消耗归零"）。
+	//
+	// 为什么需要它：周期预算的"翻篇"不依赖定时任务——只有当某次判定发现窗口已过期时，
+	// 才在这一次调用里顺手重置（见 model.Token.EvaluateBudget 的 NeedReset）。
+	// 基线必须在【同一条 SQL】里取 used_quota，避免"先读后写"被并发扣费插队。
+	//
+	// 实现须容忍令牌已被删除（受影响 0 行不报错），与 RecordUsage 的容错口径一致。
+	ResetBudgetWindow(ctx context.Context, id uint64, windowStart time.Time) error
+
+	// GroupSpendToday 聚合某分组在 [since, until) 区间内消耗的额度（只读）。
+	//
+	// 分组归属按"请求实际命中的渠道所属分组"判定（与路由分组匹配语义一致），
+	// 只统计成功请求。用于后台展示"某分组今天烧了多少"，不参与扣费。
+	//
+	// 放在 TokenRepository 上而非另开仓储：计费组件已持有本仓储，
+	// 无需为一项只读统计再牵动装配（该查询本身也不需要令牌上下文）。
+	GroupSpendToday(ctx context.Context, group string, since, until time.Time) (int64, error)
 
 	// Update 按 ID 更新令牌（不修改创建时间），不存在时返回 ErrTokenNotFound。
 	Update(ctx context.Context, t *Token) error

@@ -74,6 +74,16 @@ const (
 	BillingModePerCall = "per_call"
 )
 
+// ChannelScopeAll 表示计价规则【不限渠道】，即"分组默认价"。
+//
+// 取值性与语义：
+//   - 0 = 对所有渠道生效（历史数据与未指定渠道的规则一律是 0，升级后行为不变）；
+//   - >0 = 仅对 channels.id 等于该值的渠道生效（"渠道专用价"）。
+//
+// 为什么用 0 而不是另设"空"值：迁移给既有列加的默认值就是 0，
+// 让 0 直接表达"不限"可以让全部历史规则在升级后立即保持原语义，无需回填。
+const ChannelScopeAll uint64 = 0
+
 // ModelPrice 表示一条模型计价规则。
 type ModelPrice struct {
 	ID              uint64 // 主键
@@ -88,10 +98,15 @@ type ModelPrice struct {
 	// 判定逻辑见 EffectiveBillingMode——计费链路一律使用它，不要直接读本字段。
 	BillingMode string
 	Group       string // 适用分组
-	Enabled     bool   // 是否启用（停用即视为未定价）
-	Remark      string // 备注（便于说明定价依据）
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// ChannelID 是规则适用的渠道 ID：ChannelScopeAll(0) 表示不限渠道（分组默认价），
+	// >0 表示仅对该渠道生效的"渠道专用价"。
+	//
+	// 优先级见 MatchModelPriceForChannel：命中当前渠道的专用价优先于默认价。
+	ChannelID uint64
+	Enabled   bool   // 是否启用（停用即视为未定价）
+	Remark    string // 备注（便于说明定价依据）
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // EffectiveBillingMode 返回最终生效的计费方式。
@@ -225,9 +240,7 @@ func (p *ModelPrice) ComputePerCallQuota(count int64) int64 {
 // 返回 nil 表示没有任何规则适用（此时按"未定价"处理：不扣费但照常记录日志，
 // 由站长自行决定是否为该模型补价格）。
 func MatchModelPrice(prices []*ModelPrice, modelName string) *ModelPrice {
-	var best *ModelPrice
-	bestScore := -1
-
+	candidates := make([]*ModelPrice, 0, len(prices))
 	for _, price := range prices {
 		if price == nil || !price.Enabled {
 			continue
@@ -235,6 +248,55 @@ func MatchModelPrice(prices []*ModelPrice, modelName string) *ModelPrice {
 		if !price.Matches(modelName) {
 			continue
 		}
+		candidates = append(candidates, price)
+	}
+	return bestModelPrice(candidates)
+}
+
+// MatchModelPriceForChannel 在 MatchModelPrice 之上叠加"渠道专用价优先"。
+//
+// 适用场景：转发计费时已知本次实际命中的渠道 ID，需要在
+// 「该渠道的专用价」与「分组默认价」之间取优先级。
+//
+// 优先级（顺序不可变）：
+//  1. 渠道专用价（ChannelID == channelID 且匹配模型）优先；
+//  2. 无渠道专用价时，回退到分组默认价（ChannelID == ChannelScopeAll）；
+//  3. 其他渠道的专用价一律不参与本次匹配（那是给别的渠道用的）。
+//
+// channelID 为 ChannelScopeAll(0) 时退化为纯默认价匹配，与 MatchModelPrice 一致。
+// 同类候选内仍按"精确 → 长前缀 → 全局通配"打分，取 ID 最小者保证可复现。
+func MatchModelPriceForChannel(prices []*ModelPrice, modelName string, channelID uint64) *ModelPrice {
+	if channelID == ChannelScopeAll {
+		return MatchModelPrice(prices, modelName)
+	}
+
+	scoped := make([]*ModelPrice, 0, len(prices))
+	fallback := make([]*ModelPrice, 0, len(prices))
+	for _, price := range prices {
+		if price == nil || !price.Enabled || !price.Matches(modelName) {
+			continue
+		}
+		switch price.ChannelID {
+		case channelID:
+			scoped = append(scoped, price)
+		case ChannelScopeAll:
+			fallback = append(fallback, price)
+		}
+	}
+	if best := bestModelPrice(scoped); best != nil {
+		return best
+	}
+	return bestModelPrice(fallback)
+}
+
+// bestModelPrice 从"已确保启用且匹配模型"的候选里挑出最具体的一条。
+//
+// 抽取出来供 MatchModelPrice 与 MatchModelPriceForChannel 共用：
+// 两处的"打分"口径必须完全相同，否则会出现"默认价与专用价择优不一致"的怪账。
+func bestModelPrice(candidates []*ModelPrice) *ModelPrice {
+	var best *ModelPrice
+	bestScore := -1
+	for _, price := range candidates {
 		score := price.specificity()
 		// 同分时取 ID 更小的，保证同一份数据每次匹配结果一致
 		if best == nil || betterThan(price.ID, best.ID, score, bestScore) {
@@ -265,7 +327,20 @@ type ModelPriceRepository interface {
 	GetByID(ctx context.Context, id uint64) (*ModelPrice, error)
 
 	// List 查询规则；group 为空表示不过滤分组，仅启用的规则由 enabledOnly 控制。
+	//
+	// 注意：本方法只返回「分组默认价」（ChannelID == ChannelScopeAll），
+	// 不返回渠道专用价——后台的价格广场/试算需要的是"分组层面的统一口径"，
+	// 若把各渠道专用价混进来，会把某个渠道的折扣价误当成全组价格展示。
+	// 转发计费请使用 ListForPricing。
 	List(ctx context.Context, group string, enabledOnly bool) ([]*ModelPrice, error)
+
+	// ListForPricing 返回该分组下「分组默认价 + 指定渠道的专用价」。
+	//
+	// 供转发计费读取价格使用（见 relay.Billing.priceForChannel）：
+	// 返回集合里同时含 channel_id=0 的默认价与 channel_id=channelID 的专用价，
+	// 由 MatchModelPriceForChannel 决定优先级。channelID 为 ChannelScopeAll 时
+	// 结果与 List 相同（仅默认价）。
+	ListForPricing(ctx context.Context, group string, channelID uint64, enabledOnly bool) ([]*ModelPrice, error)
 
 	// Update 按 ID 更新，不存在时返回 ErrModelPriceNotFound。
 	Update(ctx context.Context, price *ModelPrice) error
