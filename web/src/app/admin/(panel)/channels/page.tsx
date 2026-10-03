@@ -45,6 +45,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Select, Switch, Textarea } from '@/components/ui/Form'
 import { Modal, ConfirmDialog, CopyButton } from '@/components/ui/Modal'
+import { useI18n, translate } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { channelStatusLabel, channelStatusBadgeClass } from '@/utils/display'
 import { formatDateTime, formatLatency, formatRelative } from '@/utils/format'
@@ -72,6 +73,7 @@ export default function AdminChannelsPage() {
   const [speedTarget, setSpeedTarget] = useState<Channel | null>(null)
 
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -102,11 +104,11 @@ export default function AdminChannelsPage() {
     if (!deleteTarget) return
     try {
       await deleteChannel(deleteTarget.id)
-      toast('渠道已删除')
+      toast(t('admin.channels.toast.deleted'))
       setDeleteTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '删除失败')
+      toastError(err instanceof Error ? err.message : t('admin.channels.toast.deleteFailed'))
     }
   }
 
@@ -115,7 +117,7 @@ export default function AdminChannelsPage() {
       await updateChannel(channel.id, { status: channel.status === 1 ? 2 : 1 } as Partial<ChannelPayload>)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '操作失败')
+      toastError(err instanceof Error ? err.message : t('common.toast.operationFailed'))
     }
   }
 
@@ -126,56 +128,66 @@ export default function AdminChannelsPage() {
       const result = await testChannel(channel.id)
       setTestResult(result)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '测活失败')
+      toastError(err instanceof Error ? err.message : t('admin.channels.toast.probeFailed'))
     } finally {
       setTesting(false)
     }
   }
 
   const columns: Column<Channel>[] = [
-    { title: '名称', render: (row) => <span className="font-medium text-ink">{row.name}</span> },
-    { title: '类型', render: (row) => <span className="text-ink-2">{row.type_key || `#${row.type}`}</span> },
+    { title: t('admin.channels.col.name'), render: (row) => <span className="font-medium text-ink">{row.name}</span> },
+    { title: t('admin.channels.col.type'), render: (row) => <span className="text-ink-2">{row.type_key || `#${row.type}`}</span> },
     {
-      title: '模型',
-      render: (row) => <span className="max-w-44 truncate text-[13px] text-ink-3" title={row.models.join(', ')}>{row.models.length > 0 ? `${row.models.length} 个模型` : '全部模型'}</span>,
+      title: t('admin.channels.col.models'),
+      render: (row) => (
+        <span className="max-w-44 truncate text-[13px] text-ink-3" title={row.models.join(', ')}>
+          {row.models.length > 0
+            ? t('admin.channels.cell.modelCount', { count: row.models.length })
+            : t('admin.channels.cell.allModels')}
+        </span>
+      ),
     },
     {
       // 密钥池运行态的"一览"信号：以「启用/总数」+ 异常数提示哪条渠道的凭据在掉队。
       // 元数据来自渠道列表响应里的 key_pool 概览（后端一次 GROUP BY 下发，无额外请求）。
-      title: '密钥池',
+      title: t('admin.channels.col.keyPool'),
       align: 'right',
       width: 'hidden sm:table-cell',
       className: 'hidden sm:table-cell',
       render: (row) => {
         const pool = row.key_pool
-        if (!pool || pool.total === 0) return <span className="text-[13px] text-ink-3">单密钥</span>
+        if (!pool || pool.total === 0) return <span className="text-[13px] text-ink-3">{t('admin.channels.cell.singleKey')}</span>
         const degraded = pool.disabled + pool.auto_removed
         return (
           <span className="inline-flex items-center gap-2 text-[13px]">
             <span className="tabular-nums text-ink-2">{pool.enabled}/{pool.total}</span>
-            {degraded > 0 && <Badge tone="warn">{degraded} 异常</Badge>}
+            {degraded > 0 && (
+              <Badge tone="warn">{t('admin.channels.cell.degradedCount', { count: degraded })}</Badge>
+            )}
           </span>
         )
       },
     },
     {
-      title: '状态',
+      title: t('admin.channels.col.status'),
       render: (row) => (
         <span className={channelStatusBadgeClass(row.status)}>{channelStatusLabel(row.status)}</span>
       ),
     },
-    { title: '延迟 / 测活', render: (row) => <ProbeCell channel={row} /> },
+    { title: t('admin.channels.col.probe'), render: (row) => <ProbeCell channel={row} /> },
     {
-      title: '操作',
+      title: t('admin.channels.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="flex items-center justify-end gap-2 text-[13px]">
-          <button type="button" onClick={() => setSpeedTarget(row)} className="text-ink-3 hover:text-brand" disabled={row.models.length === 0}>测速</button>
-          <button type="button" onClick={() => handleTest(row)} className="text-ink-3 hover:text-brand" disabled={testing}>测活</button>
-          <button type="button" onClick={() => setCostTarget(row)} className="text-ink-3 hover:text-brand">进价</button>
-          <button type="button" onClick={() => setEditing(row)} className="text-ink-3 hover:text-brand">编辑</button>
-          <button type="button" onClick={() => handleToggle(row)} className="text-ink-3 hover:text-brand">{row.status === 1 ? '停用' : '启用'}</button>
-          <button type="button" onClick={() => setDeleteTarget(row)} className="text-ink-3 hover:text-err">删除</button>
+          <button type="button" onClick={() => setSpeedTarget(row)} className="text-ink-3 hover:text-brand" disabled={row.models.length === 0}>{t('admin.channels.action.speedtest')}</button>
+          <button type="button" onClick={() => handleTest(row)} className="text-ink-3 hover:text-brand" disabled={testing}>{t('admin.channels.action.probe')}</button>
+          <button type="button" onClick={() => setCostTarget(row)} className="text-ink-3 hover:text-brand">{t('admin.channels.action.cost')}</button>
+          <button type="button" onClick={() => setEditing(row)} className="text-ink-3 hover:text-brand">{t('admin.channels.action.edit')}</button>
+          <button type="button" onClick={() => handleToggle(row)} className="text-ink-3 hover:text-brand">
+            {row.status === 1 ? t('admin.channels.action.disable') : t('admin.channels.action.enable')}
+          </button>
+          <button type="button" onClick={() => setDeleteTarget(row)} className="text-ink-3 hover:text-err">{t('admin.channels.action.delete')}</button>
         </span>
       ),
     },
@@ -185,34 +197,40 @@ export default function AdminChannelsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">渠道管理</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">上游接入渠道（{total}）</p>
+          <h1 className="text-xl font-bold text-ink">{t('admin.channels.title')}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.channels.subtitle', { total })}</p>
         </div>
-        <Button variant="primary" onClick={() => setEditing('new')}>新建渠道</Button>
+        <Button variant="primary" onClick={() => setEditing('new')}>{t('admin.channels.create')}</Button>
       </div>
 
       {/* 健康概览：渠道状态分布 + 近 24h 全站调用健康度 */}
       <ChannelHealthPanel />
 
       <Card padding="none">
-        <DataTable columns={columns} rows={loading ? null : items} loading={loading} rowKey={(row) => row.id} emptyTitle="还没有渠道" />
+        <DataTable columns={columns} rows={loading ? null : items} loading={loading} rowKey={(row) => row.id} emptyTitle={t('admin.channels.emptyTitle')} />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </div>
       </Card>
 
       {/* 测活结果弹层 */}
-      <Modal open={Boolean(testResult)} onClose={() => setTestResult(null)} title="渠道测活结果" width={560}>
+      <Modal open={Boolean(testResult)} onClose={() => setTestResult(null)} title={t('admin.channels.result.title')} width={560}>
         {testResult && (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              {testResult.ok ? <Badge tone="ok">通过</Badge> : <Badge tone="err">失败</Badge>}
+              {testResult.ok
+                ? <Badge tone="ok">{t('admin.channels.result.pass')}</Badge>
+                : <Badge tone="err">{t('admin.channels.result.fail')}</Badge>}
               <span className="text-sm text-ink-2">{testResult.message}</span>
             </div>
-            {testResult.latency_ms > 0 && <div className="text-[13px] text-ink-3">耗时 {testResult.latency_ms}ms</div>}
+            {testResult.latency_ms > 0 && (
+              <div className="text-[13px] text-ink-3">
+                {t('admin.channels.result.elapsed', { ms: testResult.latency_ms })}
+              </div>
+            )}
             {testResult.upstream_body && (
               <div className="rounded-md border border-line bg-surface p-3 text-xs text-ink-2">
-                <div className="mb-1 font-medium text-ink-3">上游响应</div>
+                <div className="mb-1 font-medium text-ink-3">{t('admin.channels.result.upstreamBody')}</div>
                 <code className="break-all">{testResult.upstream_body}</code>
               </div>
             )}
@@ -252,10 +270,10 @@ export default function AdminChannelsPage() {
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="删除渠道"
-        message={`确认删除渠道「${deleteTarget?.name}」？删除后该渠道的调用将立即失败。`}
+        title={t('admin.channels.deleteDialog.title')}
+        message={t('admin.channels.deleteDialog.message', { name: deleteTarget?.name ?? '' })}
         danger
-        confirmText="删除"
+        confirmText={t('admin.channels.action.delete')}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -273,30 +291,41 @@ export default function AdminChannelsPage() {
  *
  * 状态码要翻译成动作：401/404/429 各自对应完全不同的处置方式，
  * 直接摆一个 401 出来，管理员还得自己回忆这代表密钥坏了还是模型没了。
+ *
+ * 本组件在表格 columns 的 render 里被调用，是一个独立函数组件——
+ * 它自己能用 useI18n，但 probeHint 是普通函数（也在 render 路径上），
+ * 拿不到 hook，只能用模块级 translate。两者共用同一份词条，不会出现
+ * "徽标翻译了、提示没翻译"的不一致。
  */
 function ProbeCell({ channel }: { channel: Channel }) {
+  const { t } = useI18n()
   const tested = Boolean(channel.last_test_at) || Boolean(channel.latency_ms)
   if (!tested) {
     return (
-      <span className="text-ink-2" title="后台巡检会在下一个周期自动测活，也可以现在手动点「测活」">
-        <Badge tone="off">未测</Badge>
+      <span className="text-ink-2" title={t('admin.channels.probe.notTestedHint')}>
+        <Badge tone="off">{t('admin.channels.probe.notTested')}</Badge>
       </span>
     )
   }
   const ok = Boolean(channel.last_test_ok)
   const tooltip = [
     channel.last_test_at
-      ? `测于 ${formatDateTime(channel.last_test_at)}（${formatRelative(channel.last_test_at)}）`
-      : '测于未知时间',
-    channel.last_test_model ? `模型 ${channel.last_test_model}` : '',
-    channel.last_test_code ? `HTTP ${channel.last_test_code}` : '网络层未连通',
+      ? t('admin.channels.probe.testedAt', {
+          time: formatDateTime(channel.last_test_at),
+          relative: formatRelative(channel.last_test_at),
+        })
+      : t('admin.channels.probe.testedAtUnknown'),
+    channel.last_test_model ? t('admin.channels.probe.testedModel', { model: channel.last_test_model }) : '',
+    channel.last_test_code ? `HTTP ${channel.last_test_code}` : t('admin.channels.probe.networkDown'),
     probeHint(channel),
   ]
     .filter(Boolean)
     .join('\n')
   return (
     <span className="flex items-center gap-1.5" title={tooltip}>
-      <Badge tone={ok ? 'ok' : 'err'}>{ok ? '正常' : '异常'}</Badge>
+      <Badge tone={ok ? 'ok' : 'err'}>
+        {ok ? t('admin.channels.probe.ok') : t('admin.channels.probe.fail')}
+      </Badge>
       <span className="text-ink-2">{channel.latency_ms ? formatLatency(channel.latency_ms) : '—'}</span>
     </span>
   )
@@ -305,11 +334,11 @@ function ProbeCell({ channel }: { channel: Channel }) {
 /** 状态码 → 下一步该做什么（只覆盖常见且处置方式明确的几种，其余不臆测） */
 function probeHint(channel: Channel): string {
   const code = channel.last_test_code ?? 0
-  if (code === 0) return '连不上：检查上游地址、出网与 DNS'
-  if (code === 401 || code === 403) return '鉴权失败：上游密钥无效或已过期，换一把'
-  if (code === 404) return '模型不存在：清理渠道里的模型名或改用上游真实模型'
-  if (code === 429) return '被限流：降低调用频率或补充密钥池'
-  if (code >= 500) return '上游故障：等待对方恢复'
+  if (code === 0) return translate('admin.channels.probeHint.unreachable')
+  if (code === 401 || code === 403) return translate('admin.channels.probeHint.authFailed')
+  if (code === 404) return translate('admin.channels.probeHint.modelNotFound')
+  if (code === 429) return translate('admin.channels.probeHint.rateLimited')
+  if (code >= 500) return translate('admin.channels.probeHint.upstreamDown')
   return ''
 }
 
@@ -335,6 +364,7 @@ function ChannelFormModal({
   onSaved: () => void
 }) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
   const [name, setName] = useState('')
   const [type, setType] = useState(1)
   const [typeKey, setTypeKey] = useState('')
@@ -389,7 +419,7 @@ function ChannelFormModal({
     const key = apiKey.trim()
     const useSaved = channel != null && !key && url === channel.base_url
     if (!useSaved && !url) {
-      toastError('请先填写上游地址')
+      toastError(t('admin.channels.validation.fetchNeedsUrl'))
       return
     }
     setFetchingModels(true)
@@ -399,9 +429,9 @@ function ChannelFormModal({
         : { base_url: url, api_key: key || undefined }
       const data = await fetchUpstreamModels(payload)
       setFetchedModels(data.models ?? [])
-      toast(`拉取到 ${data.count} 个模型，确认后点「填入模型列表」`)
+      toast(t('admin.channels.toast.fetched', { count: data.count }))
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '拉取失败')
+      toastError(err instanceof Error ? err.message : t('admin.channels.toast.fetchFailed'))
     } finally {
       setFetchingModels(false)
     }
@@ -414,19 +444,22 @@ function ChannelFormModal({
     const seen = new Set(existing)
     const added = fetchedModels.filter((m) => !seen.has(m))
     setModelsText([...existing, ...added].join('\n'))
-    toast(`已填入：新增 ${added.length} 个，当前共 ${existing.length + added.length} 个`)
+    toast(t('admin.channels.toast.applied', {
+      added: added.length,
+      total: existing.length + added.length,
+    }))
   }
   async function handleSubmit() {
     if (!name.trim()) {
-      toastError('请填写渠道名称')
+      toastError(t('admin.channels.validation.nameRequired'))
       return
     }
     if (!channel && !apiKey.trim()) {
-      toastError('新建渠道必须填写上游密钥')
+      toastError(t('admin.channels.validation.keyRequired'))
       return
     }
     if (!channel && !baseUrl.trim()) {
-      toastError('新建渠道必须填写上游地址')
+      toastError(t('admin.channels.validation.urlRequired'))
       return
     }
     setLoading(true)
@@ -452,49 +485,63 @@ function ChannelFormModal({
         delete payload.api_key
         delete payload.keys_text
         await updateChannel(channel.id, payload)
-        toast('渠道已更新')
+        toast(t('admin.channels.toast.updated'))
       } else {
         await createChannel(payload)
-        toast('渠道已创建')
+        toast(t('admin.channels.toast.created'))
       }
       onSaved()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : t('admin.channels.toast.saveFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={channel ? '编辑渠道' : '新建渠道'} width={760}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={channel ? t('admin.channels.form.editTitle') : t('admin.channels.form.createTitle')}
+      width={760}
+    >
       <div className="space-y-4">
-        <Field label="渠道名称" required>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="给这个上游起个名字" />
+        <Field label={t('admin.channels.form.name')} required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('admin.channels.form.namePlaceholder')} />
         </Field>
 
-        <Field label="渠道类型" help={selectedType?.notes}>
+        <Field label={t('admin.channels.form.type')} help={selectedType?.notes}>
           {types.length > 0 ? (
             <Select value={typeKey} onChange={(e) => setTypeKey(e.target.value)}>
-              {types.map((t) => (
-                <option key={t.key} value={t.key} disabled={!t.available}>{t.label}</option>
+              {types.map((ty) => (
+                <option key={ty.key} value={ty.key} disabled={!ty.available}>{ty.label}</option>
               ))}
             </Select>
           ) : (
-            <Input value={type} onChange={(e) => setType(Number(e.target.value))} type="number" placeholder="渠道类型编号" />
+            <Input
+              value={type}
+              onChange={(e) => setType(Number(e.target.value))}
+              type="number"
+              placeholder={t('admin.channels.form.typeFallbackPlaceholder')}
+            />
           )}
         </Field>
 
-        <Field label="上游地址" required={!channel}>
+        <Field label={t('admin.channels.form.baseUrl')} required={!channel}>
           <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={selectedType?.default_base_url || 'https://api.example.com'} />
         </Field>
 
-        <Field label="上游密钥" required={!channel} help={channel ? '留空表示不修改' : '同时支持密钥池：每行一把，可用空格或逗号附备注'}>
+        <Field
+          label={t('admin.channels.form.apiKey')}
+          required={!channel}
+          help={channel ? t('admin.channels.form.apiKeyHelpKeep') : t('admin.channels.form.apiKeyHelpNew')}
+        >
           <Textarea value={apiKey} onChange={(e) => setApiKey(e.target.value)} rows={2} placeholder="sk-..." />
         </Field>
 
         {!channel && (
-          <Field label="密钥池（可选）" help="每行一把，批量粘贴多把上游密钥">
-            <Textarea value={keysText} onChange={(e) => setKeysText(e.target.value)} rows={3} placeholder="sk-a\nsk-b 备注1" />
+          <Field label={t('admin.channels.form.keyPool')} help={t('admin.channels.form.keyPoolHelp')}>
+            <Textarea value={keysText} onChange={(e) => setKeysText(e.target.value)} rows={3} placeholder={'sk-a\nsk-b 备注1'} />
           </Field>
         )}
 
@@ -502,12 +549,12 @@ function ChannelFormModal({
             选项与说明全部来自后端目录，前端不硬编码；说明文案随选中项联动显示在下方 help 位置。
             目录拉取失败（空数组）时退化为标识文本框，与渠道类型下拉的兜底模式一致——
             宁可手填原始标识，也不渲染一个没有任何选项的下拉。 */}
-        <Field label="调度策略" help={strategies.find((s) => s.key === keyStrategy)?.description}>
+        <Field label={t('admin.channels.form.strategy')} help={strategies.find((s) => s.key === keyStrategy)?.description}>
           {strategies.length > 0 ? (
             <Select value={keyStrategy} onChange={(e) => setKeyStrategy(e.target.value)}>
               {/* 新建时才有「跟随默认」项：留空提交后端取默认策略；
                   编辑时当前值恒非空（回显保证），不需要这个隐式选项 */}
-              {!channel && <option value="">跟随系统默认</option>}
+              {!channel && <option value="">{t('admin.channels.form.followDefault')}</option>}
               {strategies.map((s) => (
                 <option key={s.key} value={s.key}>{s.label}</option>
               ))}
@@ -517,10 +564,10 @@ function ChannelFormModal({
           )}
         </Field>
 
-        <Field label="失败处置" help={failurePolicies.find((p) => p.key === failurePolicy)?.description}>
+        <Field label={t('admin.channels.form.failurePolicy')} help={failurePolicies.find((p) => p.key === failurePolicy)?.description}>
           {failurePolicies.length > 0 ? (
             <Select value={failurePolicy} onChange={(e) => setFailurePolicy(e.target.value)}>
-              {!channel && <option value="">跟随系统默认</option>}
+              {!channel && <option value="">{t('admin.channels.form.followDefault')}</option>}
               {failurePolicies.map((p) => (
                 <option key={p.key} value={p.key}>{p.label}</option>
               ))}
@@ -530,11 +577,11 @@ function ChannelFormModal({
           )}
         </Field>
 
-        <Field label="模型列表" help="每行一个；留空表示支持全部模型">
+        <Field label={t('admin.channels.form.models')} help={t('admin.channels.form.modelsHelp')}>
           {/* 一键从上游拉取：省去逐个手敲模型名（长名字极易敲错导致路由失效）。
               合并而非覆盖——已填写的条目可能是管理员刻意收敛过的子集。 */}
           <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="text-xs text-ink-3">支持从上游自动拉取清单，结果合并到下方</span>
+            <span className="text-xs text-ink-3">{t('admin.channels.form.fetchModelsHint')}</span>
             <Button
               variant="secondary"
               size="sm"
@@ -542,25 +589,25 @@ function ChannelFormModal({
               onClick={handleFetchModels}
               disabled={!fetchingModels && !baseUrl.trim() && channel == null}
             >
-              从上游获取
+              {t('admin.channels.form.fetchFromUpstream')}
             </Button>
           </div>
-          <Textarea value={modelsText} onChange={(e) => setModelsText(e.target.value)} rows={5} placeholder="gpt-4o\nclaude-3-5-sonnet" />
+          <Textarea value={modelsText} onChange={(e) => setModelsText(e.target.value)} rows={5} placeholder={'gpt-4o\nclaude-3-5-sonnet'} />
         </Field>
 
         {/* 从上游拉取模型：NIM 这类平台上架几百个模型，人工抄写必然出错 */}
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" size="sm" loading={fetchingModels} onClick={handleFetchModels}>
-            从上游拉取模型
+            {t('admin.channels.form.fetchModels')}
           </Button>
           <span className="text-xs text-ink-3">
-            {channel ? '使用该渠道已保存的地址与密钥' : '使用上方填写的地址与密钥'}
+            {channel ? t('admin.channels.form.useSavedCredential') : t('admin.channels.form.useTypedCredential')}
           </span>
         </div>
         {fetchedModels && (
           <div className="rounded-md border border-line bg-surface p-3">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <span className="text-ink-2">拉取到 {fetchedModels.length} 个模型</span>
+              <span className="text-ink-2">{t('admin.channels.form.fetchedCount', { count: fetchedModels.length })}</span>
               <span className="flex items-center gap-3">
                 <button
                   type="button"
@@ -568,23 +615,23 @@ function ChannelFormModal({
                   disabled={fetchedModels.length === 0}
                   className="text-brand hover:underline disabled:pointer-events-none disabled:opacity-50"
                 >
-                  填入模型列表
+                  {t('admin.channels.form.fillModels')}
                 </button>
-                <CopyButton text={fetchedModels.join('\n')} label="复制清单" />
+                <CopyButton text={fetchedModels.join('\n')} label={t('admin.channels.form.copyList')} />
               </span>
             </div>
             <div className="mt-2 max-h-40 overflow-y-auto font-mono text-xs leading-5 text-ink-2">
               {fetchedModels.length > 0 ? (
                 fetchedModels.map((m) => <div key={m}>{m}</div>)
               ) : (
-                <span className="text-ink-3">上游返回了空清单</span>
+                <span className="text-ink-3">{t('admin.channels.form.emptyFetched')}</span>
               )}
             </div>
           </div>
         )}
 
         <label className="flex items-center justify-between text-[13px] text-ink-2">
-          <span>启用渠道</span>
+          <span>{t('admin.channels.form.enable')}</span>
           <Switch checked={status === 1} onChange={(v) => setStatus(v ? 1 : 2)} />
         </label>
       </div>
@@ -606,8 +653,10 @@ function ChannelFormModal({
       )}
 
       <div className="mt-5 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>取消</Button>
-        <Button variant="primary" loading={loading} onClick={handleSubmit}>{channel ? '保存' : '创建'}</Button>
+        <Button variant="secondary" onClick={onClose}>{t('admin.channels.cancel')}</Button>
+        <Button variant="primary" loading={loading} onClick={handleSubmit}>
+          {channel ? t('admin.channels.submitSave') : t('admin.channels.submitCreate')}
+        </Button>
       </div>
     </Modal>
   )

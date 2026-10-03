@@ -68,6 +68,19 @@ function resolvePath(obj: Dictionary, path: string): string | undefined {
   return typeof value === 'string' ? value : undefined
 }
 
+/**
+ * 替换模板中的 {var} 占位符。
+ *
+ * 未提供对应值时**保留占位符原样**（输出 {count} 而不是空串）：
+ * 静默替换成空串会让"数字丢了"这件事完全看不出来，
+ * 而文案里少一个数字往往比显示 {count} 更难排查。
+ */
+function interpolate(template: string, vars: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_, name: string) =>
+    vars[name] !== undefined ? String(vars[name]) : `{${name}}`,
+  )
+}
+
 /* ── 模块级状态（非组件环境也可读取，供 api 层取语言）───────────── */
 let currentLocale: LocaleCode = FALLBACK_LOCALE
 
@@ -190,9 +203,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       const dict = messages[locale]
       const template = resolvePath(dict as unknown as Dictionary, key) ?? key
       if (!vars) return template
-      return template.replace(/\{(\w+)\}/g, (_, name: string) =>
-        vars[name] !== undefined ? String(vars[name]) : `{${name}}`,
-      )
+      // 复用 interpolate 而非就地再写一遍替换逻辑：
+      // 两处实现漂移时，最典型的症状就是"组件里数字正常、模块里数字消失"。
+      return interpolate(template, vars)
     },
     [locale],
   )
@@ -212,8 +225,20 @@ export function useI18n(): I18nContextValue {
   return ctx
 }
 
-/** 便捷别名：组件里 import { useI18n } 即可；翻译单例供非组件模块调用 */
-export function translate(key: string, locale: LocaleCode = currentLocale): string {
+/**
+ * 非组件环境的翻译入口（供模块顶层、常量表、纯函数使用）。
+ *
+ * 支持与 useI18n().t 相同的 {var} 插值：把插值逻辑抽成 interpolate
+ * 由两处共用，否则两套实现迟早会漂移（组件里能插值、模块里不能，
+ * 是个很难被发现的坑——文案在两处的差别往往只在"有没有那个数字"）。
+ */
+export function translate(
+  key: string,
+  vars?: Record<string, string | number>,
+  locale: LocaleCode = currentLocale,
+): string {
   const dict = messages[locale]
-  return resolvePath(dict as unknown as Dictionary, key) ?? key
+  const template = resolvePath(dict as unknown as Dictionary, key) ?? key
+  if (!vars) return template
+  return interpolate(template, vars)
 }
