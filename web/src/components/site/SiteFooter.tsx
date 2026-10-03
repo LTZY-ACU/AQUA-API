@@ -28,6 +28,7 @@ const COLUMNS: { title: string; links: { label: string; href: string; external?:
     links: [
       { label: '能力总览', href: '/#features' },
       { label: '接入指南', href: '/#quickstart' },
+      { label: '接口文档', href: '/docs' },
       { label: '模型与价格', href: '/models' },
       { label: '常见问题', href: '/#faq' },
     ],

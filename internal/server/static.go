@@ -225,6 +225,15 @@ var staticContentTypes = map[string]string{
 }
 
 // isAPIPath 判断路径是否属于后端接口（这些路径不应回退到前端页面）。
+//
+// 为什么要把 /metrics 与 /openapi.json 也算进来：
+//
+//	它们只在"路由已注册"时才会真正命中，而本函数只在【没有路由匹配】时
+//	被调用。所以正常情况下加不加都无所谓——但有两处会露出问题：
+//	  1) AQUA_METRICS_ENABLED=false 时 /metrics 没有路由，若不回退则返回
+//	     index.html，采集器会拿着一份 HTML 去解析指标，得到的静默错误极难排查；
+//	  2) 反过来，任何将来"注册了但暂时不可用"的端点都该明确 404，
+//	     而不是给一个看起来像成功的内容类型错误的页面。
 func isAPIPath(path string) bool {
 	prefixes := []string{"/api/", "/v1/", "/v1beta/", "/healthz", "/readyz"}
 	for _, prefix := range prefixes {
@@ -232,6 +241,7 @@ func isAPIPath(path string) bool {
 			return true
 		}
 	}
-	// 精确匹配接口根路径（如 /api 本身）
-	return path == "/api" || path == "/v1"
+	// 精确匹配接口根路径与机器可读的规范/指标端点
+	return path == "/api" || path == "/v1" ||
+		path == "/metrics" || path == "/openapi.json"
 }
