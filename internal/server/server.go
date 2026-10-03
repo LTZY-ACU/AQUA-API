@@ -39,6 +39,7 @@ import (
 	"github.com/LTZY-ACU/aqua-api/internal/mailer"
 	"github.com/LTZY-ACU/aqua-api/internal/metrics"
 	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/notify"
 	"github.com/LTZY-ACU/aqua-api/internal/payment"
 	"github.com/LTZY-ACU/aqua-api/internal/relay"
 	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
@@ -69,6 +70,22 @@ type Deps struct {
 	// 为 nil 时第三方登录入口返回 404（未开放），而不是 panic ——
 	// 它是可选能力，缺失不应拖垮整个服务。
 	ExternalAccounts model.ExternalAccountRepository
+
+	// AlertChannels 是告警通知通道仓储（渠道熔断、账号锁定等事件的投递目标）。
+	AlertChannels model.AlertChannelRepository
+
+	// Metrics 是进程内指标注册表。
+	//
+	// 为什么由外部传入而不是服务内部创建：告警派发器也要往同一张表里写
+	// （成功/失败/被抑制），若各自 new 一份，/metrics 只会显示其中一半，
+	// 表现为"指标时有时无"这种极难定位的问题。传 nil 时内部会兜底新建一份。
+	Metrics *metrics.Registry
+
+	// Notifier 把关键事件投递到站长配置的外部通道。
+	//
+	// 为 nil 时所有告警调用点自动退化为"只记日志"：告警是可选能力，
+	// 它缺失不该让渠道巡检或登录流程报错——那会让可选功能反过来拖垮核心链路。
+	Notifier *notify.Dispatcher
 
 	// ModelPrices 是模型计价规则仓储（后台维护价格、计算用量费用）。
 	ModelPrices model.ModelPriceRepository
@@ -217,7 +234,10 @@ func New(deps Deps) *Server {
 
 	// 指标注册表必须【先于引擎创建】：采集中间件与 /metrics 端点要共用同一个实例，
 	// 否则端点渲染的是一个空表（最典型的"接了监控但看不到数据"）。
-	reg := metrics.New()
+	reg := deps.Metrics
+	if reg == nil {
+		reg = metrics.New()
+	}
 	// Recovery 必须最先装配：保证后续任何 panic 都不会导致进程退出
 	engine.Use(gin.Recovery())
 	// 追踪 ID 必须早于一切会写日志/写指标的中间件：

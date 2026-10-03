@@ -52,6 +52,7 @@ const GROUPS: ShellNavGroup[] = [
       { label: '调用日志', href: '/admin/logs', icon: 'list' },
       { label: '操作审计', href: '/admin/audit-logs', icon: 'shield' },
       { label: '站点公告', href: '/admin/announcements', icon: 'info' },
+      { label: '告警通道', href: '/admin/alert-channels', icon: 'alert' },
       { label: '内容安全', href: '/admin/sensitive-words', icon: 'filter' },
       { label: '运维监控', href: '/admin/maintenance', icon: 'trend' },
       { label: '系统设置', href: '/admin/settings', icon: 'sliders' },

@@ -34,12 +34,14 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/LTZY-ACU/aqua-api/internal/config"
 	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/notify"
 )
 
 // healthProbeConfig 是巡检运行时的已归一配置。
@@ -206,14 +208,69 @@ func (s *Server) probeOneChannel(ctx context.Context, ch *model.Channel) {
 	case result.OK && !wasOK:
 		slog.Info("渠道巡检恢复可用", "channel_id", ch.ID, "channel", ch.Name,
 			"latency_ms", result.LatencyMS, "model", result.Model)
+		s.deps.Notifier.Alert(notify.Alert{
+			Key:      model.EventChannelRecovered,
+			Level:    notify.LevelInfo,
+			Title:    fmt.Sprintf("渠道「%s」已恢复可用", ch.Name),
+			Detail:   "此前不可用的渠道在最近一次巡检中探测成功，流量可正常承接。",
+			DedupKey: fmt.Sprintf("channel/%d", ch.ID),
+			Fields: []notify.Field{
+				{Label: "渠道", Value: fmt.Sprintf("%s（#%d）", ch.Name, ch.ID)},
+				{Label: "本次耗时", Value: fmt.Sprintf("%d ms", result.LatencyMS)},
+				{Label: "探测模型", Value: result.Model},
+			},
+		})
 	case !result.OK && wasOK:
 		// 由好转坏必须显式告警：这是"用户马上要开始报错"的最早信号，
 		// 比等用户来投诉便宜得多。
 		slog.Warn("渠道巡检由可用转为不可用", "channel_id", ch.ID, "channel", ch.Name,
 			"status_code", result.StatusCode, "message", result.Message)
+		s.deps.Notifier.Alert(notify.Alert{
+			Key:      model.EventChannelUnhealthy,
+			Level:    notify.LevelWarning,
+			Title:    fmt.Sprintf("渠道「%s」探测失败", ch.Name),
+			Detail:   probeAlertDetail(result),
+			DedupKey: fmt.Sprintf("channel/%d", ch.ID),
+			Fields: []notify.Field{
+				{Label: "渠道", Value: fmt.Sprintf("%s（#%d）", ch.Name, ch.ID)},
+				{Label: "上游状态码", Value: probeAlertStatus(result)},
+				{Label: "失败说明", Value: notify.ShortTitle(result.Message, 120)},
+			},
+		})
 	case !result.OK:
 		slog.Warn("渠道巡检仍不可用", "channel_id", ch.ID, "channel", ch.Name,
 			"status_code", result.StatusCode, "message", result.Message)
+		// 持续不可用【不】重复外发：告警的目标是"第一次知道"，
+		// 每 15 分钟发一次只会训练站长忽略通知。去重窗口由 notify 统一控制。
+	}
+}
+
+// probeAlertStatus 把探测结果的状态码转成人能看懂的一句。
+//
+// 状态码为 0 说明请求根本没拿到响应（DNS/连接/超时），
+// 这时给一个空状态码会让站长误以为是上游返回了 0。
+func probeAlertStatus(result channelTestResponse) string {
+	if result.StatusCode == 0 {
+		return "未拿到响应（连接失败或超时）"
+	}
+	return fmt.Sprintf("HTTP %d", result.StatusCode)
+}
+
+// probeAlertDetail 给出可据以行动的处置提示。
+func probeAlertDetail(result channelTestResponse) string {
+	switch {
+	case result.StatusCode == 401 || result.StatusCode == 403:
+		return "上游拒绝了凭据，请检查渠道密钥是否失效或已被撤销。"
+	case result.StatusCode == 404:
+		return "上游返回「模型不存在」，请检查渠道里的模型名是否与上游一致。"
+	case result.StatusCode == 429:
+		return "上游触发了限流，请降低调用频率或为该渠道补充密钥。"
+	case result.StatusCode >= 500:
+		return "上游返回服务端错误，通常是对方故障，稍后巡检会自动重试。"
+	case result.StatusCode > 0:
+		return "上游返回了非预期的状态码，建议手动点一次「测活」查看完整响应。"
+	default:
+		return "请求未能送达上游，请检查渠道地址、网络与 DNS。"
 	}
 }
 

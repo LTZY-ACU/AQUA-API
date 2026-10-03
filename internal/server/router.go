@@ -340,6 +340,17 @@ func (s *Server) registerRoutes() {
 	admin.PUT("/announcements/:id", s.handleAdminUpdateAnnouncement)
 	admin.DELETE("/announcements/:id", s.handleAdminDeleteAnnouncement)
 
+	// 告警通知通道：把渠道熔断、账号锁定等事件发到站外。
+	//
+	// 写/删/测试都挂了 requireFreshReauth（处理器内）：能改告警目标的人，
+	// 等于能让本站把内部事件发到任意地址，这是与"人工入账"同级的外发通道。
+	admin.GET("/alert-channels", s.handleListAlertChannels)
+	admin.GET("/alert-channel-kinds", s.handleAlertChannelKinds)
+	admin.POST("/alert-channels", s.handleCreateAlertChannel)
+	admin.PUT("/alert-channels/:id", s.handleUpdateAlertChannel)
+	admin.DELETE("/alert-channels/:id", s.handleDeleteAlertChannel)
+	admin.POST("/alert-channels/:id/test", s.handleTestAlertChannel)
+
 	// 全站通知邮件（群发）：预览 → 确认发送 → 看进度 / 看失败明细 → 可停止。
 	//
 	// 模板目录刻意放在顶层 /broadcast-templates 而不是 /broadcasts/templates：

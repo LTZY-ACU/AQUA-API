@@ -52,7 +52,9 @@ import (
 	"github.com/LTZY-ACU/aqua-api/internal/corpus"
 	"github.com/LTZY-ACU/aqua-api/internal/crypto"
 	"github.com/LTZY-ACU/aqua-api/internal/mailer"
+	"github.com/LTZY-ACU/aqua-api/internal/metrics"
 	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/notify"
 	"github.com/LTZY-ACU/aqua-api/internal/payment"
 	"github.com/LTZY-ACU/aqua-api/internal/relay"
 	"github.com/LTZY-ACU/aqua-api/internal/server"
@@ -234,6 +236,7 @@ func run() error {
 	referrals := store.NewReferralRepository(st.DB())
 	// 第三方账号绑定：本站账号 ↔ QIU 科技账号的对应关系（第三方登录的依据）。
 	externalAccounts := store.NewExternalAccountRepository(st.DB())
+	alertChannels := store.NewAlertChannelRepository(st.DB())
 	// SMTP 配置仓储：口令以密文落库（加密器与渠道密钥同一个）。
 	smtpSettings := store.NewSMTPRepository(st.DB(), cipher)
 	// 额度预留台账：鉴权时预扣、响应后结算/退还，堵住并发超支漏洞。
@@ -399,6 +402,23 @@ func run() error {
 	// Options{} 表示用默认节奏（2 秒/封、每 50 封停 30 秒），见 broadcast 包的常量说明。
 	broadcastSender := broadcast.New(emailBroadcasts, users, mailerSender, broadcast.Options{})
 
+	// 指标注册表：HTTP 中间件与告警派发器共用同一份实例。
+	// 必须共用而不是各自 new，否则 /metrics 端点只能看到自己那半边数据
+	//（早期版本就踩过：端点里只剩进程指标，请求时序全丢）。
+	appMetrics := metrics.New()
+
+	// 告警派发器：把渠道熔断、自动停用、账号锁定等事件外发到邮件 / Webhook / 钉钉 / 企微。
+	//
+	// 为什么不塞进 broadcast：broadcast 是"人为触发、给指定名单发邮件"的批量语义，
+	// 告警是"系统事件触发、按订阅过滤、去重节流"的反向语义（收件人来自配置而非名单）。
+	// 两者混在一起会让 dispatch 既要管名单又要管订阅，最终谁都推理不清。
+	// 邮件通道由 Dispatcher 内部直接走 mailerSender，因此不放进 senders 表。
+	notifier := notify.NewDispatcher(alertChannels, mailerSender, map[string]notify.Sender{
+		model.AlertChannelWebhook:  notify.NewHTTPSender(model.AlertChannelWebhook),
+		model.AlertChannelDingTalk: notify.NewHTTPSender(model.AlertChannelDingTalk),
+		model.AlertChannelWeCom:    notify.NewHTTPSender(model.AlertChannelWeCom),
+	}, appMetrics)
+
 	// 子命令：创建访问令牌（M2 遗留入口，保留以兼容既有脚本）
 	if *createToken != "" {
 		return createAndPrintToken(ctx, tokens, *createToken, cfg.Server.Listen)
@@ -506,6 +526,11 @@ func run() error {
 		Referrals:     referrals,
 		// 第三方账号绑定（QIU 科技账号登录）
 		ExternalAccounts: externalAccounts,
+		// 告警通知：通道仓储 + 派发器（渠道熔断、账号锁定等事件外发）
+		AlertChannels: alertChannels,
+		Notifier:      notifier,
+		// 指标注册表：与告警派发器共用同一份，保证 /metrics 展示完整
+		Metrics: appMetrics,
 		// 敏感词表：/v1 入口的内容合规过滤
 		SensitiveWords: sensitiveWords,
 		// 上游进价：按密钥核算消耗、计算余额剩余与毛利

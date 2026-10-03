@@ -30,6 +30,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -39,6 +40,7 @@ import (
 
 	"github.com/LTZY-ACU/aqua-api/internal/mailer"
 	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/aqua-api/internal/notify"
 	"github.com/LTZY-ACU/aqua-api/internal/oai"
 	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
 )
@@ -96,6 +98,23 @@ func (s *Server) noteLoginFailure(c *gin.Context, user *model.User) {
 		"user_id", user.ID, "username", user.Username,
 		"attempts", failed, "locked_until", lockedUntil.Format(time.RFC3339),
 		"client_ip", middleware.ClientIP(c))
+
+	// 外发告警：账号被锁是"有人在撞这个账号"的直接信号。
+	// 逐条发而不是只发一次：锁定期 15 分钟，同一个账号在窗口内被反复尝试
+	// 恰恰说明攻击仍在继续——去重窗口（notify 内部按级别统一控制）不会掩盖它。
+	s.deps.Notifier.Alert(notify.Alert{
+		Key:   model.EventLoginLocked,
+		Level: notify.LevelWarning,
+		Title: fmt.Sprintf("账号「%s」因连续登录失败被临时锁定", user.Username),
+		Detail: fmt.Sprintf("连续 %d 次登录失败，账号已锁定至 %s（北京时间）。",
+			failed, lockedUntil.In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04:05")),
+		DedupKey: fmt.Sprintf("user/%d", user.ID),
+		Fields: []notify.Field{
+			{Label: "账号", Value: user.Username},
+			{Label: "来源 IP", Value: middleware.ClientIP(c)},
+			{Label: "失败次数", Value: strconv.Itoa(int(failed))},
+		},
+	})
 }
 
 // noteLoginSuccess 记录一次成功登录的来源，并在来源发生明显变化时提醒用户。
