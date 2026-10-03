@@ -586,4 +586,26 @@ export default {
   authContext: {
     notLoggedIn: 'غير مسجّل الدخول',
   },
+  channelStatus: {
+    enabled: 'مُفعَّل',
+    manualDisabled: 'معطَّل يدويًا',
+    autoDisabled: 'معطَّل تلقائيًا',
+    unknown: 'حالة غير معروفة',
+    unknownCode: 'حالة غير معروفة ({code})',
+  },
+  channelType: {
+    openaiCompatible: 'متوافق مع OpenAI',
+    generic: 'النوع {type}',
+    unknown: 'نوع غير معروف',
+  },
+  userRole: {
+    admin: 'مدير',
+    user: 'مستخدم',
+    unknown: 'دور غير معروف',
+    code: 'الدور {role}',
+  },
+  modelsSummary: {
+    all: 'جميع الطرازات',
+    count: '{count} طراز',
+  },
 }

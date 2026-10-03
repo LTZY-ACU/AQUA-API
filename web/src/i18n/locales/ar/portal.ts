@@ -32,6 +32,10 @@ export default {
   layout: {
     entering: 'جارٍ الدخول إلى البوابة…',
   },
+  models: {
+    title: 'سوق النماذج',
+    subtitle: 'النماذج والأسعار المتاحة حالياً',
+  },
   overview: {
     title: 'نظرة عامة',
     subtitle: 'استخدام حسابك ورصيده الحالي',

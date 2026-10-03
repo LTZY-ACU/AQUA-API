@@ -16,7 +16,7 @@ import { Field, Input, Select } from '@/components/ui/Form'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
 import { Badge, EmptyState } from '@/components/ui/Display'
 import { CopyButton } from '@/components/ui/Modal'
-import { useI18n } from '@/i18n'
+import { translate, useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { useSite } from '@/lib/site/site-context'
 import { formatDateTime } from '@/utils/format'
@@ -236,6 +236,7 @@ function CreateTokenModal({
 }) {
   const { toastError } = useToast()
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   const [name, setName] = useState('')
   const [group, setGroup] = useState('')
   const [unlimited, setUnlimited] = useState(false)
@@ -245,12 +246,12 @@ function CreateTokenModal({
 
   async function handleSubmit() {
     if (!name.trim()) {
-      toastError('请填写令牌名称')
+      toastError(t('portal.tokens.nameRequired'))
       return
     }
     const q = Number(quotaYuan)
     if (!unlimited && (!Number.isFinite(q) || q < 0)) {
-      toastError('请填写正确的令牌预算（元）')
+      toastError(t('portal.tokens.budgetRequired'))
       return
     }
     setLoading(true)
@@ -271,26 +272,26 @@ function CreateTokenModal({
       setQuotaYuan('10')
       setExpiresInDays(0)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '创建失败')
+      toastError(err instanceof Error ? err.message : t('portal.tokens.createFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="新建访问令牌" width={520}>
+    <Modal open={open} onClose={onClose} title={t('portal.tokens.createTitle')} width={520}>
       <div className="space-y-4">
-        <Field label="令牌名称" required>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：本地客户端" />
+        <Field label={t('portal.tokens.name')} required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('portal.tokens.namePlaceholder')} />
         </Field>
-        <Field label="所属分组" help={groups.length ? '选择分组后按该分组路由与计费' : '加载中…'}>
+        <Field label={t('portal.tokens.group')} help={groups.length ? t('portal.tokens.groupHelp') : t('common.state.loading')}>
           <Select value={group} onChange={(e) => setGroup(e.target.value)}>
-            <option value="">默认分组</option>
+            <option value="">{t('portal.tokens.defaultGroup')}</option>
             {groups.map((g) => (
               <option key={g.name} value={g.name} disabled={!g.unlocked}>
                 {g.label}
-                {g.is_agent ? `（代理拿货 · ${formatDiscountLabel(g.ratio)}）` : ''}
-                {!g.unlocked ? '（未解锁）' : ''}
+                {g.is_agent ? t('portal.tokens.agentGroup', { label: formatDiscountLabel(g.ratio) }) : ''}
+                {!g.unlocked ? t('portal.tokens.locked') : ''}
               </option>
             ))}
           </Select>
@@ -301,14 +302,14 @@ function CreateTokenModal({
           if (!selected?.rpm_limit || selected.rpm_limit <= 0) return null
           return (
             <p className="-mt-2 text-[12px] text-ink-3">
-              该分组每分钟请求上限：{selected.rpm_limit} 次/分钟
+              {t('portal.tokens.rpmHint', { n: selected.rpm_limit })}
             </p>
           )
         })()}
-        <Field label="有效期" help="0 表示永不过期">
+        <Field label={t('portal.tokens.expires')} help={t('portal.tokens.expiresHelp')}>
           <Input type="number" min={0} value={expiresInDays} onChange={(e) => setExpiresInDays(Number(e.target.value))} />
         </Field>
-        <Field label="令牌预算（¥）" help={unlimited ? '不限预算时无需填写' : '该令牌可消耗的余额上限，超出后该令牌将停止响应'}>
+        <Field label={t('portal.tokens.budget')} help={unlimited ? t('portal.tokens.budgetUnlimitedHelp') : t('portal.tokens.budgetHelp')}>
           <Input
             type="number"
             min={0}
@@ -320,12 +321,12 @@ function CreateTokenModal({
         </Field>
         <label className="flex items-center gap-2 text-[13px] text-ink-2">
           <input type="checkbox" checked={unlimited} onChange={(e) => setUnlimited(e.target.checked)} className="h-4 w-4 accent-brand" />
-          不限预算
+          {t('portal.tokens.unlimitedBudget')}
         </label>
       </div>
       <div className="mt-5 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>取消</Button>
-        <Button variant="primary" loading={loading} onClick={handleSubmit}>创建</Button>
+        <Button variant="secondary" onClick={onClose}>{t('common.action.cancel')}</Button>
+        <Button variant="primary" loading={loading} onClick={handleSubmit}>{t('common.action.create')}</Button>
       </div>
     </Modal>
   )
@@ -341,15 +342,15 @@ function CreateTokenModal({
  * 后端补齐后本列会自动显示进度；未配置/未下发时显示「未设置」。
  */
 
-/** 预算周期标识 → 中文短标签 */
+/** 预算周期标识 → 本地化短标签（纯函数，不能在模块顶层求值，否则语言被锁死） */
 function budgetPeriodLabel(period: string): string {
   switch (period) {
     case 'daily':
-      return '每日'
+      return translate('portal.tokens.periodDaily')
     case 'weekly':
-      return '每周'
+      return translate('portal.tokens.periodWeekly')
     case 'monthly':
-      return '每月'
+      return translate('portal.tokens.periodMonthly')
     default:
       return period
   }
@@ -357,10 +358,11 @@ function budgetPeriodLabel(period: string): string {
 
 /** 单行的周期预算：进度条 + 本周期已用/上限 */
 function BudgetCell({ token, quotaPerYuan }: { token: AccessToken; quotaPerYuan: number }) {
+  const { t } = useI18n()
   const limit = token.budget_quota ?? 0
   const period = token.budget_period ?? ''
   if (limit <= 0 || !period) {
-    return <span className="text-[12px] text-ink-3">未设置</span>
+    return <span className="text-[12px] text-ink-3">{t('portal.tokens.notSet')}</span>
   }
   const used = Math.max(0, (token.used_quota ?? 0) - (token.budget_window_base ?? 0))
   const pct = Math.min(100, Math.round((used / limit) * 100))

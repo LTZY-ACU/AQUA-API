@@ -14,6 +14,8 @@
  *   注意备份下载：它需要携带会话令牌的 Authorization 头，浏览器无法直接打开链接下载，
  *   因此这里用 fetch + client 导出的 getSessionToken 显式发起（复用同一套令牌读写）。
  */
+import { translate } from '@/i18n'
+
 import { api, getSessionToken } from './client'
 
 /** 数据库驱动与体积 */
@@ -153,7 +155,7 @@ export async function downloadMaintenanceBackup(): Promise<void> {
   const response = await fetch(`${base}/admin/maintenance/backup`, { headers })
   if (!response.ok) {
     // 后端错误体统一为 { error: { message } }，尽量取出可读提示
-    let message = `下载失败（HTTP ${response.status}）`
+    let message = translate('common.api.downloadFailed', { status: response.status })
     try {
       const data = await response.json()
       if (data?.error?.message) message = data.error.message

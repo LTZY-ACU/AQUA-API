@@ -48,6 +48,7 @@ export default function ConsolePlaygroundPage() {
   const [modelsUpdatedAt, setModelsUpdatedAt] = useState<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const { toastError } = useToast()
+  const { t } = useI18n()
 
   /** 加载模型列表：公开广场（含可用性）为基底，/v1/models 提供实时可用性补充。
    *
@@ -95,7 +96,7 @@ export default function ConsolePlaygroundPage() {
 
   async function handleSend() {
     if (!token.trim() || !model.trim() || !prompt.trim()) {
-      toastError('请填写令牌、模型与问题')
+      toastError(t('portal.playground.fillRequired'))
       return
     }
     if (streaming) {
@@ -135,7 +136,7 @@ export default function ConsolePlaygroundPage() {
       })
 
       if (!response.ok || !response.body) {
-        let message = `请求失败（HTTP ${response.status}）`
+        let message = t('portal.playground.requestFailed', { status: response.status })
         try {
           const data = await response.json()
           message = data?.error?.message || message
@@ -185,7 +186,7 @@ export default function ConsolePlaygroundPage() {
       if ((err as Error).name === 'AbortError') {
         // 用户主动停止：保留已生成内容
       } else {
-        setError('请求出错了，请检查令牌是否有效')
+        setError(t('portal.playground.requestError'))
       }
     } finally {
       setStat({ ttfb_ms: ttfb, total_ms: Date.now() - startedAt })
@@ -197,8 +198,8 @@ export default function ConsolePlaygroundPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">游乐场</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">在线使用界面：调用全部可用模型，实时观察调用状态</p>
+        <h1 className="text-xl font-bold text-ink">{t('portal.playground.title')}</h1>
+        <p className="mt-0.5 text-[13px] text-ink-3">{t('portal.playground.subtitle')}</p>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
@@ -206,7 +207,7 @@ export default function ConsolePlaygroundPage() {
           <div className="min-h-72 space-y-3">
             {messages.length === 0 ? (
               <div className="flex h-72 items-center justify-center text-[13px] text-ink-3">
-                在上方或下方输入问题开始对话
+                {t('portal.playground.empty')}
               </div>
             ) : (
               messages.map((msg, index) => (
@@ -216,7 +217,7 @@ export default function ConsolePlaygroundPage() {
                       msg.role === 'user' ? 'bg-brand text-on-brand' : 'border border-line bg-surface text-ink-2'
                     }`}
                   >
-                    {msg.content || (streaming && index === messages.length - 1 ? '正在生成…' : '')}
+                    {msg.content || (streaming && index === messages.length - 1 ? t('portal.playground.generating') : '')}
                   </div>
                 </div>
               ))
@@ -228,18 +229,18 @@ export default function ConsolePlaygroundPage() {
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line pt-3 text-[12px] text-ink-3">
             {stat && (
               <span>
-                本轮耗时 <span className="font-mono text-ink-2">{stat.total_ms} ms</span>
+                {t('portal.playground.elapsed')} <span className="font-mono text-ink-2">{stat.total_ms} ms</span>
                 {stat.ttfb_ms !== null && (
                   <>
-                    {' · '}首字延迟 <span className="font-mono text-ink-2">{stat.ttfb_ms} ms</span>
+                    {' · '}{t('portal.playground.ttfb')} <span className="font-mono text-ink-2">{stat.ttfb_ms} ms</span>
                   </>
                 )}
               </span>
             )}
             {modelsUpdatedAt && (
               <span className="ml-auto">
-                模型列表更新于 <span className="font-mono">{new Date(modelsUpdatedAt).toLocaleTimeString()}</span>
-                {' · '}共 <span className="font-mono">{models.length}</span> 个
+                {t('portal.playground.modelsUpdatedAt')} <span className="font-mono">{new Date(modelsUpdatedAt).toLocaleTimeString()}</span>
+                {' · '}{t('portal.playground.modelsTotal')} <span className="font-mono">{models.length}</span> {t('portal.playground.modelsUnit')}
               </span>
             )}
           </div>
@@ -254,41 +255,40 @@ export default function ConsolePlaygroundPage() {
                   void handleSend()
                 }
               }}
-              placeholder="输入问题，Enter 发送，Shift+Enter 换行"
+              placeholder={t('portal.playground.placeholder')}
               rows={2}
               className="flex-1 rounded-md border border-line-2 bg-card px-3 py-2 text-sm outline-none focus:border-brand"
             />
             <Button variant="primary" onClick={handleSend} className="shrink-0">
-              {streaming ? '停止' : '发送'}
+              {streaming ? t('portal.playground.stop') : t('portal.playground.send')}
             </Button>
           </div>
         </Card>
 
         <Card>
           <div className="space-y-3">
-            <Field label="访问令牌" help="sk- 开头的 API 访问令牌，不是登录密码">
+            <Field label={t('portal.playground.token')} help={t('portal.playground.tokenHelp')}>
               <Input
                 type="password"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
-                placeholder="填入 sk- 开头的 API 访问令牌（在令牌页创建）"
+                placeholder={t('portal.playground.tokenPlaceholder')}
               />
             </Field>
-            <Field label="模型">
+            <Field label={t('portal.playground.model')}>
               <Select value={model} onChange={(e) => setModel(e.target.value)}>
-                {models.length === 0 && <option value="">加载中…</option>}
+                {models.length === 0 && <option value="">{t('common.state.loading')}</option>}
                 {models.map((name) => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </Select>
             </Field>
             <div className="text-xs leading-relaxed text-ink-3">
-              令牌只保存在本页内存，刷新即消失。调用走 <code className="rounded bg-ink/5 px-1">/v1</code> 网关；
-              模型列表每 30 秒自动刷新，反映当前可用模型。
+              {t('portal.playground.tokenHintBefore')} <code className="rounded bg-ink/5 px-1">/v1</code> {t('portal.playground.tokenHintAfter')}
               <br />
-              还没有令牌？
+              {t('portal.playground.noToken')}
               <Link href="/console/tokens" className="text-brand hover:underline">
-                去令牌页创建
+                {t('portal.playground.createTokenLink')}
               </Link>
             </div>
           </div>

@@ -595,4 +595,26 @@ export default {
   authContext: {
     notLoggedIn: 'Не выполнен вход',
   },
+  channelStatus: {
+    enabled: 'Включён',
+    manualDisabled: 'Отключён вручную',
+    autoDisabled: 'Отключён автоматически',
+    unknown: 'Неизвестный статус',
+    unknownCode: 'Неизвестный статус ({code})',
+  },
+  channelType: {
+    openaiCompatible: 'Совместимо с OpenAI',
+    generic: 'Тип {type}',
+    unknown: 'Неизвестный тип',
+  },
+  userRole: {
+    admin: 'Администратор',
+    user: 'Пользователь',
+    unknown: 'Неизвестная роль',
+    code: 'Роль {role}',
+  },
+  modelsSummary: {
+    all: 'Все модели',
+    count: '{count} шт.',
+  },
 }

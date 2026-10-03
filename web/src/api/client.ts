@@ -20,7 +20,7 @@
  */
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 
-import { getLocale } from '@/i18n'
+import { getLocale, translate } from '@/i18n'
 import type { ApiErrorBody } from './types'
 
 /** API 前缀：契约约定管理/门户接口前缀为 /api */
@@ -57,16 +57,19 @@ export const UPSTREAM_TIMEOUT_MS = 320_000
  */
 const UNAUTHORIZED_EXEMPT = ['/auth/login', '/auth/register']
 
-/** 各类 HTTP 状态码的兜底提示（后端未返回 message 时使用） */
-const FALLBACK_MESSAGE: Record<number, string> = {
-  400: '请求参数有误',
-  401: '登录已失效，请重新登录',
-  403: '没有权限执行该操作',
-  404: '请求的资源不存在',
-  409: '操作冲突，该记录可能已存在',
-  429: '请求过于频繁或额度已耗尽',
-  500: '服务端出错了，请稍后重试',
-  503: '暂时没有可用的上游渠道',
+/**
+ * 各类 HTTP 状态码兜底提示的词条键（后端未返回 message 时使用）。
+ * 只存键、不存文案：文案需在请求失败时按当前语言即时翻译（模块顶层求值会锁死语言）。
+ */
+const FALLBACK_MESSAGE_KEY: Record<number, string> = {
+  400: 'common.api.http400',
+  401: 'common.api.http401',
+  403: 'common.api.http403',
+  404: 'common.api.http404',
+  409: 'common.api.http409',
+  429: 'common.api.http429',
+  500: 'common.api.http500',
+  503: 'common.api.http503',
 }
 
 /**
@@ -167,13 +170,16 @@ function toApiError(error: unknown): ApiError {
   const axiosError = error as AxiosError<ApiErrorBody>
   if (!axiosError.response) {
     if (axiosError.code === 'ECONNABORTED' || axiosError.code === 'ETIMEDOUT') {
-      return new ApiError('请求超时，请检查网络后重试', 0, 'timeout')
+      return new ApiError(translate('common.api.timeout'), 0, 'timeout')
     }
-    return new ApiError('无法连接服务器，请确认后端服务是否已启动', 0, 'network_error')
+    return new ApiError(translate('common.api.network'), 0, 'network_error')
   }
 
   const { status, data } = axiosError.response
-  const message = data?.error?.message || FALLBACK_MESSAGE[status] || `请求失败（HTTP ${status}）`
+  const fallbackKey = FALLBACK_MESSAGE_KEY[status]
+  const message =
+    data?.error?.message ||
+    (fallbackKey ? translate(fallbackKey) : translate('common.api.httpGeneric', { status }))
   return new ApiError(message, status, data?.error?.code ?? '', data?.error?.type ?? '')
 }
 

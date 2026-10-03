@@ -32,6 +32,10 @@ export default {
   layout: {
     entering: 'Entrando al portal…',
   },
+  models: {
+    title: 'Plaza de modelos',
+    subtitle: 'Modelos y precios disponibles',
+  },
   overview: {
     title: 'Resumen',
     subtitle: 'Uso y saldo actuales de tu cuenta',

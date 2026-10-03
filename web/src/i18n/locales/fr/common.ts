@@ -64,4 +64,31 @@ export default {
   confirm: {
     defaultMessage: 'Voulez-vous vraiment effectuer cette action ?',
   },
+  value: {
+    neverExpires: 'N’expire jamais',
+    unlimitedQuota: 'Quota illimité',
+    other: 'Autre',
+  },
+  money: {
+    quotaUnit: 'crédits',
+    originalPrice: 'Prix initial',
+    discount: '{ratio} % du prix',
+    perCall: '/appel',
+  },
+  api: {
+    timeout: 'Délai de requête dépassé. Vérifiez votre réseau et réessayez.',
+    network: 'Impossible de joindre le serveur. Vérifiez que le service backend est démarré.',
+    http400: 'Paramètres de requête invalides',
+    http401: 'Votre session a expiré. Veuillez vous reconnecter.',
+    http403: 'Vous n’avez pas la permission d’effectuer cette action',
+    http404: 'La ressource demandée n’existe pas',
+    http409: 'Conflit : l’enregistrement existe peut-être déjà',
+    http429: 'Trop de requêtes, ou votre quota est épuisé',
+    http500: 'Erreur du serveur. Réessayez plus tard.',
+    http503: 'Aucun canal en amont n’est disponible pour le moment',
+    httpGeneric: 'Échec de la requête (HTTP {status})',
+    exportConnectFailed: 'Impossible de joindre le serveur. Échec de l’export.',
+    exportFailed: 'Échec de l’export (HTTP {status})',
+    downloadFailed: 'Échec du téléchargement (HTTP {status})',
+  },
 }

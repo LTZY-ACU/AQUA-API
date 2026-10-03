@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Display'
 import { Field, Input } from '@/components/ui/Form'
 import { getSessionToken } from '@/api/client'
+import { useI18n } from '@/i18n'
 
 /** 实时指标轮询间隔（毫秒） */
 const STATS_POLL_MS = 5000
@@ -38,6 +39,7 @@ interface Props {
 }
 
 export function ModelLivePanel({ modelName }: Props) {
+  const { t } = useI18n()
   const [stats, setStats] = useState<ModelStats | null>(null)
   const [token, setToken] = useState('')
   const [testing, setTesting] = useState(false)
@@ -72,11 +74,11 @@ export function ModelLivePanel({ modelName }: Props) {
   async function handleTest() {
     if (!modelName.trim()) return
     if (!token.trim()) {
-      setResult({ connected: false, ttfb_ms: 0, model: modelName, error: '需要访问令牌：请先在「访问令牌」页创建，或粘贴 sk- 开头的令牌' })
+      setResult({ connected: false, ttfb_ms: 0, model: modelName, error: t('components.modelLive.errNeedToken') })
       return
     }
     if (!stats?.available) {
-      setResult({ connected: false, ttfb_ms: 0, model: modelName, error: '该模型当前无可用渠道（离线），无法测试' })
+      setResult({ connected: false, ttfb_ms: 0, model: modelName, error: t('components.modelLive.errNoChannel') })
       return
     }
 
@@ -101,7 +103,7 @@ export function ModelLivePanel({ modelName }: Props) {
       })
 
       if (!response.ok || !response.body) {
-        let message = `请求失败（HTTP ${response.status}）`
+        let message = t('components.modelLive.errHttp', { status: response.status })
         try {
           const data = await response.json()
           message = data?.error?.message || message
@@ -140,7 +142,7 @@ export function ModelLivePanel({ modelName }: Props) {
       if (received) {
         setResult({ connected: true, ttfb_ms: Date.now() - startedAt, model: modelName })
       } else {
-        setResult({ connected: false, ttfb_ms: 0, model: modelName, error: '流式连接成功但未收到任何数据块' })
+        setResult({ connected: false, ttfb_ms: 0, model: modelName, error: t('components.modelLive.errNoChunk') })
       }
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
@@ -148,7 +150,7 @@ export function ModelLivePanel({ modelName }: Props) {
         // 到这里的 Abort 是用户切页/卸载，不更新结果。
         return
       }
-      setResult({ connected: false, ttfb_ms: 0, model: modelName, error: '请求出错：网关不可达或鉴权未通过' })
+      setResult({ connected: false, ttfb_ms: 0, model: modelName, error: t('components.modelLive.errNetwork') })
     } finally {
       setTesting(false)
       abortRef.current = null
@@ -162,19 +164,19 @@ export function ModelLivePanel({ modelName }: Props) {
       {/* ── 实时指标卡：tokens/s + 平均耗时 + TTFB ── */}
       <div className="grid grid-cols-3 gap-2">
         <MetricTile
-          label="输出速率"
+          label={t('components.modelLive.outputSpeed')}
           value={stats && stats.avg_tokens_per_second > 0 ? `${stats.avg_tokens_per_second.toFixed(1)} t/s` : '—'}
-          hint={stats && stats.requests > 0 ? '近 15 分钟' : '暂无样本'}
+          hint={stats && stats.requests > 0 ? t('components.modelLive.last15min') : t('components.modelLive.noSamples')}
         />
         <MetricTile
-          label="平均耗时"
+          label={t('components.modelLive.avgLatency')}
           value={stats && stats.avg_latency_ms > 0 ? `${stats.avg_latency_ms.toFixed(0)} ms` : '—'}
-          hint="成功请求"
+          hint={t('components.modelLive.successRequests')}
         />
         <MetricTile
-          label="首字延迟 TTFB"
+          label={t('components.modelLive.ttfb')}
           value={stats && stats.avg_first_token_ms > 0 ? `${stats.avg_first_token_ms.toFixed(0)} ms` : '—'}
-          hint="近 15 分钟"
+          hint={t('components.modelLive.last15min')}
         />
       </div>
 
@@ -182,18 +184,20 @@ export function ModelLivePanel({ modelName }: Props) {
       <div className="rounded-md border border-line bg-surface/60 p-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="text-[13px] font-medium text-ink-2">连通性测试</span>
+            <span className="text-[13px] font-medium text-ink-2">{t('components.modelLive.connectivity')}</span>
             {offline ? (
-              <Badge tone="err">离线</Badge>
+              <Badge tone="err">{t('components.modelLive.offline')}</Badge>
             ) : stats ? (
-              <Badge tone="ok">{stats.channel_count} 个渠道可用</Badge>
+              <Badge tone="ok">{t('components.modelLive.channelsAvailable', { count: stats.channel_count })}</Badge>
             ) : (
-              <Badge tone="off">检测中…</Badge>
+              <Badge tone="off">{t('components.modelLive.detecting')}</Badge>
             )}
           </div>
           {result && (
             <span className={`text-[12px] ${result.connected ? 'text-ok' : 'text-err'}`}>
-              {result.connected ? `已连通 · 首字 ${result.ttfb_ms} ms` : '未连通'}
+              {result.connected
+                ? t('components.modelLive.connected', { ms: result.ttfb_ms })
+                : t('components.modelLive.notConnected')}
             </span>
           )}
         </div>
@@ -203,20 +207,18 @@ export function ModelLivePanel({ modelName }: Props) {
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            placeholder="sk- 访问令牌（测试用，仅本次会话内存）"
+            placeholder={t('components.modelLive.tokenPlaceholder')}
             className="flex-1"
           />
           <Button variant="primary" onClick={handleTest} loading={testing} disabled={offline} className="shrink-0">
-            {testing ? '测试中…' : '开始测试'}
+            {testing ? t('components.modelLive.testing') : t('components.modelLive.startTest')}
           </Button>
         </div>
 
         {result && !result.connected && result.error && (
           <div className="mt-2 rounded border border-err/25 bg-err/8 px-2.5 py-1.5 text-[12px] text-err">{result.error}</div>
         )}
-        <div className="mt-1.5 text-[11px] text-ink-3">
-          测试会发起一次真实调用（含鉴权与流式返回），收到首个响应即断开，几乎不消耗 token。
-        </div>
+        <div className="mt-1.5 text-[11px] text-ink-3">{t('components.modelLive.note')}</div>
       </div>
     </div>
   )

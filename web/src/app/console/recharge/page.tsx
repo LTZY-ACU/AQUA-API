@@ -28,6 +28,7 @@ import type { PaymentOrder, PublicPaymentInfo } from '@/api/types'
 import { ComplianceNotice } from '@/components/site/ComplianceNotice'
 import { Badge, Card } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
+import { useI18n } from '@/i18n'
 import { useAuth } from '@/lib/auth/auth-context'
 import { useSite } from '@/lib/site/site-context'
 import { useToast } from '@/lib/toast/toast-context'
@@ -54,6 +55,7 @@ export default function ConsoleRechargePage() {
   const [redirecting, setRedirecting] = useState(false)
   const { toastError } = useToast()
   const { refreshUser } = useAuth()
+  const { t } = useI18n()
 
   /* ── 支付回跳确认：URL 带 trade_no 时轮询订单真实状态 ── */
   const [returnedTradeNo, setReturnedTradeNo] = useState('')
@@ -142,7 +144,7 @@ export default function ConsoleRechargePage() {
 
   async function handleOrder() {
     if (!method) {
-      toastError('请选择支付方式')
+      toastError(t('portal.recharge.selectMethod'))
       return
     }
     setLoading(true)
@@ -159,10 +161,10 @@ export default function ConsoleRechargePage() {
         setRedirecting(true)
         window.location.href = order.pay_url
       } else {
-        toastError('下单成功但未获取到支付地址，请联系管理员')
+        toastError(t('portal.recharge.noPayUrl'))
       }
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '下单失败')
+      toastError(err instanceof Error ? err.message : t('portal.recharge.orderFailed'))
     } finally {
       setLoading(false)
     }
@@ -179,9 +181,9 @@ export default function ConsoleRechargePage() {
           <div className="flex items-center gap-3">
             <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-brand border-t-transparent" />
             <div>
-              <div className="text-sm font-medium text-ink">正在确认支付结果…</div>
+              <div className="text-sm font-medium text-ink">{t('portal.recharge.confirming')}</div>
               <div className="mt-0.5 text-xs text-ink-3">
-                订单 {returnedTradeNo} · 请勿关闭页面
+                {t('portal.recharge.confirmingHint', { tradeNo: returnedTradeNo })}
               </div>
             </div>
           </div>
@@ -193,17 +195,17 @@ export default function ConsoleRechargePage() {
       return (
         <Card className="border-ok/40 bg-ok/5">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="ok">充值成功</Badge>
-            <span className="text-sm font-medium text-ink">已到账 ¥{order.amount_text}</span>
-            <span className="font-mono text-xs text-ink-3">订单 {order.trade_no}</span>
+            <Badge tone="ok">{t('portal.recharge.paidBadge')}</Badge>
+            <span className="text-sm font-medium text-ink">{t('portal.recharge.paidAmount', { amount: order.amount_text })}</span>
+            <span className="font-mono text-xs text-ink-3">{t('portal.recharge.orderNo', { tradeNo: order.trade_no })}</span>
           </div>
           <p className="mt-2 text-[13px] text-ink-2">
-            余额已更新，可返回概览查看；完整流水见
+            {t('portal.recharge.paidHint')}
             {' '}
             <Link href="/console/finance" className="text-brand hover:underline">
-              财务记录
+              {t('portal.recharge.financeLink')}
             </Link>
-            。
+            {t('portal.recharge.paidHintEnd')}
           </p>
         </Card>
       )
@@ -213,19 +215,19 @@ export default function ConsoleRechargePage() {
       return (
         <Card className="border-warn/40 bg-warn/5">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="warn">订单已关闭</Badge>
-            <span className="font-mono text-xs text-ink-3">订单 {order.trade_no}</span>
+            <Badge tone="warn">{t('portal.recharge.closedBadge')}</Badge>
+            <span className="font-mono text-xs text-ink-3">{t('portal.recharge.orderNo', { tradeNo: order.trade_no })}</span>
           </div>
           <p className="mt-2 text-[13px] text-ink-2">
-            该订单已超时关闭（或已被取消），不会入账。若你已实际付款，请用下方「联系方式」找管理员核对。
+            {t('portal.recharge.closedHint')}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button variant="secondary" size="sm" onClick={resetReturned}>
-              重新充值
+              {t('portal.recharge.rechargeAgain')}
             </Button>
             <Link href="/contact">
               <Button variant="ghost" size="sm">
-                联系方式
+                {t('portal.recharge.contact')}
               </Button>
             </Link>
           </div>
@@ -237,14 +239,12 @@ export default function ConsoleRechargePage() {
     return (
       <Card className="border-warn/40 bg-warn/5">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="warn">待支付</Badge>
+          <Badge tone="warn">{t('portal.recharge.pendingBadge')}</Badge>
           <span className="text-sm font-medium text-ink">¥{order.amount_text}</span>
-          <span className="font-mono text-xs text-ink-3">订单 {order.trade_no}</span>
+          <span className="font-mono text-xs text-ink-3">{t('portal.recharge.orderNo', { tradeNo: order.trade_no })}</span>
         </div>
         <p className="mt-2 text-[13px] text-ink-2">
-          {pollTimedOut
-            ? '等待支付结果超时。若你已完成付款，入账可能稍有延迟，稍后可在财务记录核对；也可继续支付。'
-            : '尚未收到支付成功的结果。若你已完成付款，请稍候片刻，本页会自动确认。'}
+          {pollTimedOut ? t('portal.recharge.pendingTimeout') : t('portal.recharge.pendingHint')}
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {order.pay_url && (
@@ -256,15 +256,15 @@ export default function ConsoleRechargePage() {
                 window.location.href = order.pay_url
               }}
             >
-              继续支付
+              {t('portal.recharge.continuePay')}
             </Button>
           )}
           <Button variant="secondary" size="sm" onClick={resetReturned}>
-            重新下单
+            {t('portal.recharge.orderAgain')}
           </Button>
           <Link href="/console/finance">
             <Button variant="ghost" size="sm">
-              查看财务记录
+              {t('portal.recharge.viewFinance')}
             </Button>
           </Link>
         </div>
@@ -287,14 +287,14 @@ export default function ConsoleRechargePage() {
   if (!info?.enabled) {
     return (
       <div className="space-y-5">
-        <h1 className="text-xl font-bold text-ink">账户充值</h1>
+        <h1 className="text-xl font-bold text-ink">{t('portal.recharge.title')}</h1>
         <ComplianceNotice
           variant="inline"
           className="mt-2"
-          message="充值前请确认：本站服务仅供学习与研究参考，请遵守上游服务条款与当地法律，勿用于违规用途。"
+          message={t('portal.recharge.compliance')}
         />
         <Card>
-          <p className="text-sm text-ink-2">本站当前未开放在线充值。如需充值请联系管理员。</p>
+          <p className="text-sm text-ink-2">{t('portal.recharge.disabled')}</p>
         </Card>
         {/* 未开放在线充值时，兑换码往往是用户唯一的自助加余额途径，必须保留入口 */}
         <RedeemCard />
@@ -305,21 +305,21 @@ export default function ConsoleRechargePage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">账户充值</h1>
+        <h1 className="text-xl font-bold text-ink">{t('portal.recharge.title')}</h1>
         <p className="mt-0.5 text-[13px] text-ink-3">
-          充值后余额即时到账 · 单笔 {info.min_cents / 100} 元起
+          {t('portal.recharge.subtitle', { min: info.min_cents / 100 })}
         </p>
         <ComplianceNotice
           variant="inline"
           className="mt-2"
-          message="充值前请确认：本站服务仅供学习与研究参考，请遵守上游服务条款与当地法律，勿用于违规用途。"
+          message={t('portal.recharge.compliance')}
         />
       </div>
 
       {renderResult()}
 
       <Card>
-        <div className="text-sm font-semibold text-ink-2">选择金额（元）</div>
+        <div className="text-sm font-semibold text-ink-2">{t('portal.recharge.selectAmount')}</div>
         <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
           {PRESETS.map((value) => (
             <button
@@ -335,22 +335,22 @@ export default function ConsoleRechargePage() {
           ))}
         </div>
         <div className="mt-3 flex items-center gap-2 text-sm">
-          <span className="text-ink-3">自定义：</span>
+          <span className="text-ink-3">{t('portal.recharge.custom')}</span>
           <input
             type="number"
             min={info.min_cents / 100}
             value={custom}
             onChange={(e) => setCustom(e.target.value)}
-            placeholder="输入金额"
+            placeholder={t('portal.recharge.customPlaceholder')}
             className="h-9 w-32 rounded-md border border-line-2 bg-card px-3 text-sm outline-none focus:border-brand"
           />
-          <span className="text-xs text-ink-3">元</span>
+          <span className="text-xs text-ink-3">{t('portal.recharge.yuan')}</span>
         </div>
       </Card>
 
       {info.methods.length > 0 && (
         <Card>
-          <div className="text-sm font-semibold text-ink-2">支付方式</div>
+          <div className="text-sm font-semibold text-ink-2">{t('portal.recharge.method')}</div>
           <div className="mt-3 space-y-2">
             {info.methods.map((item) => {
               const ready = item.ready
@@ -386,7 +386,7 @@ export default function ConsoleRechargePage() {
                   }`}
                 >
                   {item.label}
-                  {!ready && <span className="text-xs text-warn">通道未就绪</span>}
+                  {!ready && <span className="text-xs text-warn">{t('portal.recharge.notReady')}</span>}
                 </button>
               )
             })}
@@ -396,10 +396,10 @@ export default function ConsoleRechargePage() {
 
       <div className="flex items-center justify-between rounded-lg border border-line bg-card p-4">
         <div>
-          <div className="text-sm text-ink-3">应付金额</div>
+          <div className="text-sm text-ink-3">{t('portal.recharge.payable')}</div>
           <div className="text-2xl font-bold text-ink">¥{effectiveAmount ? effectiveAmount.toFixed(2) : '0.00'}</div>
           {redirecting && (
-            <div className="mt-1 text-xs text-brand">正在跳转到收银台，请勿重复点击…</div>
+            <div className="mt-1 text-xs text-brand">{t('portal.recharge.redirecting')}</div>
           )}
         </div>
         <Button
@@ -409,7 +409,7 @@ export default function ConsoleRechargePage() {
           disabled={!effectiveAmount || effectiveAmount <= 0 || confirming || redirecting}
           onClick={handleOrder}
         >
-          {redirecting ? '正在跳转…' : '立即支付'}
+          {redirecting ? t('portal.recharge.redirectingShort') : t('portal.recharge.payNow')}
         </Button>
       </div>
 
@@ -427,11 +427,12 @@ function RedeemCard() {
   const { toastError, toastSuccess } = useToast()
   const { refreshUser } = useAuth()
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
 
   async function handleRedeem() {
     const trimmed = code.trim()
     if (!trimmed) {
-      toastError('请输入兑换码')
+      toastError(t('portal.recharge.redeemRequired'))
       return
     }
     setSubmitting(true)
@@ -440,12 +441,12 @@ function RedeemCard() {
       const result = await redeemMyCode(trimmed)
       setGained(result.quota)
       setCode('')
-      toastSuccess('兑换成功，额度已到账')
+      toastSuccess(t('portal.recharge.redeemSuccess'))
       // 额度已入账：立即刷新用户快照，让顶栏与概览页的余额同步更新
       void refreshUser()
     } catch (err) {
       // 失败原因由后端按界面语言返回精确文案（不存在/已使用/已过期/已作废），直接展示
-      toastError(err instanceof Error ? err.message : '兑换失败')
+      toastError(err instanceof Error ? err.message : t('portal.recharge.redeemFailed'))
     } finally {
       setSubmitting(false)
     }
@@ -453,8 +454,8 @@ function RedeemCard() {
 
   return (
     <Card>
-      <div className="text-sm font-semibold text-ink-2">兑换码</div>
-      <p className="mt-1 text-xs text-ink-3">有兑换码？输入后立即领取额度，无需支付，即时到账。</p>
+      <div className="text-sm font-semibold text-ink-2">{t('portal.recharge.redeem')}</div>
+      <p className="mt-1 text-xs text-ink-3">{t('portal.recharge.redeemHint')}</p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <input
           type="text"
@@ -465,7 +466,7 @@ function RedeemCard() {
             if (e.key === 'Enter' && !submitting && code.trim()) void handleRedeem()
           }}
           disabled={submitting}
-          placeholder="输入兑换码"
+          placeholder={t('portal.recharge.redeemPlaceholder')}
           className="h-9 min-w-0 flex-1 rounded-md border border-line-2 bg-card px-3 font-mono text-sm outline-none focus:border-brand"
         />
         <Button
@@ -474,18 +475,18 @@ function RedeemCard() {
           disabled={!code.trim()}
           onClick={handleRedeem}
         >
-          兑换
+          {t('portal.recharge.redeemAction')}
         </Button>
       </div>
       {gained !== null && (
         <div className="mt-3 rounded-md border border-ok/40 bg-ok/5 px-3 py-2 text-[13px] text-ink-2">
-          兑换成功，已到账{' '}
+          {t('portal.recharge.redeemGained')}{' '}
           <span className="font-semibold text-ok">{formatYuanFromQuota(gained, quotaPerYuan)}</span>
-          ，完整流水见{' '}
+          {t('portal.recharge.redeemGainedMid')}{' '}
           <Link href="/console/finance" className="text-brand hover:underline">
-            财务记录
+            {t('portal.recharge.financeLink')}
           </Link>
-          。
+          {t('portal.recharge.redeemGainedEnd')}
         </div>
       )}
     </Card>

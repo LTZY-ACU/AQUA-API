@@ -20,6 +20,8 @@
  */
 import axios from 'axios'
 
+import { translate } from '@/i18n'
+
 import { api, getSessionToken, UPSTREAM_TIMEOUT_MS } from './client'
 import type { Paged } from './types'
 
@@ -242,8 +244,8 @@ async function blobErrorToApiError(error: unknown): Promise<Error> {
       /* 解析不出结构化错误就落到下面的通用文案 */
     }
   }
-  if (!axiosError?.response) return new Error('无法连接服务器，导出失败')
-  return new Error(`导出失败（HTTP ${axiosError.response.status ?? 0}）`)
+  if (!axiosError?.response) return new Error(translate('common.api.exportConnectFailed'))
+  return new Error(translate('common.api.exportFailed', { status: axiosError.response.status ?? 0 }))
 }
 
 /* ── 统计 ─────────────────────────────────────────────── */

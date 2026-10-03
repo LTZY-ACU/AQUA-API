@@ -32,6 +32,10 @@ export default {
   layout: {
     entering: 'Entrée dans le portail…',
   },
+  models: {
+    title: 'Place des modèles',
+    subtitle: 'Modèles et tarifs actuellement disponibles',
+  },
   overview: {
     title: 'Vue d’ensemble',
     subtitle: 'Utilisation et solde actuels de votre compte',

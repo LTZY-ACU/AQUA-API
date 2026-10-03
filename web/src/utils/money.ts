@@ -17,9 +17,7 @@
  * 流转（Flow）：
  *   页面 useSite().quotaPerYuan → formatYuanFromQuota(quota, rate) → "¥1,234.56"
  */
-
-/** 兜底展示：比例缺失/非法时使用，表示"这个数字是额度而非人民币" */
-export const QUOTA_UNIT_LABEL = '额度'
+import { translate } from '@/i18n'
 
 /** 额度 → 人民币（数值）。quotaPerYuan 非法时返回 null，由调用方决定如何展示。 */
 export function quotaToYuan(quota: number | null | undefined, quotaPerYuan: number): number | null {
@@ -52,7 +50,7 @@ export function quotaToYuanInput(quota: number | null | undefined, quotaPerYuan:
  */
 export function formatYuanFromQuota(quota: number | null | undefined, quotaPerYuan: number): string {
   const yuan = quotaToYuan(quota, quotaPerYuan)
-  if (yuan === null) return `${formatNumberSafe(quota)} ${QUOTA_UNIT_LABEL}`
+  if (yuan === null) return `${formatNumberSafe(quota)} ${translate('common.money.quotaUnit')}`
   const abs = Math.abs(yuan)
   const digits = abs > 0 && abs < 0.01 ? 4 : abs >= 100 ? 2 : 4
   return `¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: digits })}`
@@ -69,7 +67,7 @@ export function formatYuan(yuan: number | null | undefined): string {
 
 /** 单价展示：额度/次 → ¥/次（按次计费模型在模型广场与计价页使用） */
 export function formatYuanPerCall(perCallQuota: number | null | undefined, quotaPerYuan: number): string {
-  return `${formatYuanFromQuota(perCallQuota, quotaPerYuan)}/次`
+  return `${formatYuanFromQuota(perCallQuota, quotaPerYuan)}${translate('common.money.perCall')}`
 }
 
 /** 单价展示：额度/百万 token → ¥/百万 token（按量计费模型使用） */
@@ -85,9 +83,11 @@ export function formatYuanPerMillion(pricePerMillionQuota: number | null | undef
  */
 export function formatDiscountLabel(ratio: number | null | undefined): string {
   const r = Number(ratio ?? 0)
-  if (!Number.isFinite(r) || r <= 0 || r >= 100) return '原价'
+  if (!Number.isFinite(r) || r <= 0 || r >= 100) return translate('common.money.originalPrice')
   const zhe = r / 10
-  return `${Number.isInteger(zhe) ? zhe : zhe.toFixed(1)}折`
+  const zheText = Number.isInteger(zhe) ? zhe : zhe.toFixed(1)
+  // 各语言模板占位符不同：中文用 {zhe}（如「6折」），其余语言用 {ratio}（如「60% of price」），故两者都传
+  return translate('common.money.discount', { zhe: zheText, ratio: r })
 }
 
 /** 数字千分位（内部用，避免与 i18n 循环依赖） */

@@ -23,6 +23,7 @@ import { Badge, Card } from '@/components/ui/Display'
 import { DataTable, Pagination, type Column } from '@/components/ui/Table'
 import { Select } from '@/components/ui/Form'
 import { ConfirmDialog } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { formatDateTime } from '@/utils/format'
 
@@ -55,6 +56,7 @@ export default function AdminTasksPage() {
   const [loading, setLoading] = useState(true)
   const [cancelTarget, setCancelTarget] = useState<Task | null>(null)
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   const load = useCallback(
     async (silent = false) => {
@@ -104,22 +106,22 @@ export default function AdminTasksPage() {
     if (!cancelTarget) return
     try {
       await cancelTask(cancelTarget.task_ref)
-      toast('任务已取消，额度已退还')
+      toast(t('admin.tasks.toast.canceled'))
       setCancelTarget(null)
       void load(true)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '取消失败')
+      toastError(err instanceof Error ? err.message : t('admin.tasks.toast.cancelFailed'))
     }
   }
 
   const columns: Column<Task>[] = [
-    { title: '任务', render: (row) => <span className="max-w-44 truncate text-[13px] text-ink-2" title={row.task_ref}>{row.task_ref}</span> },
-    { title: '用户', align: 'right', render: (row) => <span className="text-ink-2">#{row.user_id}</span> },
-    { title: '类别', render: (row) => <span className="text-ink-2">{row.kind_text}</span> },
-    { title: '模型', render: (row) => <span className="text-ink-2">{row.model || '—'}</span> },
-    { title: '状态', render: (row) => <Badge tone={statusTone(row.status)}>{row.status_text}</Badge> },
+    { title: t('admin.tasks.col.task'), render: (row) => <span className="max-w-44 truncate text-[13px] text-ink-2" title={row.task_ref}>{row.task_ref}</span> },
+    { title: t('admin.tasks.col.user'), align: 'right', render: (row) => <span className="text-ink-2">#{row.user_id}</span> },
+    { title: t('admin.tasks.col.kind'), render: (row) => <span className="text-ink-2">{row.kind_text}</span> },
+    { title: t('admin.tasks.col.model'), render: (row) => <span className="text-ink-2">{row.model || '—'}</span> },
+    { title: t('admin.tasks.col.status'), render: (row) => <Badge tone={statusTone(row.status)}>{row.status_text}</Badge> },
     {
-      title: '进度',
+      title: t('admin.tasks.col.progress'),
       render: (row) => (
         <div className="flex items-center gap-2">
           <div className="h-1.5 w-20 overflow-hidden rounded-full bg-ink/10">
@@ -130,24 +132,24 @@ export default function AdminTasksPage() {
       ),
     },
     {
-      title: '结果',
+      title: t('admin.tasks.col.result'),
       render: (row) =>
         row.result_url ? (
-          <a href={row.result_url} target="_blank" rel="noreferrer" className="text-brand hover:underline">查看结果</a>
+          <a href={row.result_url} target="_blank" rel="noreferrer" className="text-brand hover:underline">{t('admin.tasks.viewResult')}</a>
         ) : (
           <span className="text-ink-3">—</span>
         ),
     },
-    { title: '创建时间', render: (row) => <span className="text-ink-2">{formatDateTime(row.created_at)}</span> },
+    { title: t('admin.tasks.col.createdAt'), render: (row) => <span className="text-ink-2">{formatDateTime(row.created_at)}</span> },
     {
-      title: '操作',
+      title: t('admin.tasks.col.actions'),
       align: 'right',
       render: (row) =>
         isFinal(row.status) ? (
           <span className="text-ink-3/50">—</span>
         ) : (
           <button type="button" onClick={() => setCancelTarget(row)} className="text-[13px] text-ink-3 hover:text-err">
-            取消
+            {t('admin.tasks.action.cancel')}
           </button>
         ),
     },
@@ -156,8 +158,8 @@ export default function AdminTasksPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">异步任务</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">全站图像 / 视频 / 音乐生成任务（每 5 秒自动刷新）</p>
+        <h1 className="text-xl font-bold text-ink">{t('admin.tasks.title')}</h1>
+        <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.tasks.subtitle')}</p>
       </div>
 
       {/* 筛选条：类别 + 状态 */}
@@ -166,25 +168,25 @@ export default function AdminTasksPage() {
           value={kind}
           onChange={(e) => handleKindChange(e.target.value)}
           className="w-36"
-          aria-label="按类别筛选"
+          aria-label={t('admin.tasks.filter.kindAria')}
         >
-          <option value="">全部类别</option>
-          <option value="image">图像</option>
-          <option value="video">视频</option>
-          <option value="music">音乐</option>
+          <option value="">{t('admin.tasks.filter.kindAll')}</option>
+          <option value="image">{t('admin.tasks.filter.kindImage')}</option>
+          <option value="video">{t('admin.tasks.filter.kindVideo')}</option>
+          <option value="music">{t('admin.tasks.filter.kindMusic')}</option>
         </Select>
         <Select
           value={status}
           onChange={(e) => handleStatusChange(e.target.value)}
           className="w-36"
-          aria-label="按状态筛选"
+          aria-label={t('admin.tasks.filter.statusAria')}
         >
-          <option value={0}>全部状态</option>
-          <option value={1}>排队</option>
-          <option value={2}>执行中</option>
-          <option value={3}>成功</option>
-          <option value={4}>失败</option>
-          <option value={5}>已取消</option>
+          <option value={0}>{t('admin.tasks.filter.statusAll')}</option>
+          <option value={1}>{t('admin.tasks.filter.statusQueued')}</option>
+          <option value={2}>{t('admin.tasks.filter.statusRunning')}</option>
+          <option value={3}>{t('admin.tasks.filter.statusSucceeded')}</option>
+          <option value={4}>{t('admin.tasks.filter.statusFailed')}</option>
+          <option value={5}>{t('admin.tasks.filter.statusCanceled')}</option>
         </Select>
       </div>
 
@@ -194,8 +196,8 @@ export default function AdminTasksPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.task_ref}
-          emptyTitle="没有符合条件的任务"
-          emptyDescription="调整筛选条件，或等待新任务产生"
+          emptyTitle={t('admin.tasks.emptyTitle')}
+          emptyDescription={t('admin.tasks.emptyDescription')}
         />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
@@ -204,10 +206,10 @@ export default function AdminTasksPage() {
 
       <ConfirmDialog
         open={Boolean(cancelTarget)}
-        title="取消任务"
-        message={`确认取消任务「${cancelTarget?.task_ref}」？将退还对应额度。`}
+        title={t('admin.tasks.confirm.title')}
+        message={t('admin.tasks.confirm.message', { ref: cancelTarget?.task_ref ?? '' })}
         danger
-        confirmText="取消任务"
+        confirmText={t('admin.tasks.confirm.confirmText')}
         onConfirm={handleCancel}
         onCancel={() => setCancelTarget(null)}
       />

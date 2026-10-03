@@ -23,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { speedTestChannel } from '@/api/admin'
 import type { SpeedTestItem, SpeedTestRunResult } from '@/api/types'
+import { translate } from '@/i18n'
 
 /** 单个模型的运行状态：待测 → 测速中 → 已完成（成功/失败） */
 export interface SpeedTestEntry {
@@ -155,7 +156,7 @@ export function useSpeedTestRunner(channelId: number | null, models: string[]): 
             }
           } catch {
             // 网络层失败：把当前条目标记回 pending（可重试），停止循环。
-            setBatchMessage('请求失败（网络错误或登录已过期），测速已停止')
+            setBatchMessage(translate('components.speedTest.reqFailed'))
             applyEntries(
               entriesRef.current.map((e) =>
                 e.status === 'running' ? { ...e, status: 'pending' as const } : e,

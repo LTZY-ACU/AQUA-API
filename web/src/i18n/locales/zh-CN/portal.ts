@@ -32,6 +32,10 @@ export default {
   layout: {
     entering: '正在进入门户…',
   },
+  models: {
+    title: '模型广场',
+    subtitle: '当前可用的模型与价格',
+  },
   overview: {
     title: '概览',
     subtitle: '当前账户用量与余额',

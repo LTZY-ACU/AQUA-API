@@ -590,4 +590,26 @@ export default {
   authContext: {
     notLoggedIn: '未登录',
   },
+  channelStatus: {
+    enabled: '启用',
+    manualDisabled: '手动停用',
+    autoDisabled: '自动停用',
+    unknown: '未知状态',
+    unknownCode: '未知状态({code})',
+  },
+  channelType: {
+    openaiCompatible: 'OpenAI 兼容',
+    generic: '类型 {type}',
+    unknown: '未知类型',
+  },
+  userRole: {
+    admin: '管理员',
+    user: '普通用户',
+    unknown: '未知角色',
+    code: '角色 {role}',
+  },
+  modelsSummary: {
+    all: '全部模型',
+    count: '{count} 个',
+  },
 }

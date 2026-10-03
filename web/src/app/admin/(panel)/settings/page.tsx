@@ -23,18 +23,19 @@ import type { PaymentChannel, PaymentSettings, SeoSettings, SiteSettings, SMTPSe
 import { Badge, Card, SkeletonRows, Tabs } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Switch, Textarea } from '@/components/ui/Form'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { useSite } from '@/lib/site/site-context'
 import { quotaToYuanInput, yuanToQuota } from '@/utils/money'
 
 type TabKey = 'site' | 'seo' | 'payment' | 'speedtest' | 'compliance'
 
-const TABS: { value: TabKey; label: string }[] = [
-  { value: 'site', label: '站点' },
-  { value: 'seo', label: 'SEO' },
-  { value: 'payment', label: '支付' },
-  { value: 'speedtest', label: '测速' },
-  { value: 'compliance', label: '合规' },
+const TABS: { value: TabKey; labelKey: string }[] = [
+  { value: 'site', labelKey: 'admin.settings.tab.site' },
+  { value: 'seo', labelKey: 'admin.settings.tab.seo' },
+  { value: 'payment', labelKey: 'admin.settings.tab.payment' },
+  { value: 'speedtest', labelKey: 'admin.settings.tab.speedtest' },
+  { value: 'compliance', labelKey: 'admin.settings.tab.compliance' },
 ]
 
 /** 逗号/顿号/空白分隔的文本 → 数组（keywords / methods / sitemap_paths 共用） */
@@ -64,6 +65,7 @@ function stringifyParams(params: Record<string, string> | undefined): string {
 export default function AdminSettingsPage() {
   const { toast, toastError } = useToast()
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -156,9 +158,9 @@ export default function AdminSettingsPage() {
 
         setSpeedtest(s.speedtest ?? null)
       })
-      .catch((err) => toastError(err instanceof Error ? err.message : '设置加载失败'))
+      .catch((err) => toastError(err instanceof Error ? err.message : t('admin.settings.toast.loadFailed')))
       .finally(() => setLoading(false))
-  }, [toastError])
+  }, [toastError, t])
 
   /* ── SMTP 状态与表单 ── */
   const loadSmtp = useCallback(async () => {
@@ -172,9 +174,9 @@ export default function AdminSettingsPage() {
       setSmtpFromName(data.from_name)
       setSmtpEnabled(data.enabled)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : 'SMTP 状态加载失败')
+      toastError(err instanceof Error ? err.message : t('admin.settings.smtp.statusFailed'))
     }
-  }, [toastError])
+  }, [toastError, t])
 
   useEffect(() => {
     void loadSmtp()
@@ -246,9 +248,9 @@ export default function AdminSettingsPage() {
           : undefined,
       }
       await updateSettings(payload)
-      toast('设置已保存')
+      toast(t('admin.settings.toast.saved'))
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : t('admin.settings.toast.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -267,11 +269,11 @@ export default function AdminSettingsPage() {
         enabled: smtpEnabled,
         password: smtpPassword,
       })
-      toast('SMTP 配置已保存')
+      toast(t('admin.settings.smtp.saved'))
       setSmtpPassword('')
       void loadSmtp()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : 'SMTP 保存失败')
+      toastError(err instanceof Error ? err.message : t('admin.settings.smtp.saveFailed'))
     } finally {
       setSmtpSaving(false)
     }
@@ -282,9 +284,9 @@ export default function AdminSettingsPage() {
     setSmtpTesting(true)
     try {
       const result = await testSMTP()
-      toast(`测试邮件已发送至 ${result.to}`)
+      toast(t('admin.settings.smtp.testSent', { to: result.to }))
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '测试邮件发送失败')
+      toastError(err instanceof Error ? err.message : t('admin.settings.smtp.testFailed'))
     } finally {
       setSmtpTesting(false)
     }
@@ -293,9 +295,9 @@ export default function AdminSettingsPage() {
   /** SMTP 配置来源 → 展示文案与徽标色 */
   function sourceBadge(): { text: string; tone: 'ok' | 'off' | 'warn' } {
     const source = smtp?.source
-    if (source === 'database') return { text: '后台配置', tone: 'ok' }
-    if (source === 'env') return { text: '环境变量', tone: 'warn' }
-    return { text: '未配置', tone: 'off' }
+    if (source === 'database') return { text: t('admin.settings.smtp.sourceDatabase'), tone: 'ok' }
+    if (source === 'env') return { text: t('admin.settings.smtp.sourceEnv'), tone: 'warn' }
+    return { text: t('admin.settings.smtp.sourceNone'), tone: 'off' }
   }
 
   const source = sourceBadge()
@@ -304,8 +306,8 @@ export default function AdminSettingsPage() {
     return (
       <div className="space-y-5">
         <div>
-          <h1 className="text-xl font-bold text-ink">系统设置</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">站点 · SEO · 支付 · 测速 · 合规 · 邮件通道</p>
+          <h1 className="text-xl font-bold text-ink">{t('admin.settings.title')}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.settings.subtitle')}</p>
         </div>
         <Card>
           <SkeletonRows rows={8} />
@@ -318,36 +320,36 @@ export default function AdminSettingsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">系统设置</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">站点 · SEO · 支付 · 测速 · 合规 · 邮件通道</p>
+          <h1 className="text-xl font-bold text-ink">{t('admin.settings.title')}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.settings.subtitle')}</p>
         </div>
-        <Button variant="primary" loading={saving} onClick={handleSave}>保存设置</Button>
+        <Button variant="primary" loading={saving} onClick={handleSave}>{t('admin.settings.save')}</Button>
       </div>
 
-      <Tabs items={TABS} value={tab} onChange={setTab} />
+      <Tabs items={TABS.map((item) => ({ value: item.value, label: t(item.labelKey) }))} value={tab} onChange={setTab} />
 
       {/* ── 站点 ── */}
       {tab === 'site' && (
         <Card className="space-y-4">
-          <Field label="站点名称">
-            <Input value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="站点名称" />
+          <Field label={t('admin.settings.site.siteName')}>
+            <Input value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder={t('admin.settings.site.siteNamePlaceholder')} />
           </Field>
-          <Field label="站点描述">
-            <Input value={siteDescription} onChange={(e) => setSiteDescription(e.target.value)} placeholder="一句话介绍，展示在登录页等处" />
+          <Field label={t('admin.settings.site.siteDescription')}>
+            <Input value={siteDescription} onChange={(e) => setSiteDescription(e.target.value)} placeholder={t('admin.settings.site.siteDescriptionPlaceholder')} />
           </Field>
           <label className="flex items-center justify-between text-[13px] text-ink-2">
-            <span>开放自助注册</span>
-            <Switch checked={registrationEnabled} onChange={setRegistrationEnabled} label="开放自助注册" />
+            <span>{t('admin.settings.site.registration')}</span>
+            <Switch checked={registrationEnabled} onChange={setRegistrationEnabled} label={t('admin.settings.site.registration')} />
           </label>
           <label className="flex items-center justify-between text-[13px] text-ink-2">
-            <span>注册必须邮箱验证码<span className="ml-1 text-xs text-ink-3">（需邮件通道就绪）</span></span>
-            <Switch checked={requireEmailCode} onChange={setRequireEmailCode} label="注册必须邮箱验证码" />
+            <span>{t('admin.settings.site.requireEmailCode')}<span className="ml-1 text-xs text-ink-3">{t('admin.settings.site.requireEmailCodeHint')}</span></span>
+            <Switch checked={requireEmailCode} onChange={setRequireEmailCode} label={t('admin.settings.site.requireEmailCode')} />
           </label>
-          <Field label="新用户默认余额（¥）" help="-1 表示不限额度；否则填人民币金额，如 5 表示 5 元">
-            <Input value={defaultUserQuota} onChange={(e) => setDefaultUserQuota(e.target.value)} type="number" placeholder="-1" />
+          <Field label={t('admin.settings.site.defaultQuota')} help={t('admin.settings.site.defaultQuotaHelp')}>
+            <Input value={defaultUserQuota} onChange={(e) => setDefaultUserQuota(e.target.value)} type="number" placeholder={t('admin.settings.site.defaultQuotaPlaceholder')} />
           </Field>
-          <Field label="默认分组">
-            <Input value={defaultGroup} onChange={(e) => setDefaultGroup(e.target.value)} placeholder="default" />
+          <Field label={t('admin.settings.site.defaultGroup')}>
+            <Input value={defaultGroup} onChange={(e) => setDefaultGroup(e.target.value)} placeholder={t('admin.settings.site.defaultGroupPlaceholder')} />
           </Field>
         </Card>
       )}
@@ -355,50 +357,50 @@ export default function AdminSettingsPage() {
       {/* ── SEO ── */}
       {tab === 'seo' && seo && (
         <Card className="space-y-4">
-          <Field label="站点公开地址（site_url）" help="如 https://api.example.com；留空时后端按访问请求推导">
-            <Input value={seo.site_url} onChange={(e) => setSeo({ ...seo, site_url: e.target.value })} placeholder="https://api.example.com" />
+          <Field label={t('admin.settings.seo.siteUrl')} help={t('admin.settings.seo.siteUrlHelp')}>
+            <Input value={seo.site_url} onChange={(e) => setSeo({ ...seo, site_url: e.target.value })} placeholder={t('admin.settings.seo.siteUrlPlaceholder')} />
           </Field>
-          <Field label="SEO 关键词" help="使用逗号分隔">
-            <Input value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)} placeholder="AI, API, 大模型" />
+          <Field label={t('admin.settings.seo.keywords')} help={t('admin.settings.seo.keywordsHelp')}>
+            <Input value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)} placeholder={t('admin.settings.seo.keywordsPlaceholder')} />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="必应站长验证码（msvalidate.01）">
+            <Field label={t('admin.settings.seo.bing')}>
               <Input value={seo.bing_verification} onChange={(e) => setSeo({ ...seo, bing_verification: e.target.value })} />
             </Field>
-            <Field label="Google Search Console 验证码">
+            <Field label={t('admin.settings.seo.google')}>
               <Input value={seo.google_verification} onChange={(e) => setSeo({ ...seo, google_verification: e.target.value })} />
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="百度站长验证码">
+            <Field label={t('admin.settings.seo.baidu')}>
               <Input value={seo.baidu_verification} onChange={(e) => setSeo({ ...seo, baidu_verification: e.target.value })} />
             </Field>
-            <Field label="地域代码（geo_region）" help="如 CN-44">
-              <Input value={seo.geo_region} onChange={(e) => setSeo({ ...seo, geo_region: e.target.value })} placeholder="CN-44" />
+            <Field label={t('admin.settings.seo.geoRegion')} help={t('admin.settings.seo.geoRegionHelp')}>
+              <Input value={seo.geo_region} onChange={(e) => setSeo({ ...seo, geo_region: e.target.value })} placeholder={t('admin.settings.seo.geoRegionPlaceholder')} />
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="地名（geo_placename）" help="如 Shenzhen">
-              <Input value={seo.geo_placename} onChange={(e) => setSeo({ ...seo, geo_placename: e.target.value })} placeholder="Shenzhen" />
+            <Field label={t('admin.settings.seo.geoPlacename')} help={t('admin.settings.seo.geoPlacenameHelp')}>
+              <Input value={seo.geo_placename} onChange={(e) => setSeo({ ...seo, geo_placename: e.target.value })} placeholder={t('admin.settings.seo.geoPlacenamePlaceholder')} />
             </Field>
-            <Field label="经纬度（geo_position）" help="格式「纬度;经度」，如 22.5431;114.0579">
-              <Input value={seo.geo_position} onChange={(e) => setSeo({ ...seo, geo_position: e.target.value })} placeholder="22.5431;114.0579" />
+            <Field label={t('admin.settings.seo.geoPosition')} help={t('admin.settings.seo.geoPositionHelp')}>
+              <Input value={seo.geo_position} onChange={(e) => setSeo({ ...seo, geo_position: e.target.value })} placeholder={t('admin.settings.seo.geoPositionPlaceholder')} />
             </Field>
           </div>
           <label className="flex items-center justify-between text-[13px] text-ink-2">
-            <span>输出 sitemap.xml 与 robots.txt</span>
-            <Switch checked={seo.sitemap_enabled} onChange={(v) => setSeo({ ...seo, sitemap_enabled: v })} label="输出 sitemap.xml 与 robots.txt" />
+            <span>{t('admin.settings.seo.sitemap')}</span>
+            <Switch checked={seo.sitemap_enabled} onChange={(v) => setSeo({ ...seo, sitemap_enabled: v })} label={t('admin.settings.seo.sitemap')} />
           </label>
-          <Field label="额外公开路径" help="逗号分隔，以 / 开头；如 /models,/docs">
-            <Input value={sitemapPathsText} onChange={(e) => setSitemapPathsText(e.target.value)} placeholder="/models" />
+          <Field label={t('admin.settings.seo.extraPaths')} help={t('admin.settings.seo.extraPathsHelp')}>
+            <Input value={sitemapPathsText} onChange={(e) => setSitemapPathsText(e.target.value)} placeholder={t('admin.settings.seo.extraPathsPlaceholder')} />
           </Field>
           <div className="grid gap-4 rounded-md border border-line bg-surface p-3 sm:grid-cols-2">
             <div className="text-[13px]">
-              <div className="text-ink-3">sitemap 地址</div>
+              <div className="text-ink-3">{t('admin.settings.seo.sitemapUrl')}</div>
               <div className="mt-0.5 truncate text-ink-2" title={seo.sitemap_url}>{seo.sitemap_url || '—'}</div>
             </div>
             <div className="text-[13px]">
-              <div className="text-ink-3">robots 地址</div>
+              <div className="text-ink-3">{t('admin.settings.seo.robotsUrl')}</div>
               <div className="mt-0.5 truncate text-ink-2" title={seo.robots_url}>{seo.robots_url || '—'}</div>
             </div>
           </div>
@@ -410,52 +412,52 @@ export default function AdminSettingsPage() {
         <>
           <Card className="space-y-4">
             <label className="flex items-center justify-between text-[13px] text-ink-2">
-              <span>启用在线充值</span>
-              <Switch checked={paymentEnabled} onChange={setPaymentEnabled} label="启用在线充值" />
+              <span>{t('admin.settings.payment.enable')}</span>
+              <Switch checked={paymentEnabled} onChange={setPaymentEnabled} label={t('admin.settings.payment.enable')} />
             </label>
-            <Field label="启用通道" help="逗号分隔的通道标识，如 epay,stripe；通道密钥需已在环境变量中配置">
-              <Input value={methodsText} onChange={(e) => setMethodsText(e.target.value)} placeholder="epay, stripe" />
+            <Field label={t('admin.settings.payment.methods')} help={t('admin.settings.payment.methodsHelp')}>
+              <Input value={methodsText} onChange={(e) => setMethodsText(e.target.value)} placeholder={t('admin.settings.payment.methodsPlaceholder')} />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="法币币种（currency）">
-                <Input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="CNY" />
+              <Field label={t('admin.settings.payment.currency')}>
+                <Input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder={t('admin.settings.payment.currencyPlaceholder')} />
               </Field>
-              <Field label="兑换比例（exchange_rate）" help="1 法币单位可兑换的额度数">
-                <Input value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} type="number" placeholder="100" />
-              </Field>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="最小充值金额（分）" help="1 分 = 0.01 元；填 0 表示不限下限">
-                <Input value={minCents} onChange={(e) => setMinCents(e.target.value)} type="number" placeholder="1" />
-              </Field>
-              <Field label="最大充值金额（分，0 不限）">
-                <Input value={maxCents} onChange={(e) => setMaxCents(e.target.value)} type="number" placeholder="0" />
+              <Field label={t('admin.settings.payment.exchangeRate')} help={t('admin.settings.payment.exchangeRateHelp')}>
+                <Input value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} type="number" placeholder={t('admin.settings.payment.exchangeRatePlaceholder')} />
               </Field>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="订单有效期（分钟）">
-                <Input value={orderTtlMinutes} onChange={(e) => setOrderTtlMinutes(e.target.value)} type="number" placeholder="30" />
+              <Field label={t('admin.settings.payment.minCents')} help={t('admin.settings.payment.minCentsHelp')}>
+                <Input value={minCents} onChange={(e) => setMinCents(e.target.value)} type="number" placeholder={t('admin.settings.payment.minCentsPlaceholder')} />
               </Field>
-              <Field label="回调地址前缀（notify_base）">
-                <Input value={notifyBase} onChange={(e) => setNotifyBase(e.target.value)} placeholder="https://api.example.com" />
+              <Field label={t('admin.settings.payment.maxCents')}>
+                <Input value={maxCents} onChange={(e) => setMaxCents(e.target.value)} type="number" placeholder={t('admin.settings.payment.maxCentsPlaceholder')} />
               </Field>
             </div>
-            <Field label="通道参数（params）" help="每行一个 key=value，如 epay.gateway=https://pay.example.com">
-              <Textarea value={paramsText} onChange={(e) => setParamsText(e.target.value)} rows={4} placeholder={'epay.gateway=https://pay.example.com'} />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t('admin.settings.payment.orderTtl')}>
+                <Input value={orderTtlMinutes} onChange={(e) => setOrderTtlMinutes(e.target.value)} type="number" placeholder={t('admin.settings.payment.orderTtlPlaceholder')} />
+              </Field>
+              <Field label={t('admin.settings.payment.notifyBase')}>
+                <Input value={notifyBase} onChange={(e) => setNotifyBase(e.target.value)} placeholder={t('admin.settings.payment.notifyBasePlaceholder')} />
+              </Field>
+            </div>
+            <Field label={t('admin.settings.payment.params')} help={t('admin.settings.payment.paramsHelp')}>
+              <Textarea value={paramsText} onChange={(e) => setParamsText(e.target.value)} rows={4} placeholder={t('admin.settings.payment.paramsPlaceholder')} />
             </Field>
           </Card>
           <Card>
-            <h2 className="mb-3 text-sm font-semibold text-ink">支付通道状态（只读）</h2>
+            <h2 className="mb-3 text-sm font-semibold text-ink">{t('admin.settings.payment.channelsTitle')}</h2>
             <div className="space-y-2">
               {paymentChannels.map((ch) => (
                 <div key={ch.key} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-surface px-3 py-2 text-[13px]">
                   <span className="font-medium text-ink-2">{ch.label}</span>
                   <span className="flex items-center gap-2">
-                    {ch.enabled ? <Badge tone="ok">已启用</Badge> : <Badge tone="off">未启用</Badge>}
+                    {ch.enabled ? <Badge tone="ok">{t('admin.settings.payment.channelEnabled')}</Badge> : <Badge tone="off">{t('admin.settings.payment.channelDisabled')}</Badge>}
                     {ch.missing_env.length > 0 ? (
-                      <Badge tone="warn">缺密钥：{ch.missing_env.join(', ')}</Badge>
+                      <Badge tone="warn">{t('admin.settings.payment.missingEnv', { env: ch.missing_env.join(', ') })}</Badge>
                     ) : (
-                      <Badge tone="ok">密钥就绪</Badge>
+                      <Badge tone="ok">{t('admin.settings.payment.keysReady')}</Badge>
                     )}
                   </span>
                 </div>
@@ -470,48 +472,45 @@ export default function AdminSettingsPage() {
         <Card className="space-y-4">
           <label className="flex items-center justify-between text-[13px] text-ink-2">
             <span>
-              启用模型测速
-              <span className="ml-1 text-xs text-ink-3">（关闭后管理端测速入口拒绝、广场不再下发延迟）</span>
+              {t('admin.settings.speedtest.enable')}
+              <span className="ml-1 text-xs text-ink-3">{t('admin.settings.speedtest.enableHint')}</span>
             </span>
-            <Switch checked={speedtest.enabled} onChange={(v) => setSpeedtest({ ...speedtest, enabled: v })} label="启用模型测速" />
+            <Switch checked={speedtest.enabled} onChange={(v) => setSpeedtest({ ...speedtest, enabled: v })} label={t('admin.settings.speedtest.enable')} />
           </label>
           <label className="flex items-center justify-between text-[13px] text-ink-2">
             <span>
-              在模型广场展示延迟
-              <span className="ml-1 text-xs text-ink-3">（关闭后仅管理员可见，用户侧不展示）</span>
+              {t('admin.settings.speedtest.public')}
+              <span className="ml-1 text-xs text-ink-3">{t('admin.settings.speedtest.publicHint')}</span>
             </span>
-            <Switch checked={speedtest.public} onChange={(v) => setSpeedtest({ ...speedtest, public: v })} label="在模型广场展示延迟" />
+            <Switch checked={speedtest.public} onChange={(v) => setSpeedtest({ ...speedtest, public: v })} label={t('admin.settings.speedtest.public')} />
           </label>
           <label className="flex items-center justify-between text-[13px] text-ink-2">
             <span>
-              自动屏蔽无权限模型
-              <span className="ml-1 text-xs text-ink-3">（测速时上游明确回 403/404 的模型自动从渠道移除）</span>
+              {t('admin.settings.speedtest.autoBlock')}
+              <span className="ml-1 text-xs text-ink-3">{t('admin.settings.speedtest.autoBlockHint')}</span>
             </span>
-            <Switch checked={speedtest.auto_block} onChange={(v) => setSpeedtest({ ...speedtest, auto_block: v })} label="自动屏蔽无权限模型" />
+            <Switch checked={speedtest.auto_block} onChange={(v) => setSpeedtest({ ...speedtest, auto_block: v })} label={t('admin.settings.speedtest.autoBlock')} />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="单模型超时（秒）" help="范围 5~120；部分平台排队久可调大">
+            <Field label={t('admin.settings.speedtest.timeout')} help={t('admin.settings.speedtest.timeoutHelp')}>
               <Input
                 value={speedtest.timeout_seconds}
                 onChange={(e) => setSpeedtest({ ...speedtest, timeout_seconds: Number(e.target.value) || 0 })}
                 type="number"
-                placeholder="20"
+                placeholder={t('admin.settings.speedtest.timeoutPlaceholder')}
               />
             </Field>
-            <Field label="单次测速模型数上限" help="范围 1~500；超过将拒绝并提示分批">
+            <Field label={t('admin.settings.speedtest.maxModels')} help={t('admin.settings.speedtest.maxModelsHelp')}>
               <Input
                 value={speedtest.max_models}
                 onChange={(e) => setSpeedtest({ ...speedtest, max_models: Number(e.target.value) || 0 })}
                 type="number"
-                placeholder="50"
+                placeholder={t('admin.settings.speedtest.maxModelsPlaceholder')}
               />
             </Field>
           </div>
           <div className="rounded-md border border-line bg-surface p-3 text-xs text-ink-3">
-            测速说明：逐模型发送最小请求（提示词 ping + max_tokens=1，约消耗 2~3 token），
-            测量首字延迟（TTFB）并在拿到首字后立即断开。串行探测，数字不受并发干扰。
-            开启自动屏蔽时，上游明确拒绝（403/404）的模型会自动从渠道清单移除；
-            超时与 5xx 属暂时性故障，不会被移除。
+            {t('admin.settings.speedtest.explain')}
           </div>
         </Card>
       )}
@@ -519,17 +518,17 @@ export default function AdminSettingsPage() {
       {/* ── 合规 ── */}
       {tab === 'compliance' && (
         <Card className="space-y-4">
-          <Field label="经营主体名称" help="出现在页脚与协议页；为空时回退显示站点名">
-            <Input value={operatorName} onChange={(e) => setOperatorName(e.target.value)} placeholder="如 XX 科技有限公司" />
+          <Field label={t('admin.settings.compliance.operatorName')} help={t('admin.settings.compliance.operatorNameHelp')}>
+            <Input value={operatorName} onChange={(e) => setOperatorName(e.target.value)} placeholder={t('admin.settings.compliance.operatorNamePlaceholder')} />
           </Field>
-          <Field label="ICP 备案号" help="如 京ICP备00000000号-1；为空时不展示">
-            <Input value={icpLicense} onChange={(e) => setIcpLicense(e.target.value)} placeholder="京ICP备00000000号-1" />
+          <Field label={t('admin.settings.compliance.icp')} help={t('admin.settings.compliance.icpHelp')}>
+            <Input value={icpLicense} onChange={(e) => setIcpLicense(e.target.value)} placeholder={t('admin.settings.compliance.icpPlaceholder')} />
           </Field>
-          <Field label="公安联网备案号" help="为空时不展示">
-            <Input value={policeLicense} onChange={(e) => setPoliceLicense(e.target.value)} placeholder="京公网安备 00000000000000号" />
+          <Field label={t('admin.settings.compliance.police')} help={t('admin.settings.compliance.policeHelp')}>
+            <Input value={policeLicense} onChange={(e) => setPoliceLicense(e.target.value)} placeholder={t('admin.settings.compliance.policePlaceholder')} />
           </Field>
-          <Field label="客服 / 投诉邮箱" help="为空时不展示">
-            <Input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="support@example.com" type="email" />
+          <Field label={t('admin.settings.compliance.contactEmail')} help={t('admin.settings.compliance.contactEmailHelp')}>
+            <Input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder={t('admin.settings.compliance.contactEmailPlaceholder')} type="email" />
           </Field>
         </Card>
       )}
@@ -537,61 +536,61 @@ export default function AdminSettingsPage() {
       {/* ── SMTP 独立卡片 ── */}
       <Card className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-ink">邮件通道（SMTP）</h2>
+          <h2 className="text-sm font-semibold text-ink">{t('admin.settings.smtp.title')}</h2>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={source.tone}>{source.text}</Badge>
-            {smtp && (smtp.ready ? <Badge tone="ok">就绪</Badge> : <Badge tone="err">未就绪</Badge>)}
+            {smtp && (smtp.ready ? <Badge tone="ok">{t('admin.settings.smtp.ready')}</Badge> : <Badge tone="err">{t('admin.settings.smtp.notReady')}</Badge>)}
           </div>
         </div>
 
         {smtp && smtp.effective_host && (
           <div className="grid gap-4 rounded-md border border-line bg-surface p-3 sm:grid-cols-3">
             <div className="text-[13px]">
-              <div className="text-ink-3">生效主机</div>
+              <div className="text-ink-3">{t('admin.settings.smtp.effectiveHost')}</div>
               <div className="mt-0.5 truncate text-ink-2" title={smtp.effective_host}>{smtp.effective_host}</div>
             </div>
             <div className="text-[13px]">
-              <div className="text-ink-3">生效端口</div>
+              <div className="text-ink-3">{t('admin.settings.smtp.effectivePort')}</div>
               <div className="mt-0.5 text-ink-2">{smtp.effective_port || '—'}</div>
             </div>
             <div className="text-[13px]">
-              <div className="text-ink-3">生效发件人</div>
+              <div className="text-ink-3">{t('admin.settings.smtp.effectiveFrom')}</div>
               <div className="mt-0.5 truncate text-ink-2" title={smtp.effective_from}>{smtp.effective_from || '—'}</div>
             </div>
           </div>
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="SMTP 主机" required>
-            <Input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.example.com" />
+          <Field label={t('admin.settings.smtp.host')} required>
+            <Input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder={t('admin.settings.smtp.hostPlaceholder')} />
           </Field>
-          <Field label="端口" required>
-            <Input value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} type="number" placeholder="465" />
-          </Field>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="用户名">
-            <Input value={smtpUsername} onChange={(e) => setSmtpUsername(e.target.value)} placeholder="发件账号（可为空）" />
-          </Field>
-          <Field label="口令" help={smtp?.password_set ? '已配置口令；留空表示沿用' : '尚未配置口令'}>
-            <Input value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)} type="password" placeholder="留空 = 沿用" />
+          <Field label={t('admin.settings.smtp.port')} required>
+            <Input value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} type="number" placeholder={t('admin.settings.smtp.portPlaceholder')} />
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="发件地址（from）">
-            <Input value={smtpFrom} onChange={(e) => setSmtpFrom(e.target.value)} placeholder="no-reply@example.com" type="email" />
+          <Field label={t('admin.settings.smtp.username')}>
+            <Input value={smtpUsername} onChange={(e) => setSmtpUsername(e.target.value)} placeholder={t('admin.settings.smtp.usernamePlaceholder')} />
           </Field>
-          <Field label="发件人名称（from_name）">
-            <Input value={smtpFromName} onChange={(e) => setSmtpFromName(e.target.value)} placeholder="站点名称" />
+          <Field label={t('admin.settings.smtp.password')} help={smtp?.password_set ? t('admin.settings.smtp.passwordHelpSet') : t('admin.settings.smtp.passwordHelpUnset')}>
+            <Input value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)} type="password" placeholder={t('admin.settings.smtp.passwordPlaceholder')} />
+          </Field>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={t('admin.settings.smtp.from')}>
+            <Input value={smtpFrom} onChange={(e) => setSmtpFrom(e.target.value)} placeholder={t('admin.settings.smtp.fromPlaceholder')} type="email" />
+          </Field>
+          <Field label={t('admin.settings.smtp.fromName')}>
+            <Input value={smtpFromName} onChange={(e) => setSmtpFromName(e.target.value)} placeholder={t('admin.settings.smtp.fromNamePlaceholder')} />
           </Field>
         </div>
         <label className="flex items-center justify-between text-[13px] text-ink-2">
-          <span>启用该 SMTP 配置<span className="ml-1 text-xs text-ink-3">（启用后优先于环境变量）</span></span>
-          <Switch checked={smtpEnabled} onChange={setSmtpEnabled} label="启用该 SMTP 配置" />
+          <span>{t('admin.settings.smtp.enable')}<span className="ml-1 text-xs text-ink-3">{t('admin.settings.smtp.enableHint')}</span></span>
+          <Switch checked={smtpEnabled} onChange={setSmtpEnabled} label={t('admin.settings.smtp.enable')} />
         </label>
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" loading={smtpTesting} onClick={handleTestSmtp}>发送测试邮件</Button>
-          <Button variant="primary" loading={smtpSaving} onClick={handleSaveSmtp}>保存 SMTP 配置</Button>
+          <Button variant="secondary" loading={smtpTesting} onClick={handleTestSmtp}>{t('admin.settings.smtp.test')}</Button>
+          <Button variant="primary" loading={smtpSaving} onClick={handleSaveSmtp}>{t('admin.settings.smtp.save')}</Button>
         </div>
       </Card>
     </div>

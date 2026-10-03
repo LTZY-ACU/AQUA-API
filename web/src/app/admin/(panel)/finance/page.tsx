@@ -24,6 +24,7 @@ import { DataTable, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Field, Input } from '@/components/ui/Form'
 import { useSite } from '@/lib/site/site-context'
+import { useI18n } from '@/i18n'
 import { formatNumber } from '@/utils/format'
 import { formatYuanFromQuota } from '@/utils/money'
 
@@ -62,10 +63,10 @@ interface ReconciliationResponse {
   totals?: ReconciliationTotals
 }
 
-const DIM_TABS: { value: Dim; label: string }[] = [
-  { value: 'group', label: '按分组' },
-  { value: 'channel', label: '按渠道' },
-  { value: 'model', label: '按模型' },
+const DIM_TABS: { value: Dim; labelKey: string }[] = [
+  { value: 'group', labelKey: 'admin.finance.dim.group' },
+  { value: 'channel', labelKey: 'admin.finance.dim.channel' },
+  { value: 'model', labelKey: 'admin.finance.dim.model' },
 ]
 
 /** 本地日期 → 'YYYY-MM-DD'（避免 toISOString 的 UTC 偏移把「今天」算错） */
@@ -103,6 +104,7 @@ async function fetchReconciliation(params: {
 
 export default function AdminFinancePage() {
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
 
   const today = new Date()
   const monthAgo = new Date(today.getTime() - 30 * 24 * 3600 * 1000)
@@ -127,11 +129,11 @@ export default function AdminFinancePage() {
     } catch (err) {
       setRows([])
       setTotals(undefined)
-      setError(err instanceof Error ? err.message : '对账数据加载失败')
+      setError(err instanceof Error ? err.message : t('admin.finance.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [from, to, dim])
+  }, [from, to, dim, t])
 
   useEffect(() => {
     void load()
@@ -143,33 +145,33 @@ export default function AdminFinancePage() {
   }
 
   const columns: Column<ReconciliationRow>[] = [
-    { title: '维度', render: (row) => <span className="font-medium text-ink">{row.label || row.key}</span> },
+    { title: t('admin.finance.col.dim'), render: (row) => <span className="font-medium text-ink">{row.label || row.key}</span> },
     {
-      title: '请求数',
+      title: t('admin.finance.col.requests'),
       align: 'right',
       render: (row) => (
         <span className="tabular-nums text-ink-2">
           {formatNumber(row.requests)}
           {row.unpriced_requests ? (
-            <span className="ml-1 text-[11px] text-warn" title="其中有请求未录上游进价，成本按 0 计">
-              未计价 {formatNumber(row.unpriced_requests)}
+            <span className="ml-1 text-[11px] text-warn" title={t('admin.finance.unpricedTitle')}>
+              {t('admin.finance.unpriced', { count: formatNumber(row.unpriced_requests) })}
             </span>
           ) : null}
         </span>
       ),
     },
     {
-      title: '收入',
+      title: t('admin.finance.col.revenue'),
       align: 'right',
       render: (row) => <span className="tabular-nums text-ink-2">{formatMoney(row.revenue_quota)}</span>,
     },
     {
-      title: '成本',
+      title: t('admin.finance.col.cost'),
       align: 'right',
       render: (row) => <span className="tabular-nums text-ink-2">{formatMoney(row.cost_quota)}</span>,
     },
     {
-      title: '毛利',
+      title: t('admin.finance.col.gross'),
       align: 'right',
       render: (row) => (
         <span className={`tabular-nums font-medium ${row.gross_profit_quota < 0 ? 'text-err' : 'text-ink'}`}>
@@ -178,7 +180,7 @@ export default function AdminFinancePage() {
       ),
     },
     {
-      title: '毛利率',
+      title: t('admin.finance.col.margin'),
       align: 'right',
       render: (row) => {
         const pct = marginPercent(row.gross_margin)
@@ -193,43 +195,44 @@ export default function AdminFinancePage() {
 
   const summary = totals ? (
     <span className="text-xs text-ink-3">
-      合计：收入 {formatMoney(totals.revenue_quota)} · 成本 {formatMoney(totals.cost_quota)} · 毛利{' '}
-      <span className={totals.gross_profit_quota < 0 ? 'text-err' : 'text-ok'}>
-        {formatMoney(totals.gross_profit_quota)}
-      </span>{' '}
-      ({totals.gross_margin || '—'})
+      {t('admin.finance.summary', {
+        revenue: formatMoney(totals.revenue_quota),
+        cost: formatMoney(totals.cost_quota),
+        gross: formatMoney(totals.gross_profit_quota),
+        margin: totals.gross_margin || '—',
+      })}
     </span>
   ) : null
 
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">财务对账</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">按维度聚合「售价收入 − 上游成本」毛利，金额已换算为人民币</p>
+        <h1 className="text-xl font-bold text-ink">{t('admin.finance.title')}</h1>
+        <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.finance.subtitle')}</p>
       </div>
 
       <Card>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex flex-wrap items-end gap-3">
-            <Field label="开始日期">
+            <Field label={t('admin.finance.startDate')}>
               <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
             </Field>
-            <Field label="结束日期">
+            <Field label={t('admin.finance.endDate')}>
               <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
             </Field>
             <Button variant="primary" loading={loading} onClick={() => void load()}>
-              查询
+              {t('admin.finance.search')}
             </Button>
           </div>
-          <Tabs items={DIM_TABS} value={dim} onChange={setDim} />
+          <Tabs items={DIM_TABS.map((d) => ({ value: d.value, label: t(d.labelKey) }))} value={dim} onChange={setDim} />
         </div>
       </Card>
 
       <Card padding="none">
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink">对账明细</h2>
+          <h2 className="text-sm font-semibold text-ink">{t('admin.finance.detailTitle')}</h2>
           <span className="text-xs text-ink-3">
-            {from && to ? `${from} ~ ${to}` : '请选择时间范围'} · 共 {rows.length} 行
+            {from && to ? t('admin.finance.rangeValue', { from, to }) : t('admin.finance.rangePlaceholder')} · {t('admin.finance.rowsCount', { count: rows.length })}
           </span>
         </div>
         {summary ? <div className="border-b border-line px-4 py-2">{summary}</div> : null}
@@ -237,7 +240,7 @@ export default function AdminFinancePage() {
           <div className="flex items-center gap-3 px-4 py-6 text-[13px] text-err">
             <span>{error}</span>
             <Button variant="secondary" size="sm" onClick={() => void load()}>
-              重试
+              {t('admin.finance.retry')}
             </Button>
           </div>
         ) : (
@@ -246,8 +249,8 @@ export default function AdminFinancePage() {
             rows={loading ? null : rows}
             loading={loading}
             rowKey={(row) => row.key}
-            emptyTitle="该时间段没有对账数据"
-            emptyDescription="换个时间范围或维度再试；若接口尚未上线，请联系后端确认 /api/admin/finance/reconciliation。"
+            emptyTitle={t('admin.finance.emptyTitle')}
+            emptyDescription={t('admin.finance.emptyDescription')}
           />
         )}
       </Card>

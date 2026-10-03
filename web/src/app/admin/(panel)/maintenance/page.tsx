@@ -30,6 +30,7 @@ import {
 import { Badge, Card, Skeleton, SkeletonRows, StatCard } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
 import { DataTable, type Column } from '@/components/ui/Table'
+import { translate, useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { formatDateTime, formatNumber, EMPTY } from '@/utils/format'
 
@@ -39,10 +40,10 @@ function formatUptime(seconds: number | undefined): string {
   const days = Math.floor(seconds / 86400)
   const hours = Math.floor((seconds % 86400) / 3600)
   const mins = Math.floor((seconds % 3600) / 60)
-  if (days > 0) return `${days} 天 ${hours} 小时`
-  if (hours > 0) return `${hours} 小时 ${mins} 分`
-  if (mins > 0) return `${mins} 分钟`
-  return `${seconds} 秒`
+  if (days > 0) return translate('admin.maintenance.uptimeDays', { days, hours })
+  if (hours > 0) return translate('admin.maintenance.uptimeHours', { hours, mins })
+  if (mins > 0) return translate('admin.maintenance.uptimeMins', { mins })
+  return translate('admin.maintenance.uptimeSecs', { seconds })
 }
 
 /** 字节 → MB 字符串（保留 1 位小数） */
@@ -53,6 +54,7 @@ function formatMB(bytes: number | undefined): string {
 
 export default function AdminMaintenancePage() {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   const [overview, setOverview] = useState<MaintenanceOverview | null>(null)
   const [loading, setLoading] = useState(true)
@@ -66,18 +68,18 @@ export default function AdminMaintenancePage() {
   useEffect(() => {
     void fetchMaintenanceOverview()
       .then(setOverview)
-      .catch((err) => toastError(err instanceof Error ? err.message : '运维概览加载失败'))
+      .catch((err) => toastError(err instanceof Error ? err.message : t('admin.maintenance.toast.overviewFailed')))
       .finally(() => setLoading(false))
-  }, [toastError])
+  }, [toastError, t])
 
   /** 下载数据库一致性快照（浏览器侧触发保存） */
   async function handleDownload() {
     setDownloading(true)
     try {
       await downloadMaintenanceBackup()
-      toast('备份已开始下载')
+      toast(t('admin.maintenance.toast.downloadStarted'))
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '备份下载失败')
+      toastError(err instanceof Error ? err.message : t('admin.maintenance.toast.downloadFailed'))
     } finally {
       setDownloading(false)
     }
@@ -94,7 +96,7 @@ export default function AdminMaintenancePage() {
       const result = await inspectMaintenanceBackup(file)
       setInspect(result)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '备份校验失败')
+      toastError(err instanceof Error ? err.message : t('admin.maintenance.toast.inspectFailed'))
     } finally {
       setInspecting(false)
     }
@@ -102,12 +104,12 @@ export default function AdminMaintenancePage() {
 
   /** 折扣分组重试率的列定义 */
   const retryRatioColumns: Column<MaintenanceRetryRatio>[] = [
-    { title: '分组', render: (row) => <span className="font-medium text-ink">{row.group}</span> },
-    { title: '倍率', align: 'right', render: (row) => <span className="tabular-nums text-ink-2">{row.ratio}%</span> },
-    { title: '上游调用', align: 'right', render: (row) => <span className="tabular-nums text-ink-2">{formatNumber(row.upstream_calls)}</span> },
-    { title: '计费请求', align: 'right', render: (row) => <span className="tabular-nums text-ink-2">{formatNumber(row.charged_requests)}</span> },
+    { title: t('admin.maintenance.retryCol.group'), render: (row) => <span className="font-medium text-ink">{row.group}</span> },
+    { title: t('admin.maintenance.retryCol.ratio'), align: 'right', render: (row) => <span className="tabular-nums text-ink-2">{row.ratio}%</span> },
+    { title: t('admin.maintenance.retryCol.upstreamCalls'), align: 'right', render: (row) => <span className="tabular-nums text-ink-2">{formatNumber(row.upstream_calls)}</span> },
+    { title: t('admin.maintenance.retryCol.chargedRequests'), align: 'right', render: (row) => <span className="tabular-nums text-ink-2">{formatNumber(row.charged_requests)}</span> },
     {
-      title: '重试率 r',
+      title: t('admin.maintenance.retryCol.retryRatio'),
       align: 'right',
       render: (row) => (
         <span className={`tabular-nums font-medium ${row.over_break_even ? 'text-err' : 'text-ink-2'}`}>
@@ -116,10 +118,10 @@ export default function AdminMaintenancePage() {
       ),
     },
     {
-      title: '状态',
+      title: t('admin.maintenance.retryCol.status'),
       align: 'center',
       render: (row) =>
-        row.over_break_even ? <Badge tone="err">正在亏本</Badge> : <Badge tone="ok">正常</Badge>,
+        row.over_break_even ? <Badge tone="err">{t('admin.maintenance.losing')}</Badge> : <Badge tone="ok">{t('admin.maintenance.normal')}</Badge>,
     },
   ]
 
@@ -127,37 +129,37 @@ export default function AdminMaintenancePage() {
   const usage7d = overview?.usage.last_7d
 
   const tableColumns: Column<MaintenanceOverview['tables'][number]>[] = [
-    { title: '表名', render: (row) => <span className="text-[13px] font-medium text-ink">{row.name}</span> },
+    { title: t('admin.maintenance.tablesCol.name'), render: (row) => <span className="text-[13px] font-medium text-ink">{row.name}</span> },
     {
-      title: '行数',
+      title: t('admin.maintenance.tablesCol.rows'),
       align: 'right',
       render: (row) => <span className="text-[13px] tabular-nums text-ink-2">{formatNumber(row.rows)}</span>,
     },
   ]
 
   const compareColumns: Column<MaintenanceCompareRow>[] = [
-    { title: '表名', render: (row) => <span className="text-[13px] font-medium text-ink">{row.name}</span> },
+    { title: t('admin.maintenance.compareCol.name'), render: (row) => <span className="text-[13px] font-medium text-ink">{row.name}</span> },
     {
-      title: '备份内',
+      title: t('admin.maintenance.compareCol.inBackup'),
       align: 'center',
-      render: (row) => (row.in_backup ? <Badge tone="ok">存在</Badge> : <Badge tone="err">缺失</Badge>),
+      render: (row) => (row.in_backup ? <Badge tone="ok">{t('admin.maintenance.exists')}</Badge> : <Badge tone="err">{t('admin.maintenance.missing')}</Badge>),
     },
     {
-      title: '备份行数',
+      title: t('admin.maintenance.compareCol.backupRows'),
       align: 'right',
       render: (row) => <span className="text-[13px] tabular-nums text-ink-2">{row.in_backup ? formatNumber(row.backup_rows) : '—'}</span>,
     },
     {
-      title: '当前行数',
+      title: t('admin.maintenance.compareCol.currentRows'),
       align: 'right',
       render: (row) => <span className="text-[13px] tabular-nums text-ink-2">{formatNumber(row.current_rows)}</span>,
     },
     {
-      title: '差异',
+      title: t('admin.maintenance.compareCol.diff'),
       align: 'center',
       render: (row) =>
         row.in_backup && row.backup_rows !== row.current_rows ? (
-          <Badge tone="warn">不一致</Badge>
+          <Badge tone="warn">{t('admin.maintenance.mismatch')}</Badge>
         ) : (
           <span className="text-ink-3">—</span>
         ),
@@ -167,51 +169,51 @@ export default function AdminMaintenancePage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">运维监控</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">运行健康度 · 数据库明细 · 备份管理</p>
+        <h1 className="text-xl font-bold text-ink">{t('admin.maintenance.title')}</h1>
+        <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.maintenance.subtitle')}</p>
       </div>
 
       {/* 顶部指标卡 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="版本" value={overview ? overview.version : '—'} hint={overview?.build_time ? `构建 ${overview.build_time}` : undefined} />
+        <StatCard label={t('admin.maintenance.stat.version')} value={overview ? overview.version : '—'} hint={overview?.build_time ? t('admin.maintenance.stat.buildHint', { time: overview.build_time }) : undefined} />
         <StatCard
-          label="启动时间"
+          label={t('admin.maintenance.stat.startedAt')}
           value={overview ? formatDateTime(overview.started_at) : '—'}
-          hint={overview ? `已运行 ${formatUptime(overview.uptime_seconds)}` : undefined}
+          hint={overview ? t('admin.maintenance.stat.uptimeHint', { uptime: formatUptime(overview.uptime_seconds) }) : undefined}
         />
         <StatCard
-          label="Git 提交"
+          label={t('admin.maintenance.stat.gitCommit')}
           value={overview && overview.git_commit ? overview.git_commit.slice(0, 8) : '—'}
           hint={overview?.git_commit || undefined}
         />
         <StatCard
-          label="数据库体积"
+          label={t('admin.maintenance.stat.databaseSize')}
           value={overview ? (overview.database.size_available ? formatMB(overview.database.size_bytes) : '—') : '—'}
-          hint={overview ? `驱动 ${overview.database.driver}` : undefined}
+          hint={overview ? t('admin.maintenance.stat.driverHint', { driver: overview.database.driver }) : undefined}
         />
         <StatCard
-          label="磁盘使用率"
+          label={t('admin.maintenance.stat.diskUsage')}
           value={overview && overview.disk.available ? `${(overview.disk.used_ratio * 100).toFixed(1)}%` : '—'}
           hint={
             overview && overview.disk.available
-              ? `可用 ${formatMB(overview.disk.free_bytes)} / 共 ${formatMB(overview.disk.total_bytes)}`
+              ? t('admin.maintenance.stat.diskHint', { free: formatMB(overview.disk.free_bytes), total: formatMB(overview.disk.total_bytes) })
               : undefined
           }
         />
         <StatCard
-          label="近 24h 请求"
+          label={t('admin.maintenance.stat.requests24h')}
           value={usage24h ? formatNumber(usage24h.requests) : '—'}
-          hint={usage24h ? `失败 ${formatNumber(usage24h.failures)}（${(usage24h.failure_rate * 100).toFixed(1)}%）` : undefined}
+          hint={usage24h ? t('admin.maintenance.stat.failuresHint', { count: formatNumber(usage24h.failures), rate: (usage24h.failure_rate * 100).toFixed(1) }) : undefined}
         />
         <StatCard
-          label="近 7d 请求"
+          label={t('admin.maintenance.stat.requests7d')}
           value={usage7d ? formatNumber(usage7d.requests) : '—'}
-          hint={usage7d ? `失败 ${formatNumber(usage7d.failures)}（${(usage7d.failure_rate * 100).toFixed(1)}%）` : undefined}
+          hint={usage7d ? t('admin.maintenance.stat.failuresHint', { count: formatNumber(usage7d.failures), rate: (usage7d.failure_rate * 100).toFixed(1) }) : undefined}
         />
         <StatCard
-          label="平均延迟"
+          label={t('admin.maintenance.stat.avgLatency')}
           value={usage24h && usage24h.avg_latency_ms ? `${usage24h.avg_latency_ms} ms` : '—'}
-          hint={usage7d && usage7d.avg_latency_ms ? `近 7d ${usage7d.avg_latency_ms} ms` : undefined}
+          hint={usage7d && usage7d.avg_latency_ms ? t('admin.maintenance.stat.avgLatency7d', { ms: usage7d.avg_latency_ms }) : undefined}
         />
       </div>
 
@@ -220,15 +222,15 @@ export default function AdminMaintenancePage() {
       {overview && overview.retry_ratios.length > 0 && (
         <Card padding="none">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <h2 className="text-sm font-semibold text-ink">折扣分组重试率</h2>
-            <span className="text-xs text-ink-3">r 越过保本线即亏本；进程内累计，重启归零</span>
+            <h2 className="text-sm font-semibold text-ink">{t('admin.maintenance.retryTitle')}</h2>
+            <span className="text-xs text-ink-3">{t('admin.maintenance.retryHint')}</span>
           </div>
           <DataTable
             columns={retryRatioColumns}
             rows={overview.retry_ratios}
             loading={false}
             rowKey={(row) => row.group}
-            emptyTitle="暂无折扣分组调用"
+            emptyTitle={t('admin.maintenance.retryEmpty')}
           />
         </Card>
       )}
@@ -236,28 +238,28 @@ export default function AdminMaintenancePage() {
       {/* 数据库表行数 */}
       <Card padding="none">
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink">数据库表行数</h2>
+          <h2 className="text-sm font-semibold text-ink">{t('admin.maintenance.tablesTitle')}</h2>
         </div>
         <DataTable
           columns={tableColumns}
           rows={loading ? null : (overview?.tables ?? [])}
           loading={loading}
           rowKey={(row) => row.name}
-          emptyTitle="未取到表信息"
+          emptyTitle={t('admin.maintenance.tablesEmpty')}
         />
       </Card>
 
       {/* 备份管理 */}
       <Card padding="none">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink">备份管理</h2>
+          <h2 className="text-sm font-semibold text-ink">{t('admin.maintenance.backupTitle')}</h2>
           <div className="flex items-center gap-2">
             <input ref={fileRef} type="file" accept=".db,.sqlite,.sqlite3,.bak" className="hidden" onChange={handleFile} />
             <Button variant="secondary" loading={inspecting} onClick={() => fileRef.current?.click()}>
-              上传备份校验
+              {t('admin.maintenance.uploadBackup')}
             </Button>
             <Button variant="primary" loading={downloading} onClick={handleDownload}>
-              下载备份
+              {t('admin.maintenance.downloadBackup')}
             </Button>
           </div>
         </div>
@@ -268,17 +270,17 @@ export default function AdminMaintenancePage() {
           ) : inspect ? (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-3 text-[13px]">
-                {inspect.valid ? <Badge tone="ok">校验通过</Badge> : <Badge tone="err">校验失败</Badge>}
+                {inspect.valid ? <Badge tone="ok">{t('admin.maintenance.inspectValid')}</Badge> : <Badge tone="err">{t('admin.maintenance.inspectInvalid')}</Badge>}
                 <span className="text-ink-2">
-                  备份 schema v{inspect.schema_version} · 当前库 v{inspect.current_schema_version}
+                  {t('admin.maintenance.inspectSchema', { schema: inspect.schema_version, current: inspect.current_schema_version })}
                 </span>
                 <span className="text-ink-3">
-                  备份含迁移记录表：{inspect.schema_table_present ? '是' : '否'}
+                  {t('admin.maintenance.inspectTablePresent', { value: inspect.schema_table_present ? t('admin.maintenance.yes') : t('admin.maintenance.no') })}
                 </span>
               </div>
               {inspect.restore_steps.length > 0 && (
                 <div className="rounded-md border border-line bg-surface p-3">
-                  <div className="mb-1.5 text-xs font-medium text-ink-3">人工恢复步骤（后端不提供在线恢复）</div>
+                  <div className="mb-1.5 text-xs font-medium text-ink-3">{t('admin.maintenance.restoreTitle')}</div>
                   <ol className="list-decimal space-y-1 pl-5 text-[13px] text-ink-2">
                     {inspect.restore_steps.map((step, i) => (
                       <li key={i}>{step}</li>
@@ -291,12 +293,12 @@ export default function AdminMaintenancePage() {
                 columns={compareColumns}
                 rows={inspect.tables}
                 rowKey={(row) => row.name}
-                emptyTitle="备份中无表数据"
+                emptyTitle={t('admin.maintenance.compareEmpty')}
               />
             </div>
           ) : (
             <div className="text-[13px] text-ink-3">
-              选择「上传备份校验」检查一份备份文件的完整性与 schema 版本，确认后再人工按步骤恢复。
+              {t('admin.maintenance.backupHint')}
             </div>
           )}
         </div>

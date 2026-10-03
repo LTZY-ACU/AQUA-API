@@ -44,6 +44,7 @@ import { Badge, Card, CodeBlock, SkeletonRows, StatCard, Tabs } from '@/componen
 import { Field, Input, Select, Switch, Textarea } from '@/components/ui/Form'
 import { ConfirmDialog, Modal } from '@/components/ui/Modal'
 import { DataTable, Pagination, type Column } from '@/components/ui/Table'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { formatDateTime, formatNumber } from '@/utils/format'
 
@@ -76,6 +77,7 @@ type TabKey = 'models' | 'samples' | 'stats' | 'grants'
 
 export default function AdminCorpusPage() {
   const [tab, setTab] = useState<TabKey>('models')
+  const { t } = useI18n()
 
   // 清单是三个分区共用的数据源（样本筛选下拉、授权模型选择、统计分列），
   // 提升到页面层只拉一份；清单任何变更后统一 reload。
@@ -91,9 +93,9 @@ export default function AdminCorpusPage() {
       setModels(data.items)
     } catch (err) {
       setModels(null)
-      setModelsError(err instanceof Error ? err.message : '语料清单加载失败')
+      setModelsError(err instanceof Error ? err.message : t('admin.corpus.loadFailed'))
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void reloadModels()
@@ -102,9 +104,9 @@ export default function AdminCorpusPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">语料共建</h1>
+        <h1 className="text-xl font-bold text-ink">{t('admin.corpus.title')}</h1>
         <p className="mt-0.5 text-[13px] text-ink-3">
-          维护采集清单与福利授权 · 样本全文查看与 JSONL 导出均会写入审计日志
+          {t('admin.corpus.subtitle')}
         </p>
       </div>
 
@@ -113,7 +115,7 @@ export default function AdminCorpusPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-[13px] text-err">{modelsError}</p>
             <Button variant="secondary" size="sm" onClick={() => void reloadModels()}>
-              重试
+              {t('admin.corpus.retry')}
             </Button>
           </div>
         </Card>
@@ -121,10 +123,10 @@ export default function AdminCorpusPage() {
 
       <Tabs<TabKey>
         items={[
-          { value: 'models', label: '语料清单', count: models?.length },
-          { value: 'samples', label: '样本浏览' },
-          { value: 'stats', label: '统计总览' },
-          { value: 'grants', label: '福利授权' },
+          { value: 'models', label: t('admin.corpus.tab.models'), count: models?.length },
+          { value: 'samples', label: t('admin.corpus.tab.samples') },
+          { value: 'stats', label: t('admin.corpus.tab.stats') },
+          { value: 'grants', label: t('admin.corpus.tab.grants') },
         ]}
         value={tab}
         onChange={setTab}
@@ -142,6 +144,7 @@ export default function AdminCorpusPage() {
 
 function ModelsSection({ models, onChanged }: { models: CorpusModel[] | null; onChanged: () => void }) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   // 'new' = 新建；CorpusModel 对象 = 编辑该条
   const [editing, setEditing] = useState<CorpusModel | 'new' | null>(null)
@@ -154,10 +157,10 @@ function ModelsSection({ models, onChanged }: { models: CorpusModel[] | null; on
     try {
       // upsert 是整条覆盖语义：切换启停必须把备注原样带回，否则 remark 会被清空
       await upsertCorpusModel({ model: row.model, enabled: !row.enabled, remark: row.remark })
-      toast(row.enabled ? `已暂停采集 ${row.model}` : `已开始采集 ${row.model}`)
+      toast(row.enabled ? t('admin.corpus.models.toast.paused', { model: row.model }) : t('admin.corpus.models.toast.started', { model: row.model }))
       onChanged()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '启停失败')
+      toastError(err instanceof Error ? err.message : t('admin.corpus.models.toast.toggleFailed'))
     } finally {
       setSwitching('')
     }
@@ -167,21 +170,21 @@ function ModelsSection({ models, onChanged }: { models: CorpusModel[] | null; on
     if (!deleteTarget) return
     try {
       await deleteCorpusModel(deleteTarget.model)
-      toast('已从清单移除')
+      toast(t('admin.corpus.models.toast.removed'))
       setDeleteTarget(null)
       onChanged()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '移除失败')
+      toastError(err instanceof Error ? err.message : t('admin.corpus.models.toast.removeFailed'))
     }
   }
 
   const columns: Column<CorpusModel>[] = [
     {
-      title: '模型',
+      title: t('admin.corpus.models.col.model'),
       render: (row) => <span className="text-[13px] font-medium text-ink">{row.model}</span>,
     },
     {
-      title: '采集中',
+      title: t('admin.corpus.models.col.collecting'),
       align: 'center',
       render: (row) => (
         <div className="flex justify-center">
@@ -189,13 +192,13 @@ function ModelsSection({ models, onChanged }: { models: CorpusModel[] | null; on
             checked={row.enabled}
             disabled={switching === row.model}
             onChange={() => handleToggle(row)}
-            label={`切换 ${row.model} 的采集状态`}
+            label={t('admin.corpus.models.switchLabel', { model: row.model })}
           />
         </div>
       ),
     },
     {
-      title: '备注',
+      title: t('admin.corpus.models.col.remark'),
       render: (row) => (
         <span className="block max-w-64 truncate text-[13px] text-ink-3" title={row.remark}>
           {row.remark || '—'}
@@ -203,19 +206,19 @@ function ModelsSection({ models, onChanged }: { models: CorpusModel[] | null; on
       ),
     },
     {
-      title: '更新时间',
+      title: t('admin.corpus.models.col.updatedAt'),
       render: (row) => <span className="whitespace-nowrap text-[13px] text-ink-3">{formatDateTime(row.updated_at)}</span>,
     },
     {
-      title: '操作',
+      title: t('admin.corpus.models.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="flex items-center justify-end gap-3 text-[13px]">
           <button type="button" className="text-ink-3 hover:text-brand" onClick={() => setEditing(row)}>
-            编辑
+            {t('admin.corpus.models.action.edit')}
           </button>
           <button type="button" className="text-ink-3 hover:text-err" onClick={() => setDeleteTarget(row)}>
-            移除
+            {t('admin.corpus.models.action.remove')}
           </button>
         </span>
       ),
@@ -225,9 +228,9 @@ function ModelsSection({ models, onChanged }: { models: CorpusModel[] | null; on
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px] text-ink-3">共 {models?.length ?? 0} 个模型 · 清单改动立即生效，无需重启</p>
+        <p className="text-[13px] text-ink-3">{t('admin.corpus.models.summary', { count: models?.length ?? 0 })}</p>
         <Button variant="primary" onClick={() => setEditing('new')}>
-          新建语料
+          {t('admin.corpus.models.create')}
         </Button>
       </div>
 
@@ -237,8 +240,8 @@ function ModelsSection({ models, onChanged }: { models: CorpusModel[] | null; on
           rows={models}
           rowKey={(row) => row.model}
           loading={models === null}
-          emptyTitle="清单为空"
-          emptyDescription="新建第一条语料后，命中该模型的转发请求会被采样入库。"
+          emptyTitle={t('admin.corpus.models.emptyTitle')}
+          emptyDescription={t('admin.corpus.models.emptyDescription')}
         />
       </Card>
 
@@ -255,10 +258,10 @@ function ModelsSection({ models, onChanged }: { models: CorpusModel[] | null; on
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="移除语料"
-        message={`确认从清单移除「${deleteTarget?.model}」？已采集的历史样本不会被删除，只是停止后续采集。`}
+        title={t('admin.corpus.models.confirm.removeTitle')}
+        message={t('admin.corpus.models.confirm.removeMessage', { model: deleteTarget?.model ?? '' })}
         danger
-        confirmText="移除"
+        confirmText={t('admin.corpus.models.confirm.remove')}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -277,6 +280,7 @@ function ModelUpsertModal({
   onSaved: () => void
 }) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
   const isEdit = target !== 'new'
   // 弹层只在打开时挂载，初始值直接取自 target，无需 useEffect 复位
   const [model, setModel] = useState(isEdit ? target.model : '')
@@ -287,49 +291,49 @@ function ModelUpsertModal({
   async function handleSubmit() {
     const name = model.trim()
     if (!name) {
-      toastError('请填写模型名')
+      toastError(t('admin.corpus.models.error.modelRequired'))
       return
     }
     setLoading(true)
     try {
       await upsertCorpusModel({ model: name, enabled, remark: remark.trim() })
-      toast(isEdit ? '语料已更新' : '语料已创建')
+      toast(isEdit ? t('admin.corpus.models.toast.updated') : t('admin.corpus.models.toast.created'))
       onSaved()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : t('admin.corpus.models.toast.saveFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={isEdit ? `编辑语料：${target.model}` : '新建语料'} width={560}>
+    <Modal open onClose={onClose} title={isEdit ? t('admin.corpus.models.form.editTitle', { model: target.model }) : t('admin.corpus.models.form.newTitle')} width={560}>
       <div className="space-y-4">
-        <Field label="模型名" required help="与转发请求里的 model 字段精确匹配才会被采样">
+        <Field label={t('admin.corpus.models.form.model')} required help={t('admin.corpus.models.form.modelHelp')}>
           <Input
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            placeholder="如 deepseek-v4.1-flash"
+            placeholder={t('admin.corpus.models.form.modelPlaceholder')}
             disabled={isEdit}
           />
         </Field>
         <label className="flex items-center justify-between text-[13px] text-ink-2">
-          <span>启用采集</span>
-          <Switch checked={enabled} onChange={setEnabled} label="启用采集" />
+          <span>{t('admin.corpus.models.form.enabled')}</span>
+          <Switch checked={enabled} onChange={setEnabled} label={t('admin.corpus.models.form.enabled')} />
         </label>
-        <Field label="备注">
-          <Textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={2} placeholder="可选，如「为推理数据集采集」" />
+        <Field label={t('admin.corpus.models.form.remark')}>
+          <Textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={2} placeholder={t('admin.corpus.models.form.remarkPlaceholder')} />
         </Field>
         {isEdit && (
-          <p className="text-xs text-ink-3">保存为整条覆盖：未提交的备注以本弹层内容为准。</p>
+          <p className="text-xs text-ink-3">{t('admin.corpus.models.form.overwriteHint')}</p>
         )}
       </div>
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>
-          取消
+          {t('common.action.cancel')}
         </Button>
         <Button variant="primary" loading={loading} onClick={handleSubmit}>
-          保存
+          {t('common.action.save')}
         </Button>
       </div>
     </Modal>
@@ -340,6 +344,7 @@ function ModelUpsertModal({
 
 function SamplesSection({ models }: { models: CorpusModel[] }) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   // 筛选用「草稿 → 点查询才生效」两段式：避免输入用户 ID 时逐字符触发查询
   const [modelDraft, setModelDraft] = useState('')
@@ -372,11 +377,11 @@ function SamplesSection({ models }: { models: CorpusModel[] }) {
       setItems(paged.items)
       setTotal(paged.total)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '样本加载失败')
+      toastError(err instanceof Error ? err.message : t('admin.corpus.samples.toast.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [filter, page, toastError])
+  }, [filter, page, toastError, t])
 
   useEffect(() => {
     void load()
@@ -385,7 +390,7 @@ function SamplesSection({ models }: { models: CorpusModel[] }) {
   function handleSearch() {
     const trimmed = userIdDraft.trim()
     if (trimmed && !/^\d+$/.test(trimmed)) {
-      toastError('用户 ID 必须是纯数字')
+      toastError(t('admin.corpus.samples.error.userIdNumeric'))
       return
     }
     setFilter({ model: modelDraft, user_id: trimmed ? Number(trimmed) : undefined })
@@ -406,7 +411,7 @@ function SamplesSection({ models }: { models: CorpusModel[] }) {
     try {
       setDetail(await getCorpusSample(id))
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '样本详情加载失败')
+      toastError(err instanceof Error ? err.message : t('admin.corpus.samples.toast.detailFailed'))
       setDetailId(null)
     } finally {
       setDetailLoading(false)
@@ -418,9 +423,9 @@ function SamplesSection({ models }: { models: CorpusModel[] }) {
     setExporting(true)
     try {
       await exportCorpusSamples({ model: filter.model || undefined, user_id: filter.user_id })
-      toast('JSONL 已开始下载')
+      toast(t('admin.corpus.samples.toast.exportStarted'))
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '导出失败')
+      toastError(err instanceof Error ? err.message : t('admin.corpus.samples.toast.exportFailed'))
     } finally {
       setExporting(false)
     }
@@ -428,38 +433,38 @@ function SamplesSection({ models }: { models: CorpusModel[] }) {
 
   const columns: Column<CorpusSample>[] = [
     {
-      title: 'ID',
+      title: t('admin.corpus.samples.col.id'),
       width: 'w-16',
       render: (row) => <span className="text-[13px] tabular-nums text-ink-3">{row.id}</span>,
     },
     {
-      title: '模型',
+      title: t('admin.corpus.samples.col.model'),
       render: (row) => (
         <div className="flex flex-col">
           <span className="text-[13px] font-medium text-ink">{row.model}</span>
           {row.upstream_model && row.upstream_model !== row.model && (
-            <span className="text-xs text-ink-3">上游 {row.upstream_model}</span>
+            <span className="text-xs text-ink-3">{t('admin.corpus.samples.upstream', { model: row.upstream_model })}</span>
           )}
         </div>
       ),
     },
     {
-      title: '用户',
+      title: t('admin.corpus.samples.col.user'),
       render: (row) => <span className="text-[13px] text-ink-2">#{row.user_id}</span>,
     },
     {
-      title: '状态',
+      title: t('admin.corpus.samples.col.status'),
       render: (row) => (
         <div className="flex flex-wrap items-center gap-1">
           <Badge tone={row.status_code >= 200 && row.status_code < 400 ? 'ok' : 'err'}>{row.status_code}</Badge>
-          {row.is_stream && <Badge tone="info">流式</Badge>}
-          {row.truncated && <Badge tone="warn">截断</Badge>}
-          {row.incomplete && <Badge tone="err">不完整</Badge>}
+          {row.is_stream && <Badge tone="info">{t('admin.corpus.samples.badgeStream')}</Badge>}
+          {row.truncated && <Badge tone="warn">{t('admin.corpus.samples.badgeTruncated')}</Badge>}
+          {row.incomplete && <Badge tone="err">{t('admin.corpus.samples.badgeIncomplete')}</Badge>}
         </div>
       ),
     },
     {
-      title: '体积（↑请求 / ↓响应）',
+      title: t('admin.corpus.samples.col.size'),
       render: (row) => (
         <span className="whitespace-nowrap text-[13px] text-ink-3">
           ↑{formatBytes(row.request_bytes)} / ↓{formatBytes(row.response_bytes)}
@@ -467,15 +472,15 @@ function SamplesSection({ models }: { models: CorpusModel[] }) {
       ),
     },
     {
-      title: '时间',
+      title: t('admin.corpus.samples.col.time'),
       render: (row) => <span className="whitespace-nowrap text-[13px] text-ink-3">{formatDateTime(row.created_at)}</span>,
     },
     {
-      title: '操作',
+      title: t('admin.corpus.samples.col.actions'),
       align: 'right',
       render: (row) => (
         <button type="button" className="text-[13px] text-ink-3 hover:text-brand" onClick={() => openDetail(row.id)}>
-          查看全文
+          {t('admin.corpus.samples.viewFull')}
         </button>
       ),
     },
@@ -485,37 +490,37 @@ function SamplesSection({ models }: { models: CorpusModel[] }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
         <div className="w-60">
-          <Field label="模型">
+          <Field label={t('admin.corpus.samples.filterModel')}>
             <Select value={modelDraft} onChange={(e) => setModelDraft(e.target.value)}>
-              <option value="">全部模型</option>
+              <option value="">{t('admin.corpus.samples.allModels')}</option>
               {models.map((m) => (
                 <option key={m.model} value={m.model}>
                   {m.model}
-                  {m.enabled ? '' : '（已停采）'}
+                  {m.enabled ? '' : t('admin.corpus.samples.stoppedSuffix')}
                 </option>
               ))}
             </Select>
           </Field>
         </div>
         <div className="w-44">
-          <Field label="用户 ID">
+          <Field label={t('admin.corpus.samples.filterUserId')}>
             <Input
               value={userIdDraft}
               onChange={(e) => setUserIdDraft(e.target.value)}
-              placeholder="可选"
+              placeholder={t('admin.corpus.samples.optional')}
               inputMode="numeric"
             />
           </Field>
         </div>
         <Button variant="secondary" onClick={handleSearch}>
-          查询
+          {t('admin.corpus.samples.search')}
         </Button>
         <Button variant="ghost" onClick={handleReset}>
-          重置
+          {t('admin.corpus.samples.reset')}
         </Button>
         <div className="ml-auto">
           <Button variant="secondary" loading={exporting} onClick={() => setConfirmExport(true)}>
-            导出 JSONL
+            {t('admin.corpus.samples.export')}
           </Button>
         </div>
       </div>
@@ -526,8 +531,8 @@ function SamplesSection({ models }: { models: CorpusModel[] }) {
           rows={items}
           rowKey={(row) => row.id}
           loading={loading}
-          emptyTitle="没有符合条件的样本"
-          emptyDescription="调整筛选条件，或确认清单中的模型已产生调用。"
+          emptyTitle={t('admin.corpus.samples.emptyTitle')}
+          emptyDescription={t('admin.corpus.samples.emptyDescription')}
         />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={SAMPLES_PAGE_SIZE} total={total} onChange={setPage} />
@@ -535,37 +540,37 @@ function SamplesSection({ models }: { models: CorpusModel[] }) {
       </Card>
 
       {/* 全文弹层：唯一能读到对话原文的入口（后端每次都写审计日志） */}
-      <Modal open={detailId !== null} onClose={() => setDetailId(null)} title={`样本 #${detailId ?? ''} 全文`} width={880}>
+      <Modal open={detailId !== null} onClose={() => setDetailId(null)} title={t('admin.corpus.samples.detailTitle', { id: detailId ?? '' })} width={880}>
         {detailLoading || !detail ? (
           <SkeletonRows rows={4} />
         ) : (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-ink-3">
               <span className="text-ink-2">{detail.model}</span>
-              <span>用户 #{detail.user_id}</span>
-              <span>渠道 #{detail.channel_id}</span>
-              <span>{detail.is_stream ? '流式' : '非流式'}</span>
-              <span>状态码 {detail.status_code}</span>
+              <span>{t('admin.corpus.samples.detail.user', { id: detail.user_id })}</span>
+              <span>{t('admin.corpus.samples.detail.channel', { id: detail.channel_id })}</span>
+              <span>{detail.is_stream ? t('admin.corpus.samples.detail.stream') : t('admin.corpus.samples.detail.nonStream')}</span>
+              <span>{t('admin.corpus.samples.detail.statusCode', { code: detail.status_code })}</span>
               <span>{formatDateTime(detail.created_at)}</span>
-              {detail.truncated && <Badge tone="warn">入库时已截断</Badge>}
-              {detail.incomplete && <Badge tone="err">响应不完整</Badge>}
+              {detail.truncated && <Badge tone="warn">{t('admin.corpus.samples.detail.truncated')}</Badge>}
+              {detail.incomplete && <Badge tone="err">{t('admin.corpus.samples.detail.incomplete')}</Badge>}
             </div>
-            <Field label="请求全文">
+            <Field label={t('admin.corpus.samples.detail.requestFull')}>
               <CodeBlock code={prettyJson(detail.request_body)} title="request" />
             </Field>
-            <Field label="响应全文">
+            <Field label={t('admin.corpus.samples.detail.responseFull')}>
               <CodeBlock code={prettyJson(detail.response_body)} title="response" />
             </Field>
-            <p className="text-xs text-ink-3">request_id: {detail.request_id} · 本次查看已写入审计日志</p>
+            <p className="text-xs text-ink-3">{t('admin.corpus.samples.detail.auditHint', { id: detail.request_id })}</p>
           </div>
         )}
       </Modal>
 
       <ConfirmDialog
         open={confirmExport}
-        title="导出语料样本"
-        message="将按当前筛选条件导出样本全文（JSONL，一行一条）。导出内容包含用户对话原文，并会写入一条审计日志。确认继续？"
-        confirmText="开始导出"
+        title={t('admin.corpus.samples.exportConfirm.title')}
+        message={t('admin.corpus.samples.exportConfirm.message')}
+        confirmText={t('admin.corpus.samples.exportConfirm.confirmText')}
         onConfirm={handleExport}
         onCancel={() => setConfirmExport(false)}
       />
@@ -577,6 +582,7 @@ function SamplesSection({ models }: { models: CorpusModel[] }) {
 
 function StatsSection({ models }: { models: CorpusModel[] }) {
   const { toastError } = useToast()
+  const { t } = useI18n()
 
   const [stats, setStats] = useState<CorpusStats | null>(null)
   // 后端只提供全库汇总统计；「各语料的样本量」用每模型一条 size=1 的分页查询拿
@@ -597,11 +603,11 @@ function StatsSection({ models }: { models: CorpusModel[] }) {
       )
       setPerModel(rows)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '统计加载失败')
+      toastError(err instanceof Error ? err.message : t('admin.corpus.stats.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [models, toastError])
+  }, [models, toastError, t])
 
   useEffect(() => {
     void load()
@@ -609,16 +615,16 @@ function StatsSection({ models }: { models: CorpusModel[] }) {
 
   const perModelColumns: Column<{ model: string; enabled: boolean; samples: number }>[] = [
     {
-      title: '模型',
+      title: t('admin.corpus.stats.col.model'),
       render: (row) => <span className="text-[13px] font-medium text-ink">{row.model}</span>,
     },
     {
-      title: '采集状态',
+      title: t('admin.corpus.stats.col.status'),
       align: 'center',
-      render: (row) => (row.enabled ? <Badge tone="ok">采集中</Badge> : <Badge tone="off">已停采</Badge>),
+      render: (row) => (row.enabled ? <Badge tone="ok">{t('admin.corpus.stats.collecting')}</Badge> : <Badge tone="off">{t('admin.corpus.stats.stopped')}</Badge>),
     },
     {
-      title: '样本量',
+      title: t('admin.corpus.stats.col.sampleCount'),
       align: 'right',
       render: (row) => <span className="text-[13px] tabular-nums text-ink-2">{formatNumber(row.samples)}</span>,
     },
@@ -627,22 +633,22 @@ function StatsSection({ models }: { models: CorpusModel[] }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px] text-ink-3">全库汇总 + 按清单逐模型统计样本量</p>
+        <p className="text-[13px] text-ink-3">{t('admin.corpus.stats.summary')}</p>
         <Button variant="secondary" onClick={() => void load()} disabled={loading}>
-          刷新
+          {t('admin.corpus.stats.refresh')}
         </Button>
       </div>
 
       {stats && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard label="样本总量" value={formatNumber(stats.samples)} />
-          <StatCard label="覆盖用户数" value={formatNumber(stats.users)} />
-          <StatCard label="正在采集模型" value={formatNumber(stats.models)} hint={`清单共 ${models.length} 个`} />
-          <StatCard label="免计费用户" value={formatNumber(stats.free_users)} hint="享有语料共建福利" />
-          <StatCard label="请求体积" value={formatBytes(stats.request_bytes)} />
-          <StatCard label="响应体积" value={formatBytes(stats.response_bytes)} />
-          <StatCard label="最早样本" value={stats.earliest_at ? formatDateTime(stats.earliest_at) : '—'} />
-          <StatCard label="最近样本" value={stats.latest_at ? formatDateTime(stats.latest_at) : '—'} />
+          <StatCard label={t('admin.corpus.stats.samples')} value={formatNumber(stats.samples)} />
+          <StatCard label={t('admin.corpus.stats.users')} value={formatNumber(stats.users)} />
+          <StatCard label={t('admin.corpus.stats.models')} value={formatNumber(stats.models)} hint={t('admin.corpus.stats.modelsHint', { count: models.length })} />
+          <StatCard label={t('admin.corpus.stats.freeUsers')} value={formatNumber(stats.free_users)} hint={t('admin.corpus.stats.freeUsersHint')} />
+          <StatCard label={t('admin.corpus.stats.requestBytes')} value={formatBytes(stats.request_bytes)} />
+          <StatCard label={t('admin.corpus.stats.responseBytes')} value={formatBytes(stats.response_bytes)} />
+          <StatCard label={t('admin.corpus.stats.earliest')} value={stats.earliest_at ? formatDateTime(stats.earliest_at) : '—'} />
+          <StatCard label={t('admin.corpus.stats.latest')} value={stats.latest_at ? formatDateTime(stats.latest_at) : '—'} />
         </div>
       )}
 
@@ -652,8 +658,8 @@ function StatsSection({ models }: { models: CorpusModel[] }) {
           rows={perModel}
           rowKey={(row) => row.model}
           loading={loading}
-          emptyTitle="清单为空"
-          emptyDescription="先在「语料清单」里添加要采集的模型，这里才会出现分模型统计。"
+          emptyTitle={t('admin.corpus.stats.emptyTitle')}
+          emptyDescription={t('admin.corpus.stats.emptyDescription')}
         />
       </Card>
     </div>
@@ -664,6 +670,7 @@ function StatsSection({ models }: { models: CorpusModel[] }) {
 
 function GrantsSection({ models }: { models: CorpusModel[] }) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   const [items, setItems] = useState<CorpusGrant[] | null>(null)
   const [creating, setCreating] = useState(false)
@@ -676,9 +683,9 @@ function GrantsSection({ models }: { models: CorpusModel[] }) {
       setItems(data.items)
     } catch (err) {
       setItems([])
-      toastError(err instanceof Error ? err.message : '福利资格加载失败')
+      toastError(err instanceof Error ? err.message : t('admin.corpus.grants.loadFailed'))
     }
-  }, [toastError])
+  }, [toastError, t])
 
   useEffect(() => {
     void load()
@@ -689,11 +696,11 @@ function GrantsSection({ models }: { models: CorpusModel[] }) {
     setRevoking(true)
     try {
       await deleteCorpusGrant(revokeTarget.user_id, revokeTarget.model)
-      toast('福利资格已撤销')
+      toast(t('admin.corpus.grants.toast.revoked'))
       setRevokeTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '撤销失败')
+      toastError(err instanceof Error ? err.message : t('admin.corpus.grants.toast.revokeFailed'))
     } finally {
       setRevoking(false)
     }
@@ -701,7 +708,7 @@ function GrantsSection({ models }: { models: CorpusModel[] }) {
 
   const columns: Column<CorpusGrant>[] = [
     {
-      title: '用户',
+      title: t('admin.corpus.grants.col.user'),
       render: (row) => (
         <div className="flex flex-col">
           <span className="text-[13px] font-medium text-ink">{row.username || `#${row.user_id}`}</span>
@@ -710,21 +717,21 @@ function GrantsSection({ models }: { models: CorpusModel[] }) {
       ),
     },
     {
-      title: '模型',
+      title: t('admin.corpus.grants.col.model'),
       render: (row) => <span className="text-[13px] text-ink">{row.model}</span>,
     },
     {
-      title: '免计费',
+      title: t('admin.corpus.grants.col.freeAccess'),
       align: 'center',
-      render: (row) => (row.free_access ? <Badge tone="ok">免计费</Badge> : <Badge tone="off">计费</Badge>),
+      render: (row) => (row.free_access ? <Badge tone="ok">{t('admin.corpus.grants.freeAccess')}</Badge> : <Badge tone="off">{t('admin.corpus.grants.billed')}</Badge>),
     },
     {
-      title: '状态',
+      title: t('admin.corpus.grants.col.status'),
       align: 'center',
-      render: (row) => (row.active ? <Badge tone="ok">生效中</Badge> : <Badge tone="off">已失效</Badge>),
+      render: (row) => (row.active ? <Badge tone="ok">{t('admin.corpus.grants.active')}</Badge> : <Badge tone="off">{t('admin.corpus.grants.inactive')}</Badge>),
     },
     {
-      title: '备注',
+      title: t('admin.corpus.grants.col.remark'),
       render: (row) => (
         <span className="block max-w-48 truncate text-[13px] text-ink-3" title={row.remark}>
           {row.remark || '—'}
@@ -732,15 +739,15 @@ function GrantsSection({ models }: { models: CorpusModel[] }) {
       ),
     },
     {
-      title: '更新时间',
+      title: t('admin.corpus.grants.col.updatedAt'),
       render: (row) => <span className="whitespace-nowrap text-[13px] text-ink-3">{formatDateTime(row.updated_at)}</span>,
     },
     {
-      title: '操作',
+      title: t('admin.corpus.grants.col.actions'),
       align: 'right',
       render: (row) => (
         <button type="button" className="text-[13px] text-ink-3 hover:text-err" onClick={() => setRevokeTarget(row)}>
-          撤销
+          {t('admin.corpus.grants.revoke')}
         </button>
       ),
     },
@@ -750,10 +757,10 @@ function GrantsSection({ models }: { models: CorpusModel[] }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[13px] text-ink-3">
-          被授权用户调用对应模型时不计费（以对话贡献换取福利）· 撤销立即生效
+          {t('admin.corpus.grants.summary')}
         </p>
         <Button variant="primary" onClick={() => setCreating(true)}>
-          发放资格
+          {t('admin.corpus.grants.create')}
         </Button>
       </div>
 
@@ -763,8 +770,8 @@ function GrantsSection({ models }: { models: CorpusModel[] }) {
           rows={items}
           rowKey={(row) => `${row.user_id}:${row.model}`}
           loading={items === null}
-          emptyTitle="还没有福利资格"
-          emptyDescription="发放资格后，对应用户调用该模型的请求将不计费。"
+          emptyTitle={t('admin.corpus.grants.emptyTitle')}
+          emptyDescription={t('admin.corpus.grants.emptyDescription')}
         />
       </Card>
 
@@ -781,10 +788,10 @@ function GrantsSection({ models }: { models: CorpusModel[] }) {
 
       <ConfirmDialog
         open={Boolean(revokeTarget)}
-        title="撤销福利资格"
-        message={`确认撤销「${revokeTarget?.username || `#${revokeTarget?.user_id}`}」对「${revokeTarget?.model}」的福利资格？撤销立即生效，该用户后续调用将正常计费。`}
+        title={t('admin.corpus.grants.confirm.title')}
+        message={t('admin.corpus.grants.confirm.message', { user: revokeTarget?.username || `#${revokeTarget?.user_id}`, model: revokeTarget?.model ?? '' })}
         danger
-        confirmText="撤销"
+        confirmText={t('admin.corpus.grants.confirm.confirmText')}
         loading={revoking}
         onConfirm={handleRevoke}
         onCancel={() => setRevokeTarget(null)}
@@ -804,6 +811,7 @@ function GrantUpsertModal({
   onSaved: () => void
 }) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
   const [email, setEmail] = useState('')
   const [userIdText, setUserIdText] = useState('')
   const [model, setModel] = useState(models[0]?.model ?? '')
@@ -816,15 +824,15 @@ function GrantUpsertModal({
     const trimmedId = userIdText.trim()
     // 邮箱优先：后端按「邮箱能定位就按邮箱」处理，因此两者都填时只送邮箱
     if (!trimmedEmail && !trimmedId) {
-      toastError('请填写邮箱或用户 ID（二选一）')
+      toastError(t('admin.corpus.grants.error.emailOrIdRequired'))
       return
     }
     if (trimmedId && !/^\d+$/.test(trimmedId)) {
-      toastError('用户 ID 必须是纯数字')
+      toastError(t('admin.corpus.grants.error.userIdNumeric'))
       return
     }
     if (!model) {
-      toastError('请选择要授权的模型')
+      toastError(t('admin.corpus.grants.error.modelRequired'))
       return
     }
     setLoading(true)
@@ -836,31 +844,31 @@ function GrantUpsertModal({
         free_access: freeAccess,
         remark: remark.trim() || undefined,
       })
-      toast('福利资格已发放')
+      toast(t('admin.corpus.grants.toast.granted'))
       onSaved()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '发放失败')
+      toastError(err instanceof Error ? err.message : t('admin.corpus.grants.toast.grantFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal open onClose={onClose} title="发放福利资格" width={560}>
+    <Modal open onClose={onClose} title={t('admin.corpus.grants.form.title')} width={560}>
       <div className="space-y-4">
-        <Field label="用户邮箱" required help="优先按邮箱定位用户；邮箱查无此人会被后端直接拒绝，避免抄错 ID">
+        <Field label={t('admin.corpus.grants.form.email')} required help={t('admin.corpus.grants.form.emailHelp')}>
           <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@example.com" />
         </Field>
-        <Field label="或用户 ID" help="仅在不用邮箱时填写；两者都填时以邮箱为准">
+        <Field label={t('admin.corpus.grants.form.id')} help={t('admin.corpus.grants.form.idHelp')}>
           <Input
             value={userIdText}
             onChange={(e) => setUserIdText(e.target.value)}
-            placeholder="可选"
+            placeholder={t('admin.corpus.grants.form.optional')}
             inputMode="numeric"
             disabled={email.trim() !== ''}
           />
         </Field>
-        <Field label="授权模型" required help={models.length ? undefined : '清单为空：请先在「语料清单」添加模型'}>
+        <Field label={t('admin.corpus.grants.form.model')} required help={models.length ? undefined : t('admin.corpus.grants.form.modelHelpEmpty')}>
           <Select value={model} onChange={(e) => setModel(e.target.value)} disabled={models.length === 0}>
             {models.map((m) => (
               <option key={m.model} value={m.model}>
@@ -870,19 +878,19 @@ function GrantUpsertModal({
           </Select>
         </Field>
         <label className="flex items-center justify-between text-[13px] text-ink-2">
-          <span>免计费</span>
-          <Switch checked={freeAccess} onChange={setFreeAccess} label="免计费" />
+          <span>{t('admin.corpus.grants.form.freeAccess')}</span>
+          <Switch checked={freeAccess} onChange={setFreeAccess} label={t('admin.corpus.grants.form.freeAccess')} />
         </label>
-        <Field label="备注">
-          <Textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={2} placeholder="可选，如「共建计划首批参与者」" />
+        <Field label={t('admin.corpus.grants.form.remark')}>
+          <Textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={2} placeholder={t('admin.corpus.grants.form.remarkPlaceholder')} />
         </Field>
       </div>
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>
-          取消
+          {t('admin.corpus.grants.form.cancel')}
         </Button>
         <Button variant="primary" loading={loading} onClick={handleSubmit} disabled={models.length === 0}>
-          发放
+          {t('admin.corpus.grants.form.submit')}
         </Button>
       </div>
     </Modal>

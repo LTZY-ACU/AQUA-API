@@ -588,4 +588,26 @@ export default {
   authContext: {
     notLoggedIn: 'Not signed in',
   },
+  channelStatus: {
+    enabled: 'Enabled',
+    manualDisabled: 'Manually disabled',
+    autoDisabled: 'Auto-disabled',
+    unknown: 'Unknown status',
+    unknownCode: 'Unknown status ({code})',
+  },
+  channelType: {
+    openaiCompatible: 'OpenAI-compatible',
+    generic: 'Type {type}',
+    unknown: 'Unknown type',
+  },
+  userRole: {
+    admin: 'Admin',
+    user: 'User',
+    unknown: 'Unknown role',
+    code: 'Role {role}',
+  },
+  modelsSummary: {
+    all: 'All models',
+    count: '{count} models',
+  },
 }

@@ -23,6 +23,7 @@
  *   并同步后端的新换算函数，两端保持同一取整口径。
  */
 import type { PlazaPrice } from '@/api/types'
+import { translate } from '@/i18n'
 import {
   formatDiscountLabel,
   formatYuanPerCall,
@@ -49,17 +50,17 @@ export function billingKindOf(price: PlazaPrice | undefined): BillingKind {
   return 'token'
 }
 
-/** 计费方式的中文短标签：免费 / 按次 / 按量 / 未定价 */
+/** 计费方式短标签：免费 / 按次 / 按量 / 未定价（走 i18n 词条） */
 export function billingKindLabel(kind: BillingKind): string {
   switch (kind) {
     case 'free':
-      return '免费'
+      return translate('components.modelPrice.billingFree')
     case 'per_call':
-      return '按次'
+      return translate('components.modelPrice.billingPerCall')
     case 'token':
-      return '按量'
+      return translate('components.modelPrice.billingToken')
     default:
-      return '未定价'
+      return translate('components.modelPrice.billingNone')
   }
 }
 
@@ -71,15 +72,17 @@ export function billingKindLabel(kind: BillingKind): string {
  */
 export function priceSummaryLabel(price: PlazaPrice | undefined, quotaPerYuan: number): string {
   const kind = billingKindOf(price)
-  if (!price || kind === 'none') return '待定价'
-  if (kind === 'free') return '免费'
+  if (!price || kind === 'none') return translate('components.modelPrice.summaryUnpriced')
+  if (kind === 'free') return translate('components.modelPrice.billingFree')
   if (kind === 'per_call') {
-    return price.per_call_price > 0 ? formatYuanPerCall(price.per_call_price, quotaPerYuan) : '按次计费'
+    return price.per_call_price > 0
+      ? formatYuanPerCall(price.per_call_price, quotaPerYuan)
+      : translate('components.modelPrice.summaryPerCall')
   }
-  return `输入 ${formatYuanPerMillion(price.prompt_price, quotaPerYuan)} · 输出 ${formatYuanPerMillion(
-    price.completion_price,
-    quotaPerYuan,
-  )}`
+  return translate('components.modelPrice.summaryToken', {
+    input: formatYuanPerMillion(price.prompt_price, quotaPerYuan),
+    output: formatYuanPerMillion(price.completion_price, quotaPerYuan),
+  })
 }
 
 /**
@@ -101,9 +104,9 @@ export function cachePriceLabel(price: PlazaPrice | undefined, quotaPerYuan: num
  */
 export function ratioLabel(ratio: number): string {
   const r = Number(ratio ?? 0)
-  if (!Number.isFinite(r) || r <= 0) return '倍率 100%（原价）'
-  if (r >= 100) return `倍率 ${r}%`
-  return `倍率 ${r}%（${formatDiscountLabel(r)}）`
+  if (!Number.isFinite(r) || r <= 0) return translate('components.modelPrice.ratioOriginal')
+  if (r >= 100) return translate('components.modelPrice.ratioPlain', { ratio: r })
+  return translate('components.modelPrice.ratioDiscounted', { ratio: r, discount: formatDiscountLabel(r) })
 }
 
 /** 折叠成非负整数并夹到 [0, max]，非数字/空值按 0 处理 */

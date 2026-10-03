@@ -447,7 +447,7 @@ function ChannelFormModal({
 
         {!channel && (
           <Field label={t('admin.channels.form.keyPool')} help={t('admin.channels.form.keyPoolHelp')}>
-            <Textarea value={keysText} onChange={(e) => setKeysText(e.target.value)} rows={3} placeholder="sk-a\nsk-b 备注1" />
+            <Textarea value={keysText} onChange={(e) => setKeysText(e.target.value)} rows={3} placeholder={t('admin.channels.form.keyPoolPlaceholder')} />
           </Field>
         )}
 

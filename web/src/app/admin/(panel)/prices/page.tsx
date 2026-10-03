@@ -32,6 +32,7 @@ import { DataTable, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Select, Switch, Textarea } from '@/components/ui/Form'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { useSite } from '@/lib/site/site-context'
 import { formatYuanFromQuota, formatYuanPerCall, formatYuanPerMillion, quotaToYuanInput, yuanToQuota } from '@/utils/money'
@@ -75,13 +76,14 @@ function billingTone(mode: string): 'ok' | 'info' | 'brand' {
 }
 
 const BILLING_LABEL: Record<string, string> = {
-  free: '免费',
-  token: '按量',
-  per_call: '按次',
+  free: 'admin.prices.billing.free',
+  token: 'admin.prices.billing.token',
+  per_call: 'admin.prices.billing.per_call',
 }
 
 export default function AdminPricesPage() {
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   const [items, setItems] = useState<PriceRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -136,42 +138,42 @@ export default function AdminPricesPage() {
     if (!deleteTarget) return
     try {
       await deletePrice(deleteTarget.id)
-      toast('计价规则已删除')
+      toast(t('admin.prices.toast.deleted'))
       setDeleteTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '删除失败')
+      toastError(err instanceof Error ? err.message : t('admin.prices.toast.deleteFailed'))
     }
   }
 
   const columns: Column<PriceRow>[] = [
-    { title: '模型', render: (row) => <span className="font-medium text-ink">{row.model}</span> },
-    { title: '分组', render: (row) => <span className="text-ink-2">{row.group || '默认'}</span> },
+    { title: t('admin.prices.col.model'), render: (row) => <span className="font-medium text-ink">{row.model}</span> },
+    { title: t('admin.prices.col.group'), render: (row) => <span className="text-ink-2">{row.group || t('admin.prices.groupDefault')}</span> },
     {
-      title: '适用渠道',
+      title: t('admin.prices.col.channel'),
       render: (row) =>
         row.channel_id ? (
-          <span className="text-ink-2" title={`渠道 #${row.channel_id}`}>
-            {row.channel_name || `渠道 #${row.channel_id}`}
+          <span className="text-ink-2" title={t('admin.prices.channelTitle', { id: row.channel_id })}>
+            {row.channel_name || t('admin.prices.channelValue', { id: row.channel_id })}
           </span>
         ) : (
-          <span className="text-ink-3">不限渠道（分组默认价）</span>
+          <span className="text-ink-3">{t('admin.prices.channelUnlimited')}</span>
         ),
     },
     {
-      title: '计费方式',
-      render: (row) => <Badge tone={billingTone(row.effective_billing_mode)}>{BILLING_LABEL[row.effective_billing_mode] ?? row.effective_billing_mode}</Badge>,
+      title: t('admin.prices.col.billing'),
+      render: (row) => <Badge tone={billingTone(row.effective_billing_mode)}>{BILLING_LABEL[row.effective_billing_mode] ? t(BILLING_LABEL[row.effective_billing_mode]) : row.effective_billing_mode}</Badge>,
     },
-    { title: '输入价', align: 'right', render: (row) => <span className="text-ink-2">{formatYuanPerMillion(row.prompt_price, quotaPerYuan)}</span> },
-    { title: '缓存价', align: 'right', render: (row) => <span className="text-ink-2">{formatYuanPerMillion(row.cache_price, quotaPerYuan)}</span> },
-    { title: '输出价', align: 'right', render: (row) => <span className="text-ink-2">{formatYuanPerMillion(row.completion_price, quotaPerYuan)}</span> },
-    { title: '按次价', align: 'right', render: (row) => <span className="text-ink-2">{formatYuanPerCall(row.per_call_price, quotaPerYuan)}</span> },
+    { title: t('admin.prices.col.promptPrice'), align: 'right', render: (row) => <span className="text-ink-2">{formatYuanPerMillion(row.prompt_price, quotaPerYuan)}</span> },
+    { title: t('admin.prices.col.cachePrice'), align: 'right', render: (row) => <span className="text-ink-2">{formatYuanPerMillion(row.cache_price, quotaPerYuan)}</span> },
+    { title: t('admin.prices.col.completionPrice'), align: 'right', render: (row) => <span className="text-ink-2">{formatYuanPerMillion(row.completion_price, quotaPerYuan)}</span> },
+    { title: t('admin.prices.col.perCallPrice'), align: 'right', render: (row) => <span className="text-ink-2">{formatYuanPerCall(row.per_call_price, quotaPerYuan)}</span> },
     {
-      title: '状态',
-      render: (row) => (row.enabled ? <Badge tone="ok">启用</Badge> : <Badge tone="off">停用</Badge>),
+      title: t('admin.prices.col.status'),
+      render: (row) => (row.enabled ? <Badge tone="ok">{t('admin.prices.statusEnabled')}</Badge> : <Badge tone="off">{t('admin.prices.statusDisabled')}</Badge>),
     },
     {
-      title: '备注',
+      title: t('admin.prices.col.remark'),
       render: (row) => (
         <span className="max-w-44 truncate text-[13px] text-ink-3" title={row.remark || undefined}>
           {row.remark || '—'}
@@ -179,15 +181,15 @@ export default function AdminPricesPage() {
       ),
     },
     {
-      title: '操作',
+      title: t('admin.prices.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="flex items-center justify-end gap-2 text-[13px]">
           <button type="button" onClick={() => setEditing(row)} className="text-ink-3 hover:text-brand">
-            编辑
+            {t('admin.prices.action.edit')}
           </button>
           <button type="button" onClick={() => setDeleteTarget(row)} className="text-ink-3 hover:text-err">
-            删除
+            {t('admin.prices.action.delete')}
           </button>
         </span>
       ),
@@ -198,15 +200,15 @@ export default function AdminPricesPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">计价规则</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">模型售价（每 1M token 额度 / 每次调用额度，共 {total} 条）</p>
+          <h1 className="text-xl font-bold text-ink">{t('admin.prices.title')}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.prices.subtitle', { total })}</p>
         </div>
-        <Button variant="primary" onClick={() => setEditing('new')}>新建规则</Button>
+        <Button variant="primary" onClick={() => setEditing('new')}>{t('admin.prices.create')}</Button>
       </div>
 
       {/* 分组筛选：空串 = 全部 */}
       <Tabs
-        items={[{ value: '', label: '全部' }, ...groups.map((g) => ({ value: g, label: g }))]}
+        items={[{ value: '', label: t('admin.prices.all') }, ...groups.map((g) => ({ value: g, label: g }))]}
         value={group}
         onChange={setGroup}
       />
@@ -214,18 +216,17 @@ export default function AdminPricesPage() {
       {/* 渠道筛选：不选 = 只看分组默认价；选中渠道 = 该渠道生效的价格集合 */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="w-64 shrink-0">
-          <Select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} aria-label="按渠道筛选">
-            <option value="">全部分组默认价（不限渠道）</option>
+          <Select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} aria-label={t('admin.prices.channelFilterAria')}>
+            <option value="">{t('admin.prices.channelFilterAll')}</option>
             {channels.map((c) => (
               <option key={c.id} value={String(c.id)}>
-                渠道：{c.name}
+                {t('admin.prices.channelFilterOption', { name: c.name })}
               </option>
             ))}
           </Select>
         </div>
         <p className="text-[12px] text-ink-3">
-          同一「模型 + 分组」可为某个渠道单独定价；选中渠道后展示该渠道生效的价格（分组默认价 + 该渠道专用价），
-          未配专用价时按分组默认价计费。
+          {t('admin.prices.channelFilterHint')}
         </p>
       </div>
 
@@ -235,8 +236,8 @@ export default function AdminPricesPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.id}
-          emptyTitle="还没有计价规则"
-          emptyDescription="为模型配上售价，未定价的模型默认不计费"
+          emptyTitle={t('admin.prices.emptyTitle')}
+          emptyDescription={t('admin.prices.emptyDescription')}
         />
       </Card>
 
@@ -253,10 +254,10 @@ export default function AdminPricesPage() {
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="删除计价规则"
-        message={`确认删除模型「${deleteTarget?.model}」的计价规则？删除后该模型变为不计费。`}
+        title={t('admin.prices.delete.title')}
+        message={t('admin.prices.delete.message', { model: deleteTarget?.model ?? '' })}
         danger
-        confirmText="删除"
+        confirmText={t('admin.prices.delete.confirm')}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -281,6 +282,7 @@ function PriceFormModal({
 }) {
   const { toast, toastError } = useToast()
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   const [model, setModel] = useState('')
   const [groupName, setGroupName] = useState('')
   // 适用渠道：'0' = 不限渠道（分组默认价），其他为渠道 ID 字符串
@@ -325,7 +327,7 @@ function PriceFormModal({
 
   async function handleSubmit() {
     if (!model.trim()) {
-      toastError('请填写模型名')
+      toastError(t('admin.prices.error.modelRequired'))
       return
     }
     const prompt = parseYuan(promptPrice)
@@ -333,7 +335,7 @@ function PriceFormModal({
     const completion = parseYuan(completionPrice)
     const perCall = parseYuan(perCallPrice)
     if (prompt === null || cache === null || completion === null || perCall === null) {
-      toastError('价格必须是 ≥0 的数字')
+      toastError(t('admin.prices.error.priceInvalid'))
       return
     }
     setLoading(true)
@@ -352,47 +354,47 @@ function PriceFormModal({
       }
       if (price) {
         await updatePrice(price.id, payload)
-        toast('计价规则已更新')
+        toast(t('admin.prices.toast.updated'))
       } else {
         await createPrice(payload)
-        toast('计价规则已创建')
+        toast(t('admin.prices.toast.created'))
       }
       onSaved()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : t('admin.prices.toast.saveFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={price ? '编辑计价规则' : '新建计价规则'} width={560}>
+    <Modal open={open} onClose={onClose} title={price ? t('admin.prices.form.editTitle') : t('admin.prices.form.newTitle')} width={560}>
       <div className="space-y-4">
-        <Field label="模型名" required help="支持通配：gpt-4* 前缀族、* 全局">
-          <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="如 gpt-4o 或 gpt-4*" />
+        <Field label={t('admin.prices.form.model')} required help={t('admin.prices.form.modelHelp')}>
+          <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={t('admin.prices.form.modelPlaceholder')} />
         </Field>
 
         <div className="grid grid-cols-2 gap-4">
-          <Field label="分组" help="留空表示默认分组">
-            <Input value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="如 vip" />
+          <Field label={t('admin.prices.form.group')} help={t('admin.prices.form.groupHelp')}>
+            <Input value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder={t('admin.prices.form.groupPlaceholder')} />
           </Field>
 
-          <Field label="计费方式" help="留空 = 自动判定（兼容历史数据）">
+          <Field label={t('admin.prices.form.billing')} help={t('admin.prices.form.billingHelp')}>
             <Select value={billingMode} onChange={(e) => setBillingMode(e.target.value as BillingMode | '')}>
-              <option value="">自动判定</option>
-              <option value="free">免费</option>
-              <option value="token">按量（token）</option>
-              <option value="per_call">按次（per_call）</option>
+              <option value="">{t('admin.prices.form.billingAuto')}</option>
+              <option value="free">{t('admin.prices.form.billingFree')}</option>
+              <option value="token">{t('admin.prices.form.billingToken')}</option>
+              <option value="per_call">{t('admin.prices.form.billingPerCall')}</option>
             </Select>
           </Field>
         </div>
 
         <Field
-          label="适用渠道"
-          help="不限渠道 = 该模型在该分组的通用价；选具体渠道 = 仅该渠道生效的专用价（未配专用价时回退通用价）"
+          label={t('admin.prices.form.channel')}
+          help={t('admin.prices.form.channelHelp')}
         >
           <Select value={channelID} onChange={(e) => setChannelID(e.target.value)}>
-            <option value="0">不限渠道（分组默认价）</option>
+            <option value="0">{t('admin.prices.form.channelUnlimitedOption')}</option>
             {channels.map((c) => (
               <option key={c.id} value={String(c.id)}>
                 {c.name}
@@ -402,32 +404,32 @@ function PriceFormModal({
         </Field>
 
         <div className="grid grid-cols-2 gap-4">
-          <Field label="输入价（¥）" help="每 1M 输入 token 的价格（元）">
+          <Field label={t('admin.prices.form.promptPrice')} help={t('admin.prices.form.promptHelp')}>
             <Input value={promptPrice} onChange={(e) => setPromptPrice(e.target.value)} type="number" min={0} step="0.000001" placeholder="0" />
           </Field>
-          <Field label="缓存价（¥）" help="每 1M 命中缓存的输入 token 价格（元）；0 = 按输入价">
+          <Field label={t('admin.prices.form.cachePrice')} help={t('admin.prices.form.cacheHelp')}>
             <Input value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} type="number" min={0} step="0.000001" placeholder="0" />
           </Field>
-          <Field label="输出价（¥）" help="每 1M 输出 token 的价格（元）">
+          <Field label={t('admin.prices.form.completionPrice')} help={t('admin.prices.form.completionHelp')}>
             <Input value={completionPrice} onChange={(e) => setCompletionPrice(e.target.value)} type="number" min={0} step="0.000001" placeholder="0" />
           </Field>
-          <Field label="按次价（¥）" help="每次调用的价格（元，异步任务/图像等按次计费）">
+          <Field label={t('admin.prices.form.perCallPrice')} help={t('admin.prices.form.perCallHelp')}>
             <Input value={perCallPrice} onChange={(e) => setPerCallPrice(e.target.value)} type="number" min={0} step="0.000001" placeholder="0" />
           </Field>
         </div>
 
-        <Field label="备注">
-          <Textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={2} placeholder="可选" />
+        <Field label={t('admin.prices.form.remark')}>
+          <Textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={2} placeholder={t('admin.prices.form.optional')} />
         </Field>
 
         <label className="flex items-center justify-between text-[13px] text-ink-2">
-          <span>启用该规则</span>
-          <Switch checked={enabled} onChange={setEnabled} label="启用该规则" />
+          <span>{t('admin.prices.form.enable')}</span>
+          <Switch checked={enabled} onChange={setEnabled} label={t('admin.prices.form.enable')} />
         </label>
       </div>
       <div className="mt-5 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>取消</Button>
-        <Button variant="primary" loading={loading} onClick={handleSubmit}>{price ? '保存' : '创建'}</Button>
+        <Button variant="secondary" onClick={onClose}>{t('admin.prices.form.cancel')}</Button>
+        <Button variant="primary" loading={loading} onClick={handleSubmit}>{price ? t('admin.prices.form.save') : t('admin.prices.form.create')}</Button>
       </div>
     </Modal>
   )
@@ -452,6 +454,7 @@ function PriceFormModal({
 function QuoteCard({ groups }: { groups: string[] }) {
   const { quotaPerYuan } = useSite()
   const { toastError } = useToast()
+  const { t } = useI18n()
   // 空串 = 计费默认分组：与「令牌未指定分组」的真实计费路径一致
   const [group, setGroup] = useState('')
   const [model, setModel] = useState('')
@@ -477,7 +480,7 @@ function QuoteCard({ groups }: { groups: string[] }) {
   async function handleQuote() {
     const name = model.trim()
     if (!name) {
-      toastError('请填写模型名')
+      toastError(t('admin.prices.quote.modelRequired'))
       return
     }
     setLoading(true)
@@ -492,7 +495,7 @@ function QuoteCard({ groups }: { groups: string[] }) {
       })
       setResult(data)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '试算失败')
+      toastError(err instanceof Error ? err.message : t('admin.prices.quote.failed'))
     } finally {
       setLoading(false)
     }
@@ -501,16 +504,16 @@ function QuoteCard({ groups }: { groups: string[] }) {
   return (
     <Card>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <h2 className="text-[15px] font-semibold text-ink">费用试算</h2>
+        <h2 className="text-[15px] font-semibold text-ink">{t('admin.prices.quote.title')}</h2>
         <span className="text-[12px] text-ink-3">
-          按分组核对一次调用的应扣额度——与计费链路同一套规则（分组倍率已计入）
+          {t('admin.prices.quote.subtitle')}
         </span>
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Field label="分组" help="不选 = 计费默认分组，与令牌未指定分组时的真实计费一致">
-          <Select value={group} onChange={(e) => setGroup(e.target.value)} aria-label="试算分组">
-            <option value="">默认分组</option>
+        <Field label={t('admin.prices.quote.group')} help={t('admin.prices.quote.groupHelp')}>
+          <Select value={group} onChange={(e) => setGroup(e.target.value)} aria-label={t('admin.prices.quote.groupAria')}>
+            <option value="">{t('admin.prices.quote.groupDefault')}</option>
             {groups.map((g) => (
               <option key={g} value={g}>
                 {g}
@@ -519,25 +522,25 @@ function QuoteCard({ groups }: { groups: string[] }) {
           </Select>
         </Field>
 
-        <Field label="模型名" required help="可填被通配规则覆盖的模型；也可填未配价模型核对「未定价」状态">
-          <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="如 gpt-4o" />
+        <Field label={t('admin.prices.quote.model')} required help={t('admin.prices.quote.modelHelp')}>
+          <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={t('admin.prices.quote.modelPlaceholder')} />
         </Field>
 
-        <Field label="输入 token 数" help="prompt 部分用量；留空按后端缺省 1000">
+        <Field label={t('admin.prices.quote.promptTokens')} help={t('admin.prices.quote.promptHelp')}>
           <Input type="number" min={0} step={1} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
         </Field>
 
-        <Field label="输出 token 数" help="completion 部分用量；留空按后端缺省 1000">
+        <Field label={t('admin.prices.quote.completionTokens')} help={t('admin.prices.quote.completionHelp')}>
           <Input type="number" min={0} step={1} value={completion} onChange={(e) => setCompletion(e.target.value)} />
         </Field>
 
-        <Field label="其中命中缓存" help="输入中命中上游缓存的部分（后端自动夹到不超过输入量）；留空按 0">
+        <Field label={t('admin.prices.quote.cachedTokens')} help={t('admin.prices.quote.cachedHelp')}>
           <Input type="number" min={0} step={1} value={cached} onChange={(e) => setCached(e.target.value)} />
         </Field>
 
         <div className="flex items-end">
           <Button variant="primary" loading={loading} onClick={handleQuote}>
-            试算
+            {t('admin.prices.quote.submit')}
           </Button>
         </div>
       </div>
@@ -545,27 +548,27 @@ function QuoteCard({ groups }: { groups: string[] }) {
       {result && (
         <div className="mt-4 flex flex-wrap items-end justify-between gap-3 rounded-md border border-line bg-surface/50 px-3.5 py-3">
           <div>
-            <div className="text-[12px] text-ink-3">预估花费</div>
+            <div className="text-[12px] text-ink-3">{t('admin.prices.quote.estimated')}</div>
             <div className="mt-0.5 font-mono text-xl font-semibold tabular-nums text-ink">
               {formatYuanFromQuota(result.quota, quotaPerYuan)}
             </div>
             <div className="mt-0.5 font-mono text-[11px] text-ink-3">
-              = {result.quota.toLocaleString('zh-CN')} 额度
+              {t('admin.prices.quote.quotaEq', { quota: result.quota.toLocaleString('zh-CN') })}
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">
             {result.priced ? (
               result.is_free ? (
-                <Badge tone="ok">免费</Badge>
+                <Badge tone="ok">{t('admin.prices.quote.freeBadge')}</Badge>
               ) : (
                 <Badge tone={billingTone(result.billing_mode)}>
-                  {BILLING_LABEL[result.billing_mode] ?? result.billing_mode}
+                  {BILLING_LABEL[result.billing_mode] ? t(BILLING_LABEL[result.billing_mode]) : result.billing_mode}
                 </Badge>
               )
             ) : (
-              <Badge tone="warn">未定价</Badge>
+              <Badge tone="warn">{t('admin.prices.quote.unpricedBadge')}</Badge>
             )}
-            <span className="max-w-[28rem] text-right text-[11px] text-ink-3">{quoteHint(result, group)}</span>
+            <span className="max-w-[28rem] text-right text-[11px] text-ink-3">{quoteHint(result, group, t)}</span>
           </div>
         </div>
       )}
@@ -578,17 +581,22 @@ function QuoteCard({ groups }: { groups: string[] }) {
  * 但性质完全不同，绝不能混为一谈——前者是待办，后者是站长的决定）；
  * 按量模式回显用量明细，让「这个金额由哪些量算出来的」可核对。
  */
-function quoteHint(result: QuotePreview, group: string): string {
-  const label = `分组「${group || '默认'}」`
+function quoteHint(result: QuotePreview, group: string, t: (key: string, vars?: Record<string, string | number>) => string): string {
+  const label = group || t('admin.prices.quote.groupDefault')
   if (!result.priced) {
-    return `${label}未命中任何计价规则，调用不计费；若应收费，请先为其新建规则`
+    return t('admin.prices.quote.hintUnpriced', { group: label })
   }
   if (result.is_free) {
-    return `${label}命中显式免费规则，调用不计费`
+    return t('admin.prices.quote.hintFree', { group: label })
   }
   if (result.billing_mode === 'per_call') {
     // 按次模型 token 单价全为 0，改用量数字价格也不会动——提前说明，避免误判试算失灵
-    return `${label} · 按次计费：token 用量不参与计算，按 1 次计`
+    return t('admin.prices.quote.hintPerCall', { group: label })
   }
-  return `${label} · 输入 ${result.prompt_tokens.toLocaleString('zh-CN')}（其中缓存 ${result.cached_tokens.toLocaleString('zh-CN')}）· 输出 ${result.completion_tokens.toLocaleString('zh-CN')}`
+  return t('admin.prices.quote.hintToken', {
+    group: label,
+    prompt: result.prompt_tokens.toLocaleString('zh-CN'),
+    cached: result.cached_tokens.toLocaleString('zh-CN'),
+    completion: result.completion_tokens.toLocaleString('zh-CN'),
+  })
 }

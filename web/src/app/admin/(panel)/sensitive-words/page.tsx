@@ -32,11 +32,13 @@ import { Button } from '@/components/ui/Button'
 import { Field, Input, Switch, Textarea } from '@/components/ui/Form'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
 import { DataTable, type Column } from '@/components/ui/Table'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { formatDateTime } from '@/utils/format'
 
 export default function AdminSensitiveWordsPage() {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   const [items, setItems] = useState<SensitiveWord[]>([])
   const [total, setTotal] = useState(0)
@@ -62,11 +64,11 @@ export default function AdminSensitiveWordsPage() {
       setTotal(data.total)
       setEnabledTotal(data.enabled_total)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '词表加载失败')
+      toastError(err instanceof Error ? err.message : t('admin.sensitive-words.toast.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [toastError])
+  }, [toastError, t])
 
   useEffect(() => {
     void load()
@@ -85,10 +87,10 @@ export default function AdminSensitiveWordsPage() {
     setMasterBusy(true)
     try {
       await updateSettings({ safeguard: { sensitive_filter_enabled: next } })
-      toast(next ? '敏感词过滤已开启' : '敏感词过滤已关闭')
+      toast(next ? t('admin.sensitive-words.toast.masterOn') : t('admin.sensitive-words.toast.masterOff'))
     } catch (err) {
       setMasterEnabled(!next)
-      toastError(err instanceof Error ? err.message : '总开关更新失败')
+      toastError(err instanceof Error ? err.message : t('admin.sensitive-words.toast.masterFailed'))
     } finally {
       setMasterBusy(false)
     }
@@ -101,7 +103,7 @@ export default function AdminSensitiveWordsPage() {
       await updateSensitiveWord(word.id, { enabled: !word.enabled })
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '启停更新失败')
+      toastError(err instanceof Error ? err.message : t('admin.sensitive-words.toast.toggleFailed'))
     } finally {
       setSwitchingId(0)
     }
@@ -111,48 +113,48 @@ export default function AdminSensitiveWordsPage() {
     if (!deleteTarget) return
     try {
       await deleteSensitiveWord(deleteTarget.id)
-      toast('敏感词已删除')
+      toast(t('admin.sensitive-words.toast.deleted'))
       setDeleteTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '删除失败')
+      toastError(err instanceof Error ? err.message : t('admin.sensitive-words.toast.deleteFailed'))
     }
   }
 
   const columns: Column<SensitiveWord>[] = [
     {
-      title: '词条',
+      title: t('admin.sensitive-words.col.word'),
       render: (row) => <span className="text-[13px] font-medium text-ink">{row.word}</span>,
     },
     {
-      title: '分类',
+      title: t('admin.sensitive-words.col.category'),
       render: (row) => (row.category ? <Badge tone="info">{row.category}</Badge> : <span className="text-ink-3">—</span>),
     },
     {
-      title: '启用',
+      title: t('admin.sensitive-words.col.enabled'),
       align: 'center',
       render: (row) => (
         <div className="flex justify-center">
-          <Switch checked={row.enabled} disabled={switchingId === row.id} onChange={() => handleToggleWord(row)} label={`启用词条 ${row.word}`} />
+          <Switch checked={row.enabled} disabled={switchingId === row.id} onChange={() => handleToggleWord(row)} label={t('admin.sensitive-words.switchLabel', { word: row.word })} />
         </div>
       ),
     },
     {
-      title: '备注',
+      title: t('admin.sensitive-words.col.remark'),
       render: (row) => (
         <span className="block max-w-56 truncate text-[13px] text-ink-3" title={row.remark}>{row.remark || '—'}</span>
       ),
     },
     {
-      title: '更新时间',
+      title: t('admin.sensitive-words.col.updatedAt'),
       render: (row) => <span className="whitespace-nowrap text-[13px] text-ink-3">{formatDateTime(row.updated_at)}</span>,
     },
     {
-      title: '操作',
+      title: t('admin.sensitive-words.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="flex items-center justify-end gap-2 text-[13px]">
-          <button type="button" onClick={() => setDeleteTarget(row)} className="text-ink-3 hover:text-err">删除</button>
+          <button type="button" onClick={() => setDeleteTarget(row)} className="text-ink-3 hover:text-err">{t('admin.sensitive-words.delete')}</button>
         </span>
       ),
     },
@@ -162,18 +164,18 @@ export default function AdminSensitiveWordsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">内容安全</h1>
+          <h1 className="text-xl font-bold text-ink">{t('admin.sensitive-words.title')}</h1>
           <p className="mt-0.5 text-[13px] text-ink-3">
-            敏感词过滤总开关：{masterEnabled ? '已开启' : '已关闭'} · 生效中 {enabledTotal} 条
+            {t('admin.sensitive-words.subtitle', { state: masterEnabled ? t('admin.sensitive-words.stateOn') : t('admin.sensitive-words.stateOff'), count: enabledTotal })}
           </p>
         </div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-[13px] text-ink-2">
-            <Switch checked={masterEnabled} disabled={masterBusy} onChange={handleMasterToggle} label="敏感词过滤总开关" />
-            总开关
+            <Switch checked={masterEnabled} disabled={masterBusy} onChange={handleMasterToggle} label={t('admin.sensitive-words.masterAria')} />
+            {t('admin.sensitive-words.masterSwitch')}
           </label>
-          <Button variant="secondary" onClick={() => setImporting(true)}>批量导入</Button>
-          <Button variant="primary" onClick={() => setCreating(true)}>新建词条</Button>
+          <Button variant="secondary" onClick={() => setImporting(true)}>{t('admin.sensitive-words.import')}</Button>
+          <Button variant="primary" onClick={() => setCreating(true)}>{t('admin.sensitive-words.create')}</Button>
         </div>
       </div>
 
@@ -183,8 +185,8 @@ export default function AdminSensitiveWordsPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.id}
-          emptyTitle="还没有敏感词"
-          emptyDescription="新建单条或批量导入，并确保顶部总开关已开启。"
+          emptyTitle={t('admin.sensitive-words.emptyTitle')}
+          emptyDescription={t('admin.sensitive-words.emptyDescription')}
         />
       </Card>
 
@@ -210,10 +212,10 @@ export default function AdminSensitiveWordsPage() {
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="删除敏感词"
-        message={`确认删除「${deleteTarget?.word}」？删除后该词不再参与匹配。`}
+        title={t('admin.sensitive-words.deleteConfirm.title')}
+        message={t('admin.sensitive-words.deleteConfirm.message', { word: deleteTarget?.word ?? '' })}
         danger
-        confirmText="删除"
+        confirmText={t('admin.sensitive-words.deleteConfirm.confirm')}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -233,6 +235,7 @@ function CreateWordModal({
   onSaved: () => void
 }) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
   const [word, setWord] = useState('')
   const [category, setCategory] = useState('')
   const [enabled, setEnabled] = useState(true)
@@ -249,7 +252,7 @@ function CreateWordModal({
 
   async function handleSubmit() {
     if (!word.trim()) {
-      toastError('请填写词条内容')
+      toastError(t('admin.sensitive-words.error.wordRequired'))
       return
     }
     setLoading(true)
@@ -260,35 +263,35 @@ function CreateWordModal({
         enabled,
         remark: remark.trim() || undefined,
       } as SensitiveWordPayload)
-      toast('敏感词已添加')
+      toast(t('admin.sensitive-words.toast.added'))
       onSaved()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : t('admin.sensitive-words.toast.saveFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="新建敏感词" width={560}>
+    <Modal open={open} onClose={onClose} title={t('admin.sensitive-words.form.title')} width={560}>
       <div className="space-y-4">
-        <Field label="词条" required help="落库时统一为「去首尾空白 + 小写」，匹配不区分大小写">
-          <Input value={word} onChange={(e) => setWord(e.target.value)} placeholder="输入需要拦截的词语" />
+        <Field label={t('admin.sensitive-words.form.word')} required help={t('admin.sensitive-words.form.wordHelp')}>
+          <Input value={word} onChange={(e) => setWord(e.target.value)} placeholder={t('admin.sensitive-words.form.wordPlaceholder')} />
         </Field>
-        <Field label="分类" help="如「违法违规」「广告推广」，可为空">
-          <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="可选" />
+        <Field label={t('admin.sensitive-words.form.category')} help={t('admin.sensitive-words.form.categoryHelp')}>
+          <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder={t('admin.sensitive-words.form.optional')} />
         </Field>
         <label className="flex items-center justify-between text-[13px] text-ink-2">
-          <span>创建后立即启用</span>
-          <Switch checked={enabled} onChange={setEnabled} label="创建后立即启用" />
+          <span>{t('admin.sensitive-words.form.enabled')}</span>
+          <Switch checked={enabled} onChange={setEnabled} label={t('admin.sensitive-words.form.enabled')} />
         </label>
-        <Field label="备注">
-          <Textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={2} placeholder="可选" />
+        <Field label={t('admin.sensitive-words.form.remark')}>
+          <Textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={2} placeholder={t('admin.sensitive-words.form.optional')} />
         </Field>
       </div>
       <div className="mt-5 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>取消</Button>
-        <Button variant="primary" loading={loading} onClick={handleSubmit}>添加</Button>
+        <Button variant="secondary" onClick={onClose}>{t('admin.sensitive-words.form.cancel')}</Button>
+        <Button variant="primary" loading={loading} onClick={handleSubmit}>{t('admin.sensitive-words.form.submit')}</Button>
       </div>
     </Modal>
   )
@@ -306,6 +309,7 @@ function ImportWordsModal({
   onSaved: () => void
 }) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
   const [text, setText] = useState('')
   const [category, setCategory] = useState('')
   const [loading, setLoading] = useState(false)
@@ -318,34 +322,38 @@ function ImportWordsModal({
 
   async function handleSubmit() {
     if (!text.trim()) {
-      toastError('请粘贴要导入的词条文本')
+      toastError(t('admin.sensitive-words.importError.textRequired'))
       return
     }
     setLoading(true)
     try {
       const result = await importSensitiveWords(text, category.trim())
-      toast(`已导入 ${result.imported} 条（解析 ${result.total} 条${result.skipped_invalid ? `，跳过无效 ${result.skipped_invalid} 条` : ''}）`)
+      toast(t('admin.sensitive-words.toast.imported', {
+        imported: result.imported,
+        total: result.total,
+        skipped: result.skipped_invalid ? t('admin.sensitive-words.toast.skipped', { count: result.skipped_invalid }) : '',
+      }))
       onSaved()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '导入失败')
+      toastError(err instanceof Error ? err.message : t('admin.sensitive-words.toast.importFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="批量导入敏感词" width={560}>
+    <Modal open={open} onClose={onClose} title={t('admin.sensitive-words.importForm.title')} width={560}>
       <div className="space-y-4">
-        <Field label="词条文本" required help="每行一个；也支持用逗号、顿号分隔。已存在的词条会自动跳过">
-          <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} placeholder={'例：\n敏感词A\n敏感词B,敏感词C'} />
+        <Field label={t('admin.sensitive-words.importForm.text')} required help={t('admin.sensitive-words.importForm.textHelp')}>
+          <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} placeholder={t('admin.sensitive-words.importForm.textPlaceholder')} />
         </Field>
-        <Field label="统一分类" help="为本批全部词条指定分类，可为空">
-          <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="可选" />
+        <Field label={t('admin.sensitive-words.importForm.category')} help={t('admin.sensitive-words.importForm.categoryHelp')}>
+          <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder={t('admin.sensitive-words.importForm.optional')} />
         </Field>
       </div>
       <div className="mt-5 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>取消</Button>
-        <Button variant="primary" loading={loading} onClick={handleSubmit}>导入</Button>
+        <Button variant="secondary" onClick={onClose}>{t('admin.sensitive-words.importForm.cancel')}</Button>
+        <Button variant="primary" loading={loading} onClick={handleSubmit}>{t('admin.sensitive-words.importForm.submit')}</Button>
       </div>
     </Modal>
   )

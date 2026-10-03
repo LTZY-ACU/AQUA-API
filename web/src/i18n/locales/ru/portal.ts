@@ -32,6 +32,10 @@ export default {
   layout: {
     entering: 'Вход в портал…',
   },
+  models: {
+    title: 'Каталог моделей',
+    subtitle: 'Доступные модели и цены',
+  },
   overview: {
     title: 'Обзор',
     subtitle: 'Текущее использование и баланс вашего аккаунта',

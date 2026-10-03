@@ -14,6 +14,7 @@
  *   新增「本地化展示」格式化请加在 i18n/format.ts（那里能拿到当前语言）；
  *   本文件只保留与语言无关的换算与解析（formatLatency / parseModelList 等）。
  */
+import { translate } from '@/i18n'
 import { EMPTY, formatDateTime, formatNumber } from '@/i18n/format'
 
 // 时间 / 数字的本地化格式化统一从 i18n/format.ts 转发，保持既有导入路径可用
@@ -42,19 +43,17 @@ export function formatRate(tps: number | null | undefined): string {
 
 /**
  * 到期时间展示：0 表示永不过期（契约约定）。
- * TODO(i18n): 「永不过期」是展示文案，待页面域（portal/admin）词条就绪后改走 $t —— 本轮仅迁移共用组件。
  */
 export function formatExpiry(ts: number | null | undefined): string {
-  if (!ts) return '永不过期'
+  if (!ts) return translate('common.value.neverExpires')
   return formatDateTime(ts)
 }
 
 /**
  * 剩余额度展示：unlimited_quota 为 true 时忽略 remain_quota（契约明确该字段无意义）。
- * TODO(i18n): 「不限额度」同 formatExpiry，待页面域词条就绪后改走 $t。
  */
 export function formatQuota(remain: number | null | undefined, unlimited?: boolean): string {
-  if (unlimited) return '不限额度'
+  if (unlimited) return translate('common.value.unlimitedQuota')
   if (remain === null || remain === undefined) return EMPTY
   // 负数在契约里未被定义为「无限」，这里如实展示，避免误读为可用
   return formatNumber(remain)

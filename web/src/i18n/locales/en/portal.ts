@@ -32,6 +32,10 @@ export default {
   layout: {
     entering: 'Entering the portal…',
   },
+  models: {
+    title: 'Model Plaza',
+    subtitle: 'Currently available models and prices',
+  },
   overview: {
     title: 'Overview',
     subtitle: 'Your current usage and balance',

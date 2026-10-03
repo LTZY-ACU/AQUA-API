@@ -24,6 +24,7 @@ import { DataTable, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Switch, Textarea } from '@/components/ui/Form'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { centsToYuan, formatNumber, yuanToCents } from '@/utils/format'
 
@@ -43,6 +44,7 @@ export default function AdminGroupsPage() {
   const [editing, setEditing] = useState<GroupWithRpm | null | 'new'>(null)
   const [deleteTarget, setDeleteTarget] = useState<GroupWithRpm | null>(null)
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   // 分组数量极少，后端不分页，一次拉全量
   const load = useCallback(async () => {
@@ -66,37 +68,37 @@ export default function AdminGroupsPage() {
     if (!deleteTarget) return
     try {
       await deleteGroup(deleteTarget.id)
-      toast('分组已删除')
+      toast(t('admin.groups.toast.deleted'))
       setDeleteTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '删除失败')
+      toastError(err instanceof Error ? err.message : t('admin.groups.toast.deleteFailed'))
     }
   }
 
   const columns: Column<GroupWithRpm>[] = [
-    { title: '标识', render: (row) => <span className="font-medium text-ink">{row.name}</span> },
-    { title: '名称', render: (row) => <span className="text-ink-2">{row.label}</span> },
+    { title: t('admin.groups.col.name'), render: (row) => <span className="font-medium text-ink">{row.name}</span> },
+    { title: t('admin.groups.col.label'), render: (row) => <span className="text-ink-2">{row.label}</span> },
     {
-      title: '倍率',
+      title: t('admin.groups.col.ratio'),
       align: 'right',
       render: (row) => (
         <span className="text-ink-2">
-          {row.ratio} = {formatNumber(row.ratio / 100)} 倍
+          {t('admin.groups.ratioValue', { ratio: row.ratio, times: formatNumber(row.ratio / 100) })}
         </span>
       ),
     },
     {
-      title: 'RPM',
+      title: t('admin.groups.col.rpm'),
       align: 'right',
       render: (row) => (
         <span className="text-ink-2">
-          {row.rpm_limit && row.rpm_limit > 0 ? `${formatNumber(row.rpm_limit)} / 分` : '不限'}
+          {row.rpm_limit && row.rpm_limit > 0 ? t('admin.groups.rpmValue', { count: formatNumber(row.rpm_limit) }) : t('admin.groups.rpmUnlimited')}
         </span>
       ),
     },
     {
-      title: '描述',
+      title: t('admin.groups.col.description'),
       render: (row) => (
         <span className="max-w-56 truncate text-[13px] text-ink-3" title={row.description || undefined}>
           {row.description || '—'}
@@ -104,41 +106,41 @@ export default function AdminGroupsPage() {
       ),
     },
     {
-      title: '状态',
-      render: (row) => (row.enabled ? <Badge tone="ok">启用</Badge> : <Badge tone="off">停用</Badge>),
+      title: t('admin.groups.col.status'),
+      render: (row) => (row.enabled ? <Badge tone="ok">{t('admin.groups.statusEnabled')}</Badge> : <Badge tone="off">{t('admin.groups.statusDisabled')}</Badge>),
     },
     {
-      title: '引用',
+      title: t('admin.groups.col.refs'),
       align: 'right',
       render: (row) => (
         <span className="text-ink-2">
-          {row.channel_count} 渠道 · {row.price_count} 价格
+          {t('admin.groups.refsValue', { channels: row.channel_count, prices: row.price_count })}
         </span>
       ),
     },
     {
-      title: '解锁门槛',
+      title: t('admin.groups.col.unlock'),
       align: 'right',
       render: (row) => (
         <span className="text-ink-2">
-          {row.unlock_min_recharge_cents > 0 ? `¥${formatNumber(centsToYuan(row.unlock_min_recharge_cents))}` : '无门槛'}
+          {row.unlock_min_recharge_cents > 0 ? t('admin.groups.unlockValue', { amount: formatNumber(centsToYuan(row.unlock_min_recharge_cents)) }) : t('admin.groups.unlockNone')}
         </span>
       ),
     },
     {
-      title: '批发',
-      render: (row) => (row.admin_only ? <Badge tone="brand">批发价</Badge> : <span className="text-ink-3">—</span>),
+      title: t('admin.groups.col.wholesale'),
+      render: (row) => (row.admin_only ? <Badge tone="brand">{t('admin.groups.wholesaleBadge')}</Badge> : <span className="text-ink-3">—</span>),
     },
     {
-      title: '操作',
+      title: t('admin.groups.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="flex items-center justify-end gap-2 text-[13px]">
           <button type="button" onClick={() => setEditing(row)} className="text-ink-3 hover:text-brand">
-            编辑
+            {t('admin.groups.action.edit')}
           </button>
           <button type="button" onClick={() => setDeleteTarget(row)} className="text-ink-3 hover:text-err">
-            删除
+            {t('admin.groups.action.delete')}
           </button>
         </span>
       ),
@@ -149,10 +151,10 @@ export default function AdminGroupsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">模型分组</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">计费倍率与解锁门槛（共 {total} 个分组）</p>
+          <h1 className="text-xl font-bold text-ink">{t('admin.groups.title')}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.groups.subtitle', { total })}</p>
         </div>
-        <Button variant="primary" onClick={() => setEditing('new')}>新建分组</Button>
+        <Button variant="primary" onClick={() => setEditing('new')}>{t('admin.groups.create')}</Button>
       </div>
 
       <Card padding="none">
@@ -161,8 +163,8 @@ export default function AdminGroupsPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.id}
-          emptyTitle="还没有模型分组"
-          emptyDescription="新建一个分组来定义计费倍率与解锁门槛"
+          emptyTitle={t('admin.groups.emptyTitle')}
+          emptyDescription={t('admin.groups.emptyDescription')}
         />
       </Card>
 
@@ -175,14 +177,14 @@ export default function AdminGroupsPage() {
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="删除分组"
+        title={t('admin.groups.delete.title')}
         message={
           deleteTarget
-            ? `确认删除分组「${deleteTarget.name}」？当前被 ${deleteTarget.channel_count} 个渠道、${deleteTarget.price_count} 条计价规则引用，仍被引用时后端会拒绝删除。`
+            ? t('admin.groups.delete.message', { name: deleteTarget.name, channels: deleteTarget.channel_count, prices: deleteTarget.price_count })
             : undefined
         }
         danger
-        confirmText="删除"
+        confirmText={t('admin.groups.delete.confirm')}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -204,6 +206,7 @@ function GroupFormModal({
   onSaved: () => void
 }) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
   const [name, setName] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [ratio, setRatio] = useState('100')
@@ -230,23 +233,23 @@ function GroupFormModal({
   async function handleSubmit() {
     const nameValue = name.trim()
     if (!group && !nameValue) {
-      toastError('请填写分组标识')
+      toastError(t('admin.groups.error.nameRequired'))
       return
     }
     const ratioValue = Number(ratio)
     if (!Number.isFinite(ratioValue) || ratioValue < 0) {
-      toastError('倍率必须是 ≥0 的数字（100 = 1.0 倍）')
+      toastError(t('admin.groups.error.ratioInvalid'))
       return
     }
     const cents = unlockYuan.trim() === '' ? 0 : yuanToCents(unlockYuan)
     if (cents === null) {
-      toastError('解锁门槛必须是 ≥0 的数字（元）')
+      toastError(t('admin.groups.error.unlockInvalid'))
       return
     }
     // RPM 是每分钟请求上限的整数计数，0 表示不限；小数没有意义
     const rpmValue = rpmLimit.trim() === '' ? 0 : Number(rpmLimit)
     if (!Number.isInteger(rpmValue) || rpmValue < 0) {
-      toastError('RPM 上限必须是 ≥0 的整数（0 = 不限）')
+      toastError(t('admin.groups.error.rpmInvalid'))
       return
     }
     setLoading(true)
@@ -265,7 +268,7 @@ function GroupFormModal({
           rpm_limit: rpmValue,
         }
         await updateGroup(group.id, payload)
-        toast('分组已更新')
+        toast(t('admin.groups.toast.updated'))
       } else {
         const payload: ModelGroupPayload & { rpm_limit: number } = {
           name: nameValue.toLowerCase(),
@@ -278,57 +281,57 @@ function GroupFormModal({
           rpm_limit: rpmValue,
         }
         await createGroup(payload)
-        toast('分组已创建')
+        toast(t('admin.groups.toast.created'))
       }
       onSaved()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : t('admin.groups.toast.saveFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={group ? '编辑分组' : '新建分组'} width={560}>
+    <Modal open={open} onClose={onClose} title={group ? t('admin.groups.form.editTitle') : t('admin.groups.form.newTitle')} width={560}>
       <div className="space-y-4">
-        <Field label="分组标识" required={!group} help={group ? '标识创建后不可修改' : '小写字母/数字/连字符，创建后不可修改'}>
-          <Input value={name} onChange={(e) => setName(e.target.value)} disabled={Boolean(group)} placeholder="如 vip / free" />
+        <Field label={t('admin.groups.form.name')} required={!group} help={group ? t('admin.groups.form.nameHelpEdit') : t('admin.groups.form.nameHelpNew')}>
+          <Input value={name} onChange={(e) => setName(e.target.value)} disabled={Boolean(group)} placeholder={t('admin.groups.form.namePlaceholder')} />
         </Field>
 
-        <Field label="展示名称" help="留空则显示分组标识">
-          <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="如 VIP 会员" />
+        <Field label={t('admin.groups.form.displayName')} help={t('admin.groups.form.displayNameHelp')}>
+          <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={t('admin.groups.form.displayNamePlaceholder')} />
         </Field>
 
-        <Field label="计费倍率" help="100 = 1.0 倍，150 = 1.5 倍；实际扣费 = 基础额度 × ratio / 100">
+        <Field label={t('admin.groups.form.ratio')} help={t('admin.groups.form.ratioHelp')}>
           <Input value={ratio} onChange={(e) => setRatio(e.target.value)} type="number" min={0} step="1" placeholder="100" />
         </Field>
 
-        <Field label="RPM 上限" help="本分组每分钟允许的请求数上限；0 = 不限（默认）">
+        <Field label={t('admin.groups.form.rpm')} help={t('admin.groups.form.rpmHelp')}>
           <Input value={rpmLimit} onChange={(e) => setRpmLimit(e.target.value)} type="number" min={0} step="1" placeholder="0" />
         </Field>
 
-        <Field label="描述">
-          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="这个分组是给谁用的？" />
+        <Field label={t('admin.groups.form.description')}>
+          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder={t('admin.groups.form.descriptionPlaceholder')} />
         </Field>
 
-        <Field label="解锁门槛（元）" help="用户累计充值达到该金额才可解锁本分组；0 = 无门槛">
+        <Field label={t('admin.groups.form.unlock')} help={t('admin.groups.form.unlockHelp')}>
           <Input value={unlockYuan} onChange={(e) => setUnlockYuan(e.target.value)} type="number" min={0} step="0.01" placeholder="0" />
         </Field>
 
         <label className="flex items-center justify-between text-[13px] text-ink-2">
-          <span>启用分组</span>
-          <Switch checked={enabled} onChange={setEnabled} label="启用分组" />
+          <span>{t('admin.groups.form.enable')}</span>
+          <Switch checked={enabled} onChange={setEnabled} label={t('admin.groups.form.enable')} />
         </label>
 
         <label className="flex items-center justify-between text-[13px] text-ink-2">
-          <span>仅管理员分发（批发价）</span>
-          <Switch checked={adminOnly} onChange={setAdminOnly} label="仅管理员分发" />
+          <span>{t('admin.groups.form.adminOnly')}</span>
+          <Switch checked={adminOnly} onChange={setAdminOnly} label={t('admin.groups.form.adminOnlySwitch')} />
         </label>
-        <div className="text-xs text-ink-3">开启后门户不下发该分组，只能由后台代建令牌时指定。</div>
+        <div className="text-xs text-ink-3">{t('admin.groups.form.adminOnlyHint')}</div>
       </div>
       <div className="mt-5 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>取消</Button>
-        <Button variant="primary" loading={loading} onClick={handleSubmit}>{group ? '保存' : '创建'}</Button>
+        <Button variant="secondary" onClick={onClose}>{t('admin.groups.form.cancel')}</Button>
+        <Button variant="primary" loading={loading} onClick={handleSubmit}>{group ? t('admin.groups.form.save') : t('admin.groups.form.create')}</Button>
       </div>
     </Modal>
   )

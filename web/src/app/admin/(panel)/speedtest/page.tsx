@@ -22,12 +22,14 @@ import type { Channel } from '@/api/types'
 import { Badge, Card, EmptyState } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
 import { useSpeedTestRunner } from '@/components/admin/useSpeedTestRunner'
+import { useI18n } from '@/i18n'
 import { formatLatency } from '@/utils/format'
 
 export default function AdminSpeedTestPage() {
   const [channels, setChannels] = useState<Channel[]>([])
   const [channelId, setChannelId] = useState<number | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const { t } = useI18n()
 
   // 渠道清单：测速页只关心"有哪些渠道可选"，一页拉够（与渠道页一致的上限）。
   useEffect(() => {
@@ -66,25 +68,25 @@ export default function AdminSpeedTestPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">模型测速</h1>
+        <h1 className="text-xl font-bold text-ink">{t('admin.speedtest.title')}</h1>
         <p className="mt-0.5 text-[13px] text-ink-3">
-          逐模型测首字延迟（每次约消耗 2~3 token）；结果落库并展示在模型广场
+          {t('admin.speedtest.subtitle')}
         </p>
       </div>
 
       <Card padding="md">
         <div className="flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1 text-[13px] text-ink-2">
-            渠道
+            {t('admin.speedtest.channel')}
             <select
               value={channelId ?? ''}
               onChange={(e) => setChannelId(e.target.value ? Number(e.target.value) : null)}
               className="min-w-56 rounded-md border border-line bg-card px-3 py-1.5 text-[13px] text-ink"
             >
-              {channels.length === 0 && <option value="">暂无渠道</option>}
+              {channels.length === 0 && <option value="">{t('admin.speedtest.noChannels')}</option>}
               {channels.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name}（{c.models.length} 个模型）
+                  {t('admin.speedtest.channelOption', { name: c.name, count: c.models.length })}
                 </option>
               ))}
             </select>
@@ -92,23 +94,23 @@ export default function AdminSpeedTestPage() {
 
           <div className="flex items-center gap-2 text-[13px]">
             <Button variant="secondary" onClick={() => setSelected(new Set(models))} disabled={runner.running || models.length === 0}>
-              全选
+              {t('admin.speedtest.selectAll')}
             </Button>
             <Button variant="secondary" onClick={() => setSelected(new Set())} disabled={runner.running}>
-              清空
+              {t('admin.speedtest.clear')}
             </Button>
-            <span className="text-ink-3">已选 {selectedModels.length}/{models.length}</span>
+            <span className="text-ink-3">{t('admin.speedtest.selectedCount', { selected: selectedModels.length, total: models.length })}</span>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
             {!runner.running ? (
               <Button variant="primary" onClick={runner.start} disabled={selectedModels.length === 0}>
-                {runner.done === 0 ? '开始测速' : '继续测速'}
+                {runner.done === 0 ? t('admin.speedtest.start') : t('admin.speedtest.resume')}
               </Button>
             ) : (
-              <Button variant="secondary" onClick={runner.stop}>停止</Button>
+              <Button variant="secondary" onClick={runner.stop}>{t('admin.speedtest.stop')}</Button>
             )}
-            <Button variant="secondary" onClick={runner.reset} disabled={runner.running}>重置</Button>
+            <Button variant="secondary" onClick={runner.reset} disabled={runner.running}>{t('admin.speedtest.reset')}</Button>
           </div>
         </div>
 
@@ -149,35 +151,35 @@ export default function AdminSpeedTestPage() {
         {runner.entries.length === 0 ? (
           <div className="p-6">
             <EmptyState
-              title={channel ? '选择模型后开始测速' : '先在上方选择渠道'}
-              description="测速结果按首字延迟排序，成功在前"
+              title={channel ? t('admin.speedtest.emptyTitleChannel') : t('admin.speedtest.emptyTitleNoChannel')}
+              description={t('admin.speedtest.emptyDescription')}
             />
           </div>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-4 py-3 text-[13px] text-ink-2">
               <span>
-                进度 <span className="font-mono text-ink">{runner.done}</span>/{runner.entries.length}
+                {t('admin.speedtest.progress')} <span className="font-mono text-ink">{runner.done}</span>/{runner.entries.length}
               </span>
               <span>
-                成功 <span className="font-mono text-ok">{runner.okCount}</span>
+                {t('admin.speedtest.success')} <span className="font-mono text-ok">{runner.okCount}</span>
               </span>
               {summary && (
                 <>
                   <span>
-                    最快 <span className="font-mono text-ink">{summary.fastest.model}</span>
+                    {t('admin.speedtest.fastest')} <span className="font-mono text-ink">{summary.fastest.model}</span>
                     <span className="ml-1 font-mono text-ok">{formatLatency(summary.fastest.result?.ttfb_ms)}</span>
                   </span>
                   <span>
-                    最慢 <span className="font-mono text-ink">{summary.slowest.model}</span>
+                    {t('admin.speedtest.slowest')} <span className="font-mono text-ink">{summary.slowest.model}</span>
                     <span className="ml-1 font-mono text-warn">{formatLatency(summary.slowest.result?.ttfb_ms)}</span>
                   </span>
                   <span>
-                    平均 <span className="font-mono text-ink">{formatLatency(summary.avg)}</span>
+                    {t('admin.speedtest.avg')} <span className="font-mono text-ink">{formatLatency(summary.avg)}</span>
                   </span>
                 </>
               )}
-              {runner.running && <span className="text-ink-3">测速中…</span>}
+              {runner.running && <span className="text-ink-3">{t('admin.speedtest.testing')}</span>}
             </div>
             <SpeedResultTable entries={runner.entries} />
           </>
@@ -189,6 +191,7 @@ export default function AdminSpeedTestPage() {
 
 /** 结果表：完成的按 TTFB 升序在前（排行是本页的核心产出），未完成的按原顺序垫底 */
 function SpeedResultTable({ entries }: { entries: ReturnType<typeof useSpeedTestRunner>['entries'] }) {
+  const { t } = useI18n()
   const rows = useMemo(() => {
     const ranked = [...entries].sort((a, b) => rank(a) - rank(b))
     return ranked
@@ -199,13 +202,13 @@ function SpeedResultTable({ entries }: { entries: ReturnType<typeof useSpeedTest
       <table className="w-full text-[13px]">
         <thead className="bg-surface text-ink-3">
           <tr>
-            <th className="px-4 py-2 text-left font-medium">#</th>
-            <th className="px-4 py-2 text-left font-medium">模型</th>
-            <th className="px-4 py-2 text-left font-medium">状态</th>
-            <th className="px-4 py-2 text-right font-medium">首字延迟</th>
-            <th className="px-4 py-2 text-right font-medium">总耗时</th>
-            <th className="px-4 py-2 text-right font-medium">状态码</th>
-            <th className="px-4 py-2 text-left font-medium">说明</th>
+            <th className="px-4 py-2 text-left font-medium">{t('admin.speedtest.col.index')}</th>
+            <th className="px-4 py-2 text-left font-medium">{t('admin.speedtest.col.model')}</th>
+            <th className="px-4 py-2 text-left font-medium">{t('admin.speedtest.col.status')}</th>
+            <th className="px-4 py-2 text-right font-medium">{t('admin.speedtest.col.ttfb')}</th>
+            <th className="px-4 py-2 text-right font-medium">{t('admin.speedtest.col.totalMs')}</th>
+            <th className="px-4 py-2 text-right font-medium">{t('admin.speedtest.col.statusCode')}</th>
+            <th className="px-4 py-2 text-left font-medium">{t('admin.speedtest.col.message')}</th>
           </tr>
         </thead>
         <tbody>
@@ -214,9 +217,9 @@ function SpeedResultTable({ entries }: { entries: ReturnType<typeof useSpeedTest
               <td className="px-4 py-2 font-mono text-ink-3">{entry.status === 'done' && entry.result?.ok ? index + 1 : '—'}</td>
               <td className="px-4 py-2 font-mono text-ink" title={entry.result?.upstream_model}>{entry.model}</td>
               <td className="px-4 py-2">
-                {entry.status === 'pending' && <Badge tone="off">待测</Badge>}
-                {entry.status === 'running' && <Badge tone="warn">测速中</Badge>}
-                {entry.status === 'done' && entry.result && (entry.result.ok ? <Badge tone="ok">成功</Badge> : entry.result.blocked ? <Badge tone="warn">已移除</Badge> : <Badge tone="err">失败</Badge>)}
+                {entry.status === 'pending' && <Badge tone="off">{t('admin.speedtest.badge.pending')}</Badge>}
+                {entry.status === 'running' && <Badge tone="warn">{t('admin.speedtest.badge.running')}</Badge>}
+                {entry.status === 'done' && entry.result && (entry.result.ok ? <Badge tone="ok">{t('admin.speedtest.badge.ok')}</Badge> : entry.result.blocked ? <Badge tone="warn">{t('admin.speedtest.badge.blocked')}</Badge> : <Badge tone="err">{t('admin.speedtest.badge.failed')}</Badge>)}
               </td>
               <td className="px-4 py-2 text-right font-mono tabular-nums text-ink">
                 {entry.result?.ok ? formatLatency(entry.result.ttfb_ms) : '—'}

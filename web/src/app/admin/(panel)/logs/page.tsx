@@ -23,6 +23,7 @@ import { Badge, Card } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Select } from '@/components/ui/Form'
 import { DataTable, Pagination, type Column } from '@/components/ui/Table'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { useSite } from '@/lib/site/site-context'
 import { formatDateTime, formatLatency, formatNumber } from '@/utils/format'
@@ -58,6 +59,7 @@ export default function AdminLogsPage() {
   const [status, setStatus] = useState<'success' | 'error' | ''>('')
 
   const { toastError } = useToast()
+  const { t } = useI18n()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -74,11 +76,11 @@ export default function AdminLogsPage() {
       setItems(data.items)
       setTotal(data.total)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '日志加载失败')
+      toastError(err instanceof Error ? err.message : t('admin.logs.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [page, model, user, channelId, status, toastError])
+  }, [page, model, user, channelId, status, toastError, t])
 
   useEffect(() => {
     void load()
@@ -102,21 +104,21 @@ export default function AdminLogsPage() {
 
   const columns: Column<UsageLog>[] = [
     {
-      title: '时间',
+      title: t('admin.logs.col.time'),
       render: (row) => <span className="whitespace-nowrap text-[13px] text-ink-3">{formatDateTime(row.created_at)}</span>,
     },
     {
-      title: '用户',
+      title: t('admin.logs.col.user'),
       render: (row) => <span className="text-[13px] text-ink-2">{row.username || `#${row.user_id}`}</span>,
     },
     {
-      title: '令牌',
+      title: t('admin.logs.col.token'),
       render: (row) => (
         <span className="block max-w-36 truncate text-[13px]" title={row.token_name}>{row.token_name || '—'}</span>
       ),
     },
     {
-      title: '渠道',
+      title: t('admin.logs.col.channel'),
       render: (row) =>
         row.channel_id ? (
           <span className="block max-w-36 truncate text-[13px]" title={row.channel_name}>
@@ -127,13 +129,13 @@ export default function AdminLogsPage() {
         ),
     },
     {
-      title: '模型',
+      title: t('admin.logs.col.model'),
       render: (row) => (
         <span className="block max-w-40 truncate text-[13px] font-medium text-ink" title={row.model}>{row.model}</span>
       ),
     },
     {
-      title: '上游模型',
+      title: t('admin.logs.col.upstreamModel'),
       render: (row) => (
         <span className="block max-w-32 truncate text-[13px] text-ink-3" title={row.upstream_model}>
           {row.upstream_model || '—'}
@@ -141,27 +143,27 @@ export default function AdminLogsPage() {
       ),
     },
     {
-      title: '状态码',
+      title: t('admin.logs.col.statusCode'),
       align: 'center',
       render: (row) => <Badge tone={statusTone(row.status_code)}>{row.status_code || '—'}</Badge>,
     },
     {
-      title: '总 Token',
+      title: t('admin.logs.col.totalTokens'),
       align: 'right',
       render: (row) => <span className="text-[13px] tabular-nums text-ink-2">{formatNumber(row.total_tokens)}</span>,
     },
     {
-      title: '费用',
+      title: t('admin.logs.col.cost'),
       align: 'right',
       render: (row) => <span className="text-[13px] tabular-nums text-ink-2">{formatYuanFromQuota(row.quota, quotaPerYuan)}</span>,
     },
     {
-      title: '耗时',
+      title: t('admin.logs.col.latency'),
       align: 'right',
       render: (row) => <span className="text-[13px] tabular-nums text-ink-2">{formatLatency(row.latency_ms)}</span>,
     },
     {
-      title: '错误',
+      title: t('admin.logs.col.error'),
       render: (row) =>
         row.error ? (
           <span className="block max-w-56 truncate text-[13px] text-err" title={row.error}>{row.error}</span>
@@ -174,32 +176,32 @@ export default function AdminLogsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">调用日志</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">全站请求明细（{formatNumber(total)} 条）</p>
+        <h1 className="text-xl font-bold text-ink">{t('admin.logs.title')}</h1>
+        <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.logs.subtitle', { total: formatNumber(total) })}</p>
       </div>
 
       {/* 筛选条 */}
       <Card>
         <div className="flex flex-wrap items-end gap-3">
-          <Field label="模型">
-            <Input value={model} onChange={(e) => setModel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder="如 gpt-4o" className="w-44" />
+          <Field label={t('admin.logs.filter.model')}>
+            <Input value={model} onChange={(e) => setModel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder={t('admin.logs.filter.modelPlaceholder')} className="w-44" />
           </Field>
-          <Field label="用户">
-            <Input value={user} onChange={(e) => setUser(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder="用户名 / 用户 ID" className="w-44" />
+          <Field label={t('admin.logs.filter.user')}>
+            <Input value={user} onChange={(e) => setUser(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder={t('admin.logs.filter.userPlaceholder')} className="w-44" />
           </Field>
-          <Field label="渠道 ID">
-            <Input value={channelId} onChange={(e) => setChannelId(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder="渠道编号" type="number" className="w-32" />
+          <Field label={t('admin.logs.filter.channelId')}>
+            <Input value={channelId} onChange={(e) => setChannelId(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder={t('admin.logs.filter.channelPlaceholder')} type="number" className="w-32" />
           </Field>
-          <Field label="状态">
+          <Field label={t('admin.logs.filter.status')}>
             <Select value={status} onChange={(e) => setStatus(e.target.value as 'success' | 'error' | '')} className="w-32">
-              <option value="">全部</option>
-              <option value="success">成功</option>
-              <option value="error">失败</option>
+              <option value="">{t('admin.logs.filter.all')}</option>
+              <option value="success">{t('admin.logs.filter.success')}</option>
+              <option value="error">{t('admin.logs.filter.error')}</option>
             </Select>
           </Field>
           <div className="flex items-center gap-2">
-            <Button variant="primary" onClick={handleSearch}>查询</Button>
-            <Button variant="secondary" onClick={handleReset}>重置</Button>
+            <Button variant="primary" onClick={handleSearch}>{t('admin.logs.filter.search')}</Button>
+            <Button variant="secondary" onClick={handleReset}>{t('admin.logs.filter.reset')}</Button>
           </div>
         </div>
       </Card>
@@ -211,8 +213,8 @@ export default function AdminLogsPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.id}
-          emptyTitle="暂无日志"
-          emptyDescription="调整筛选条件试试，或等有调用后再回来。"
+          emptyTitle={t('admin.logs.emptyTitle')}
+          emptyDescription={t('admin.logs.emptyDescription')}
         />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />

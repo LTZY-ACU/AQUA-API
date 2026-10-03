@@ -66,11 +66,11 @@ export default function AdminAuditLogsPage() {
       setItems(data.items)
       setTotal(data.total)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '审计日志加载失败')
+      toastError(err instanceof Error ? err.message : t('admin.auditLogs.toast.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [page, adminId, method, path, statusCode, toastError])
+  }, [page, adminId, method, path, statusCode, toastError, t])
 
   useEffect(() => {
     void load()
@@ -94,45 +94,45 @@ export default function AdminAuditLogsPage() {
 
   const columns: Column<AuditLog>[] = [
     {
-      title: '时间',
+      title: t('admin.auditLogs.col.time'),
       render: (row) => <span className="whitespace-nowrap text-[13px] text-ink-3">{formatDateTime(row.created_at)}</span>,
     },
     {
-      title: '管理员',
+      title: t('admin.auditLogs.col.admin'),
       render: (row) => (
         <span className="text-[13px] text-ink-2">
-          {row.admin_username || (row.admin_id > 0 ? `#${row.admin_id}` : '系统')}
+          {row.admin_username || (row.admin_id > 0 ? `#${row.admin_id}` : t('admin.auditLogs.system'))}
         </span>
       ),
     },
     {
-      title: '动作',
+      title: t('admin.auditLogs.col.action'),
       render: (row) => <span className="text-[13px] font-medium text-ink">{row.action || row.method}</span>,
     },
     {
-      title: '路径',
+      title: t('admin.auditLogs.col.path'),
       render: (row) => (
         <span className="block max-w-64 truncate text-[13px]" title={row.path}>{row.path}</span>
       ),
     },
     {
-      title: '目标',
+      title: t('admin.auditLogs.col.target'),
       render: (row) => (
         <span className="block max-w-32 truncate text-[13px] text-ink-3" title={row.target}>{row.target || '—'}</span>
       ),
     },
     {
-      title: '状态码',
+      title: t('admin.auditLogs.col.statusCode'),
       align: 'center',
       render: (row) => <Badge tone={statusTone(row.status_code)}>{row.status_code || '—'}</Badge>,
     },
     {
-      title: '耗时',
+      title: t('admin.auditLogs.col.latency'),
       align: 'right',
       render: (row) => <span className="text-[13px] tabular-nums text-ink-2">{formatLatency(row.latency_ms)}</span>,
     },
     {
-      title: '来源 IP',
+      title: t('admin.auditLogs.col.clientIp'),
       render: (row) => <span className="whitespace-nowrap text-[13px] text-ink-2">{row.client_ip || '—'}</span>,
     },
   ]
@@ -140,28 +140,28 @@ export default function AdminAuditLogsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">操作审计</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">后台写操作留痕（共 {total} 条）</p>
+        <h1 className="text-xl font-bold text-ink">{t('admin.auditLogs.title')}</h1>
+        <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.auditLogs.subtitle', { total })}</p>
       </div>
 
       {/* 筛选条 */}
       <Card>
         <div className="flex flex-wrap items-end gap-3">
-          <Field label="管理员 ID">
-            <Input value={adminId} onChange={(e) => setAdminId(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder="数字 ID" type="number" className="w-32" />
+          <Field label={t('admin.auditLogs.filter.adminId')}>
+            <Input value={adminId} onChange={(e) => setAdminId(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder={t('admin.auditLogs.filter.adminIdPlaceholder')} type="number" className="w-32" />
           </Field>
-          <Field label="方法">
-            <Input value={method} onChange={(e) => setMethod(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder="POST / PUT / DELETE" className="w-36" />
+          <Field label={t('admin.auditLogs.filter.method')}>
+            <Input value={method} onChange={(e) => setMethod(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder={t('admin.auditLogs.filter.methodPlaceholder')} className="w-36" />
           </Field>
-          <Field label="路径前缀">
-            <Input value={path} onChange={(e) => setPath(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder="如 /admin/channels" className="w-56" />
+          <Field label={t('admin.auditLogs.filter.path')}>
+            <Input value={path} onChange={(e) => setPath(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder={t('admin.auditLogs.filter.pathPlaceholder')} className="w-56" />
           </Field>
-          <Field label="状态码">
-            <Input value={statusCode} onChange={(e) => setStatusCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder="如 200" type="number" className="w-32" />
+          <Field label={t('admin.auditLogs.filter.statusCode')}>
+            <Input value={statusCode} onChange={(e) => setStatusCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder={t('admin.auditLogs.filter.statusCodePlaceholder')} type="number" className="w-32" />
           </Field>
           <div className="flex items-center gap-2">
-            <Button variant="primary" onClick={handleSearch}>查询</Button>
-            <Button variant="secondary" onClick={handleReset}>重置</Button>
+            <Button variant="primary" onClick={handleSearch}>{t('admin.auditLogs.filter.search')}</Button>
+            <Button variant="secondary" onClick={handleReset}>{t('admin.auditLogs.filter.reset')}</Button>
           </div>
         </div>
       </Card>
@@ -173,8 +173,8 @@ export default function AdminAuditLogsPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.id}
-          emptyTitle="暂无审计记录"
-          emptyDescription="后台写操作较少，或在筛选范围内没有记录。"
+          emptyTitle={t('admin.auditLogs.emptyTitle')}
+          emptyDescription={t('admin.auditLogs.emptyDescription')}
         />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />

@@ -39,6 +39,7 @@ import { Badge, Card, EmptyState, SkeletonRows, Tabs } from '@/components/ui/Dis
 import { DataTable, Pagination, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { formatDateTime } from '@/utils/format'
 
@@ -47,23 +48,27 @@ const PAGE_SIZE = 20
 /** 进行中批次的进度轮询间隔（毫秒）：够快能盯到推进，够慢不给后端添压 */
 const POLL_INTERVAL_MS = 5000
 
-/** 批次状态 → 徽标配色与文案：发送中用品牌色高亮，扫视时能立刻定位要盯进度的行 */
-const STATUS_META: Record<BroadcastStatus, { tone: 'info' | 'brand' | 'ok' | 'warn'; text: string }> = {
-  pending: { tone: 'info', text: '排队中' },
-  running: { tone: 'brand', text: '发送中' },
-  done: { tone: 'ok', text: '已完成' },
-  canceled: { tone: 'warn', text: '已停止' },
+/** 批次状态 → 徽标配色与词条键：发送中用品牌色高亮，扫视时能立刻定位要盯进度的行 */
+const STATUS_META: Record<BroadcastStatus, { tone: 'info' | 'brand' | 'ok' | 'warn'; key: string }> = {
+  pending: { tone: 'info', key: 'admin.broadcast.status.pending' },
+  running: { tone: 'brand', key: 'admin.broadcast.status.running' },
+  done: { tone: 'ok', key: 'admin.broadcast.status.done' },
+  canceled: { tone: 'warn', key: 'admin.broadcast.status.canceled' },
 }
 
-/** 收件人投递状态 → 徽标配色与文案：失败用红色，核对失败明细时最醒目 */
-const RECIPIENT_META: Record<RecipientStatus, { tone: 'ok' | 'err' | 'off'; text: string }> = {
-  sent: { tone: 'ok', text: '已发送' },
-  failed: { tone: 'err', text: '失败' },
-  pending: { tone: 'off', text: '待发送' },
+/** 收件人投递状态 → 徽标配色与词条键：失败用红色，核对失败明细时最醒目 */
+const RECIPIENT_META: Record<RecipientStatus, { tone: 'ok' | 'err' | 'off'; key: string }> = {
+  sent: { tone: 'ok', key: 'admin.broadcast.recipientStatus.sent' },
+  failed: { tone: 'err', key: 'admin.broadcast.recipientStatus.failed' },
+  pending: { tone: 'off', key: 'admin.broadcast.recipientStatus.pending' },
 }
 
-/** 向导三步的标题（步骤指示条用） */
-const WIZARD_STEPS = ['选择模板', '预览确认', '正式发送'] as const
+/** 向导三步的标题词条键（步骤指示条用） */
+const WIZARD_STEP_KEYS = [
+  'admin.broadcast.wizard.step1',
+  'admin.broadcast.wizard.step2',
+  'admin.broadcast.wizard.step3',
+] as const
 
 /** 是否还有批次在发送（决定是否轮询刷新进度） */
 function isActiveBroadcast(bc: EmailBroadcast): boolean {
@@ -80,6 +85,7 @@ export default function AdminBroadcastPage() {
   const [cancelTarget, setCancelTarget] = useState<EmailBroadcast | null>(null)
   const [cancelLoading, setCancelLoading] = useState(false)
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   /**
    * 加载批次列表。
@@ -118,11 +124,11 @@ export default function AdminBroadcastPage() {
     setCancelLoading(true)
     try {
       const updated = await cancelBroadcast(cancelTarget.id)
-      toast(`已停止群发「${updated.subject}」：已发 ${updated.sent} 封，剩余 ${updated.pending} 封不再发送`)
+      toast(t('admin.broadcast.toast.canceled', { subject: updated.subject, sent: updated.sent, pending: updated.pending }))
       setCancelTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '停止群发失败')
+      toastError(err instanceof Error ? err.message : t('admin.broadcast.toast.cancelFailed'))
     } finally {
       setCancelLoading(false)
     }
@@ -131,17 +137,17 @@ export default function AdminBroadcastPage() {
   const columns: Column<EmailBroadcast>[] = [
     { title: 'ID', width: 'w-16', render: (row) => <span className="text-ink-3">#{row.id}</span> },
     {
-      title: '主题',
+      title: t('admin.broadcast.col.subject'),
       render: (row) => (
         <span className="block min-w-0">
           <span className="block truncate font-medium text-ink">{row.subject}</span>
-          <span className="block text-xs text-ink-3">模板 {row.template}</span>
+          <span className="block text-xs text-ink-3">{t('admin.broadcast.templateTag', { template: row.template })}</span>
         </span>
       ),
     },
-    { title: '状态', render: (row) => <Badge tone={STATUS_META[row.status].tone}>{STATUS_META[row.status].text}</Badge> },
+    { title: t('admin.broadcast.col.status'), render: (row) => <Badge tone={STATUS_META[row.status].tone}>{t(STATUS_META[row.status].key)}</Badge> },
     {
-      title: '成功/失败/待发',
+      title: t('admin.broadcast.col.counts'),
       render: (row) => (
         <span className="text-[13px] tabular-nums">
           <span className="text-ok">{row.sent}</span>
@@ -149,31 +155,31 @@ export default function AdminBroadcastPage() {
           <span className={row.failed > 0 ? 'font-medium text-err' : 'text-ink-3'}>{row.failed}</span>
           <span className="text-ink-3"> / </span>
           <span className="text-ink-2">{row.pending}</span>
-          <span className="ml-1.5 text-ink-3">共 {row.total}</span>
+          <span className="ml-1.5 text-ink-3">{t('admin.broadcast.totalTag', { total: row.total })}</span>
         </span>
       ),
     },
     {
-      title: '发起时间',
+      title: t('admin.broadcast.col.createdAt'),
       render: (row) => <span className="text-[13px] text-ink-3">{formatDateTime(row.created_at)}</span>,
     },
     {
-      title: '结束时间',
+      title: t('admin.broadcast.col.finishedAt'),
       render: (row) => (
         <span className="text-[13px] text-ink-3">{row.finished_at > 0 ? formatDateTime(row.finished_at) : '—'}</span>
       ),
     },
     {
-      title: '操作',
+      title: t('admin.broadcast.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="flex items-center justify-end gap-2 text-[13px]">
           <button type="button" onClick={() => setDetail(row)} className="text-ink-3 hover:text-brand">
-            明细
+            {t('admin.broadcast.action.detail')}
           </button>
           {isActiveBroadcast(row) && (
             <button type="button" onClick={() => setCancelTarget(row)} className="text-ink-3 hover:text-warn">
-              停止
+              {t('admin.broadcast.action.stop')}
             </button>
           )}
         </span>
@@ -186,19 +192,19 @@ export default function AdminBroadcastPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-ink">
-            群发邮件
-            {hasActive && <Badge tone="brand">进度自动刷新中</Badge>}
+            {t('admin.broadcast.title')}
+            {hasActive && <Badge tone="brand">{t('admin.broadcast.activeBadge')}</Badge>}
           </h1>
           <p className="mt-0.5 text-[13px] text-ink-3">
-            向全体用户发送通知邮件：先预览发给自己，确认无误再群发（共 {total} 批）
+            {t('admin.broadcast.subtitle', { total })}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" onClick={() => void load()}>
-            刷新
+            {t('admin.broadcast.refresh')}
           </Button>
           <Button variant="primary" onClick={() => setWizardOpen(true)}>
-            发起群发
+            {t('admin.broadcast.create')}
           </Button>
         </div>
       </div>
@@ -209,8 +215,8 @@ export default function AdminBroadcastPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.id}
-          emptyTitle="还没有群发记录"
-          emptyDescription="点「发起群发」，按向导先预览再确认发送"
+          emptyTitle={t('admin.broadcast.emptyTitle')}
+          emptyDescription={t('admin.broadcast.emptyDescription')}
         />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
@@ -232,10 +238,10 @@ export default function AdminBroadcastPage() {
 
       <ConfirmDialog
         open={Boolean(cancelTarget)}
-        title="停止群发"
-        message={`确认停止群发「${cancelTarget?.subject}」？停止后未发出的 ${cancelTarget?.pending ?? 0} 封将不再发送，已发出的无法撤回。`}
+        title={t('admin.broadcast.confirm.title')}
+        message={t('admin.broadcast.confirm.message', { subject: cancelTarget?.subject ?? '', pending: cancelTarget?.pending ?? 0 })}
         danger
-        confirmText="停止发送"
+        confirmText={t('admin.broadcast.confirm.confirmText')}
         loading={cancelLoading}
         onConfirm={handleCancel}
         onCancel={() => setCancelTarget(null)}
@@ -247,13 +253,14 @@ export default function AdminBroadcastPage() {
 /* ── 向导步骤指示条：当前步高亮，已完成打勾 ─────────────── */
 
 function WizardSteps({ current }: { current: number }) {
+  const { t } = useI18n()
   return (
     <div className="flex items-center gap-2">
-      {WIZARD_STEPS.map((label, index) => {
+      {WIZARD_STEP_KEYS.map((key, index) => {
         const step = index + 1
         const state = step < current ? 'done' : step === current ? 'active' : 'todo'
         return (
-          <div key={label} className="flex items-center gap-2">
+          <div key={key} className="flex items-center gap-2">
             {index > 0 && <span className="h-px w-6 bg-line-2" aria-hidden="true" />}
             <span
               className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
@@ -266,7 +273,7 @@ function WizardSteps({ current }: { current: number }) {
             >
               {state === 'done' ? '✓' : step}
             </span>
-            <span className={`text-[13px] ${state === 'active' ? 'font-medium text-ink' : 'text-ink-3'}`}>{label}</span>
+            <span className={`text-[13px] ${state === 'active' ? 'font-medium text-ink' : 'text-ink-3'}`}>{t(key)}</span>
           </div>
         )
       })}
@@ -286,6 +293,7 @@ function BroadcastWizardModal({
   onCreated: () => void
 }) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
   const [step, setStep] = useState(1)
   const [templates, setTemplates] = useState<BroadcastTemplate[]>([])
   const [templatesLoading, setTemplatesLoading] = useState(false)
@@ -305,7 +313,7 @@ function BroadcastWizardModal({
     setTemplatesLoading(true)
     listBroadcastTemplates()
       .then((data) => setTemplates(data.items))
-      .catch((err) => toastError(err instanceof Error ? err.message : '模板目录加载失败'))
+      .catch((err) => toastError(err instanceof Error ? err.message : t('admin.broadcast.wizard.templateLoadFailed')))
       .finally(() => setTemplatesLoading(false))
   }, [open])
 
@@ -316,9 +324,9 @@ function BroadcastWizardModal({
     try {
       const result = await previewBroadcast(selected)
       setPreview(result)
-      toast(`预览邮件已发送到 ${result.to}，请去收件箱确认排版`)
+      toast(t('admin.broadcast.wizard.previewSentToast', { to: result.to }))
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '预览发送失败')
+      toastError(err instanceof Error ? err.message : t('admin.broadcast.wizard.previewFailed'))
     } finally {
       setPreviewing(false)
     }
@@ -328,13 +336,13 @@ function BroadcastWizardModal({
     setCreating(true)
     try {
       const bc = await createBroadcast({ template: selected, confirm: true })
-      toast(`群发已开始：已入队 ${bc.total} 位收件人`)
+      toast(t('admin.broadcast.wizard.createdToast', { total: bc.total }))
       setConfirmOpen(false)
       onCreated()
       onClose()
     } catch (err) {
       // 弹窗保持打开：后端 message 会说明失败原因（如未配置邮件通道），允许修正后重试
-      toastError(err instanceof Error ? err.message : '群发发起失败')
+      toastError(err instanceof Error ? err.message : t('admin.broadcast.wizard.createFailed'))
     } finally {
       setCreating(false)
     }
@@ -343,15 +351,15 @@ function BroadcastWizardModal({
   /** 发送规则的静态说明（第 2 步用）：集中一处定义，避免口径漂移 */
   const rules = (
     <ul className="mt-1.5 list-disc space-y-1 pl-4 leading-relaxed">
-      <li>收件人：全部「启用」状态且已填写邮箱的用户（发送时按最新名单入队）。</li>
-      <li>主题与正文按当前站点设置渲染后快照落库，模板后续改动不影响本次发送。</li>
-      <li>邮件一经发出不可撤回；发送中可随时停止，未发出的不再发。</li>
+      <li>{t('admin.broadcast.wizard.rule1')}</li>
+      <li>{t('admin.broadcast.wizard.rule2')}</li>
+      <li>{t('admin.broadcast.wizard.rule3')}</li>
     </ul>
   )
 
   return (
     <>
-      <Modal open={open} onClose={onClose} title="发起群发" width={560}>
+      <Modal open={open} onClose={onClose} title={t('admin.broadcast.wizard.title')} width={560}>
         <div className="space-y-5">
           <WizardSteps current={step} />
 
@@ -361,8 +369,8 @@ function BroadcastWizardModal({
                 <SkeletonRows rows={3} />
               ) : templates.length === 0 ? (
                 <EmptyState
-                  title="暂无可用通知模板"
-                  description="通知模板由后端统一定义，当前没有可选模板"
+                  title={t('admin.broadcast.wizard.templatesEmptyTitle')}
+                  description={t('admin.broadcast.wizard.templatesEmptyDescription')}
                 />
               ) : (
                 <div className="space-y-2">
@@ -406,29 +414,29 @@ function BroadcastWizardModal({
           {step === 2 && (
             <div className="space-y-4">
               <div className="rounded-lg border border-line bg-surface/50 p-4 text-[13px] text-ink-2">
-                <div className="font-medium text-ink">发送说明</div>
+                <div className="font-medium text-ink">{t('admin.broadcast.wizard.rulesTitle')}</div>
                 {rules}
               </div>
               <div className="text-sm text-ink-2">
-                已选模板：<span className="font-medium text-ink">{selectedLabel}</span>
+                {t('admin.broadcast.wizard.selectedTemplate')}<span className="font-medium text-ink">{selectedLabel}</span>
               </div>
               <div>
                 <Button variant="secondary" loading={previewing} onClick={handlePreview}>
-                  预览：发送到我自己的邮箱
+                  {t('admin.broadcast.wizard.previewBtn')}
                 </Button>
               </div>
               {preview && (
                 <div className="rounded-lg border border-ok/25 bg-ok/5 p-3 text-[13px] text-ink-2">
-                  <div className="font-medium text-ok">预览邮件已发出</div>
-                  <div className="mt-1">收件人：{preview.to}</div>
-                  <div>主题：{preview.subject}</div>
+                  <div className="font-medium text-ok">{t('admin.broadcast.wizard.previewSentTitle')}</div>
+                  <div className="mt-1">{t('admin.broadcast.wizard.previewTo', { to: preview.to })}</div>
+                  <div>{t('admin.broadcast.wizard.previewSubject', { subject: preview.subject })}</div>
                   <div className="mt-1 text-xs text-ink-3">
-                    请到收件箱确认排版无误后再进入下一步；正式群发的内容与预览完全一致。
+                    {t('admin.broadcast.wizard.previewHint')}
                   </div>
                 </div>
               )}
               {!preview && (
-                <div className="text-xs text-ink-3">完成预览后才能进入下一步——群发前必须先亲眼看过内容。</div>
+                <div className="text-xs text-ink-3">{t('admin.broadcast.wizard.previewRequired')}</div>
               )}
             </div>
           )}
@@ -436,17 +444,17 @@ function BroadcastWizardModal({
           {step === 3 && (
             <div className="space-y-4">
               <div className="rounded-lg border border-err/25 bg-err/5 p-4 text-[13px] text-ink-2">
-                <div className="font-medium text-err">即将全站群发，请最后核对</div>
+                <div className="font-medium text-err">{t('admin.broadcast.wizard.finalTitle')}</div>
                 <ul className="mt-1.5 list-disc space-y-1 pl-4 leading-relaxed">
                   <li>
-                    模板：{selectedLabel}（{selected}）
+                    {t('admin.broadcast.wizard.finalTemplate', { label: selectedLabel, key: selected })}
                   </li>
-                  <li>主题：{preview?.subject ?? '—'}</li>
-                  <li>收件人：全部启用且已填写邮箱的用户，人数在发送时按最新名单确定</li>
-                  <li>预览收件箱：{preview?.to ?? '—'}</li>
+                  <li>{t('admin.broadcast.wizard.finalSubject', { subject: preview?.subject ?? '—' })}</li>
+                  <li>{t('admin.broadcast.wizard.finalRecipients')}</li>
+                  <li>{t('admin.broadcast.wizard.finalInbox', { to: preview?.to ?? '—' })}</li>
                 </ul>
               </div>
-              <div className="text-xs text-ink-3">点击「确认群发」后，还需在弹窗中再次确认才会真正发送。</div>
+              <div className="text-xs text-ink-3">{t('admin.broadcast.wizard.finalNote')}</div>
             </div>
           )}
         </div>
@@ -454,7 +462,7 @@ function BroadcastWizardModal({
         <div className="mt-5 flex justify-end gap-2">
           {step > 1 && (
             <Button variant="ghost" onClick={() => setStep(step - 1)}>
-              上一步
+              {t('admin.broadcast.wizard.prev')}
             </Button>
           )}
           {step < 3 ? (
@@ -463,11 +471,11 @@ function BroadcastWizardModal({
               disabled={step === 1 ? !selected : !preview}
               onClick={() => setStep(step + 1)}
             >
-              下一步
+              {t('admin.broadcast.wizard.next')}
             </Button>
           ) : (
             <Button variant="danger" onClick={() => setConfirmOpen(true)}>
-              确认群发
+              {t('admin.broadcast.wizard.confirmSend')}
             </Button>
           )}
         </div>
@@ -476,10 +484,10 @@ function BroadcastWizardModal({
       {/* 最终闸门：与后端 confirm 字段对应的显式二次确认 */}
       <ConfirmDialog
         open={confirmOpen}
-        title="确认全站群发"
-        message={`确认向全部启用且已填写邮箱的用户发送「${preview?.subject ?? selectedLabel}」？邮件一经发出不可撤回，重复发送会引发投诉。`}
+        title={t('admin.broadcast.wizard.confirmTitle')}
+        message={t('admin.broadcast.wizard.confirmMessage', { subject: preview?.subject ?? selectedLabel })}
         danger
-        confirmText="确认发送"
+        confirmText={t('admin.broadcast.wizard.confirmText')}
         loading={creating}
         onConfirm={handleCreate}
         onCancel={() => setConfirmOpen(false)}
@@ -503,6 +511,7 @@ function BroadcastRecipientsModal({
   const [status, setStatus] = useState<'' | RecipientStatus>('')
   const [loading, setLoading] = useState(true)
   const { toastError } = useToast()
+  const { t } = useI18n()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -516,22 +525,22 @@ function BroadcastRecipientsModal({
       setTotal(data.total)
     } catch (err) {
       // 明细查询失败必须出声：空表会被误读成"没人失败"，掩盖真实故障
-      toastError(err instanceof Error ? err.message : '查询收件人明细失败')
+      toastError(err instanceof Error ? err.message : t('admin.broadcast.recipients.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [broadcast, page, status, toastError])
+  }, [broadcast, page, status, toastError, t])
 
   useEffect(() => {
     void load()
   }, [load])
 
   const columns: Column<BroadcastRecipient>[] = [
-    { title: '用户', width: 'w-16', render: (row) => <span className="text-ink-3">#{row.user_id}</span> },
-    { title: '邮箱', render: (row) => <span className="break-all text-ink">{row.email}</span> },
-    { title: '状态', render: (row) => <Badge tone={RECIPIENT_META[row.status].tone}>{RECIPIENT_META[row.status].text}</Badge> },
+    { title: t('admin.broadcast.recipients.col.user'), width: 'w-16', render: (row) => <span className="text-ink-3">#{row.user_id}</span> },
+    { title: t('admin.broadcast.recipients.col.email'), render: (row) => <span className="break-all text-ink">{row.email}</span> },
+    { title: t('admin.broadcast.recipients.col.status'), render: (row) => <Badge tone={RECIPIENT_META[row.status].tone}>{t(RECIPIENT_META[row.status].key)}</Badge> },
     {
-      title: '失败原因',
+      title: t('admin.broadcast.recipients.col.error'),
       render: (row) =>
         row.error ? (
           <span className="break-all text-[13px] text-err" title={row.error}>
@@ -542,37 +551,42 @@ function BroadcastRecipientsModal({
         ),
     },
     {
-      title: '发送时间',
+      title: t('admin.broadcast.recipients.col.sentAt'),
       render: (row) => <span className="text-[13px] text-ink-3">{row.sent_at > 0 ? formatDateTime(row.sent_at) : '—'}</span>,
     },
   ]
 
   return (
-    <Modal open onClose={onClose} title="收件人明细" width={720}>
+    <Modal open onClose={onClose} title={t('admin.broadcast.recipients.title')} width={720}>
       <div className="space-y-4">
         {/* 批次概要：不依赖父级轮询数据，展示打开时的快照；发送中的批次可用「刷新」看到最新明细 */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-medium text-ink">{broadcast.subject}</span>
-              <Badge tone={STATUS_META[broadcast.status].tone}>{STATUS_META[broadcast.status].text}</Badge>
+              <Badge tone={STATUS_META[broadcast.status].tone}>{t(STATUS_META[broadcast.status].key)}</Badge>
             </div>
             <div className="mt-1 text-xs text-ink-3">
-              #{broadcast.id} · 模板 {broadcast.template} · 成功 {broadcast.sent} · 失败 {broadcast.failed} · 待发{' '}
-              {broadcast.pending}
+              {t('admin.broadcast.recipients.summary', {
+                id: broadcast.id,
+                template: broadcast.template,
+                sent: broadcast.sent,
+                failed: broadcast.failed,
+                pending: broadcast.pending,
+              })}
             </div>
           </div>
           <Button variant="secondary" size="sm" onClick={() => void load()}>
-            刷新
+            {t('admin.broadcast.recipients.refresh')}
           </Button>
         </div>
 
         <Tabs
           items={[
-            { value: '', label: '全部' },
-            { value: 'sent', label: '已发送' },
-            { value: 'failed', label: '失败' },
-            { value: 'pending', label: '待发送' },
+            { value: '', label: t('admin.broadcast.recipients.tabAll') },
+            { value: 'sent', label: t('admin.broadcast.recipients.tabSent') },
+            { value: 'failed', label: t('admin.broadcast.recipients.tabFailed') },
+            { value: 'pending', label: t('admin.broadcast.recipients.tabPending') },
           ]}
           value={status}
           onChange={(value) => {
@@ -587,8 +601,8 @@ function BroadcastRecipientsModal({
             rows={loading ? null : items}
             loading={loading}
             rowKey={(row) => row.id}
-            emptyTitle="没有符合条件的收件人"
-            emptyDescription="切换状态筛选，或稍后刷新——进行中的批次发送完成后状态会更新"
+            emptyTitle={t('admin.broadcast.recipients.emptyTitle')}
+            emptyDescription={t('admin.broadcast.recipients.emptyDescription')}
           />
           <div className="pt-3">
             <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />

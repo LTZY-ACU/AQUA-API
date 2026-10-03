@@ -265,11 +265,15 @@ function ruleText(
   countText: string,
   quotaPerYuan: number,
 ): string {
-  if (!price || !result) return '该分组没有价格规则，无法试算'
-  if (result.kind === 'free') return `分组「${price.group}」命中「免费」规则，不计费`
+  if (!price || !result) return translate('components.priceCalc.ruleNoRule')
+  if (result.kind === 'free') return translate('components.priceCalc.ruleFree', { group: price.group })
   if (result.kind === 'per_call') {
     const n = toNum(countText) || 1
-    return `分组「${price.group}」· 按次 ${formatYuanPerCall(price.per_call_price, quotaPerYuan)} × ${n} 次`
+    return translate('components.priceCalc.rulePerCall', {
+      group: price.group,
+      price: formatYuanPerCall(price.per_call_price, quotaPerYuan),
+      count: n,
+    })
   }
-  return `分组「${price.group}」· 按量 · ${ratioLabel(price.ratio)}`
+  return translate('components.priceCalc.ruleToken', { group: price.group, ratio: ratioLabel(price.ratio) })
 }

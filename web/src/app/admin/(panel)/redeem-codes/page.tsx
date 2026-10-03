@@ -17,6 +17,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Field, Input } from '@/components/ui/Form'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { useSite } from '@/lib/site/site-context'
 import { formatExpiry } from '@/utils/format'
@@ -26,6 +27,7 @@ const PAGE_SIZE = 20
 
 /** 兑换码状态徽标：1 未使用 info / 2 已使用 off / 3 已作废 warn；已过期优先按 warn 展示 */
 function RedeemStatusBadge({ code }: { code: RedeemCode }) {
+  const { t } = useI18n()
   const tone = code.expired
     ? 'warn'
     : code.status === REDEEM_STATUS_UNUSED
@@ -33,7 +35,7 @@ function RedeemStatusBadge({ code }: { code: RedeemCode }) {
       : code.status === REDEEM_STATUS_USED
         ? 'off'
         : 'warn'
-  const text = code.expired && code.status === REDEEM_STATUS_UNUSED ? '已过期' : code.status_text
+  const text = code.expired && code.status === REDEEM_STATUS_UNUSED ? t('admin.redeem-codes.expired') : code.status_text
   return <Badge tone={tone}>{text}</Badge>
 }
 
@@ -50,6 +52,7 @@ export default function AdminRedeemCodesPage() {
   const [voidTarget, setVoidTarget] = useState<RedeemCode | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<RedeemCode | null>(null)
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -84,11 +87,11 @@ export default function AdminRedeemCodesPage() {
     if (!voidTarget) return
     try {
       await updateRedeemCode(voidTarget.id, { status: REDEEM_STATUS_VOID })
-      toast('兑换码已作废')
+      toast(t('admin.redeem-codes.toast.voided'))
       setVoidTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '作废失败')
+      toastError(err instanceof Error ? err.message : t('admin.redeem-codes.toast.voidFailed'))
     }
   }
 
@@ -96,54 +99,54 @@ export default function AdminRedeemCodesPage() {
     if (!deleteTarget) return
     try {
       await deleteRedeemCode(deleteTarget.id)
-      toast('兑换码已删除')
+      toast(t('admin.redeem-codes.toast.deleted'))
       setDeleteTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '删除失败')
+      toastError(err instanceof Error ? err.message : t('admin.redeem-codes.toast.deleteFailed'))
     }
   }
 
   async function handleClearInvalid() {
     try {
       const { deleted } = await deleteInvalidRedeemCodes()
-      toast(deleted > 0 ? `已清理 ${deleted} 条失效兑换码` : '没有需要清理的失效兑换码')
+      toast(deleted > 0 ? t('admin.redeem-codes.toast.cleared', { count: deleted }) : t('admin.redeem-codes.toast.clearedNone'))
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '清理失败')
+      toastError(err instanceof Error ? err.message : t('admin.redeem-codes.toast.clearFailed'))
     }
   }
 
   const columns: Column<RedeemCode>[] = [
-    { title: '兑换码', render: (row) => <code className="font-mono text-[13px] font-medium text-ink">{row.code}</code> },
+    { title: t('admin.redeem-codes.col.code'), render: (row) => <code className="font-mono text-[13px] font-medium text-ink">{row.code}</code> },
     {
-      title: '面额',
+      title: t('admin.redeem-codes.col.amount'),
       align: 'right',
       render: (row) => <span className="text-ink-2">{formatYuanFromQuota(row.quota, quotaPerYuan)}</span>,
     },
-    { title: '状态', render: (row) => <RedeemStatusBadge code={row} /> },
+    { title: t('admin.redeem-codes.col.status'), render: (row) => <RedeemStatusBadge code={row} /> },
     {
-      title: '过期',
+      title: t('admin.redeem-codes.col.expire'),
       render: (row) => <span className="text-[13px] text-ink-3">{formatExpiry(row.expires_at)}</span>,
     },
-    { title: '批次', render: (row) => <span className="text-[13px] text-ink-2">{row.batch_no || '—'}</span> },
-    { title: '备注', render: (row) => <span className="text-[13px] text-ink-3">{row.remark || '—'}</span> },
+    { title: t('admin.redeem-codes.col.batch'), render: (row) => <span className="text-[13px] text-ink-2">{row.batch_no || '—'}</span> },
+    { title: t('admin.redeem-codes.col.remark'), render: (row) => <span className="text-[13px] text-ink-3">{row.remark || '—'}</span> },
     {
-      title: '领取用户',
+      title: t('admin.redeem-codes.col.usedBy'),
       render: (row) => <span className="text-ink-2">{row.used_by > 0 ? `#${row.used_by}` : '—'}</span>,
     },
     {
-      title: '操作',
+      title: t('admin.redeem-codes.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="flex items-center justify-end gap-2 text-[13px]">
           {row.status === REDEEM_STATUS_UNUSED && (
             <button type="button" onClick={() => setVoidTarget(row)} className="text-ink-3 hover:text-warn">
-              作废
+              {t('admin.redeem-codes.action.void')}
             </button>
           )}
           <button type="button" onClick={() => setDeleteTarget(row)} className="text-ink-3 hover:text-err">
-            删除
+            {t('admin.redeem-codes.action.delete')}
           </button>
         </span>
       ),
@@ -154,15 +157,15 @@ export default function AdminRedeemCodesPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">兑换码</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">批量生成、分发与作废兑换码（{total}）</p>
+          <h1 className="text-xl font-bold text-ink">{t('admin.redeem-codes.title')}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.redeem-codes.subtitle', { total })}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" onClick={handleClearInvalid}>
-            清理失效
+            {t('admin.redeem-codes.clearInvalid')}
           </Button>
           <Button variant="primary" onClick={() => setGenerateOpen(true)}>
-            批量生成
+            {t('admin.redeem-codes.generate')}
           </Button>
         </div>
       </div>
@@ -170,12 +173,12 @@ export default function AdminRedeemCodesPage() {
       {/* 筛选条：关键词（码/备注）+ 批次号 */}
       <div className="flex flex-wrap items-end gap-3">
         <div className="w-60">
-          <Field label="关键词" htmlFor="rc-keyword">
+          <Field label={t('admin.redeem-codes.filter.keyword')} htmlFor="rc-keyword">
             <Input
               id="rc-keyword"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
-              placeholder="兑换码 / 备注"
+              placeholder={t('admin.redeem-codes.filter.keywordPlaceholder')}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleSearch()
               }}
@@ -183,12 +186,12 @@ export default function AdminRedeemCodesPage() {
           </Field>
         </div>
         <div className="w-52">
-          <Field label="批次号" htmlFor="rc-batch">
+          <Field label={t('admin.redeem-codes.filter.batch')} htmlFor="rc-batch">
             <Input
               id="rc-batch"
               value={batchNo}
               onChange={(e) => setBatchNo(e.target.value)}
-              placeholder="批次号"
+              placeholder={t('admin.redeem-codes.filter.batchPlaceholder')}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleSearch()
               }}
@@ -196,10 +199,10 @@ export default function AdminRedeemCodesPage() {
           </Field>
         </div>
         <Button variant="secondary" onClick={handleSearch}>
-          查询
+          {t('admin.redeem-codes.filter.search')}
         </Button>
         <Button variant="ghost" onClick={handleReset}>
-          重置
+          {t('admin.redeem-codes.filter.reset')}
         </Button>
       </div>
 
@@ -209,8 +212,8 @@ export default function AdminRedeemCodesPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.id}
-          emptyTitle="没有符合条件的兑换码"
-          emptyDescription="调整筛选条件，或点「批量生成」创建一批新码"
+          emptyTitle={t('admin.redeem-codes.emptyTitle')}
+          emptyDescription={t('admin.redeem-codes.emptyDescription')}
         />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
@@ -225,20 +228,20 @@ export default function AdminRedeemCodesPage() {
 
       <ConfirmDialog
         open={Boolean(voidTarget)}
-        title="作废兑换码"
-        message={`确认作废兑换码「${voidTarget?.code}」？作废后用户将无法兑换。`}
+        title={t('admin.redeem-codes.voidConfirm.title')}
+        message={t('admin.redeem-codes.voidConfirm.message', { code: voidTarget?.code ?? '' })}
         danger
-        confirmText="作废"
+        confirmText={t('admin.redeem-codes.voidConfirm.confirm')}
         onConfirm={handleVoid}
         onCancel={() => setVoidTarget(null)}
       />
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="删除兑换码"
-        message={`确认删除兑换码「${deleteTarget?.code}」？删除后不可恢复。`}
+        title={t('admin.redeem-codes.deleteConfirm.title')}
+        message={t('admin.redeem-codes.deleteConfirm.message', { code: deleteTarget?.code ?? '' })}
         danger
-        confirmText="删除"
+        confirmText={t('admin.redeem-codes.deleteConfirm.confirm')}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -259,6 +262,7 @@ function RedeemGenerateModal({
 }) {
   const { toast, toastError } = useToast()
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   const [count, setCount] = useState('10')
   const [quota, setQuota] = useState('10') // 人民币（元）：每张面额
   const [expiresDays, setExpiresDays] = useState('0')
@@ -280,12 +284,12 @@ function RedeemGenerateModal({
   async function handleSubmit() {
     const n = Number(count)
     if (!Number.isInteger(n) || n < 1 || n > 500) {
-      toastError('生成数量需为 1~500 的整数')
+      toastError(t('admin.redeem-codes.error.countInvalid'))
       return
     }
     const q = Number(quota)
     if (!Number.isFinite(q) || q < 0) {
-      toastError('请填写正确的面额（元）')
+      toastError(t('admin.redeem-codes.error.quotaInvalid'))
       return
     }
     setLoading(true)
@@ -298,10 +302,10 @@ function RedeemGenerateModal({
         batch_no: batchNo.trim() || undefined,
       })
       setResult(data)
-      toast(`已生成 ${data.count} 张兑换码`)
+      toast(t('admin.redeem-codes.toast.generated', { count: data.count }))
       onSaved()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '生成失败')
+      toastError(err instanceof Error ? err.message : t('admin.redeem-codes.toast.generateFailed'))
     } finally {
       setLoading(false)
     }
@@ -310,20 +314,20 @@ function RedeemGenerateModal({
   // 生成成功：切换为结果面板（CodeBlock 供复制分发），列表已由 onSaved 刷新
   if (result) {
     return (
-      <Modal open={open} onClose={onClose} title="兑换码生成成功" width={560}>
+      <Modal open={open} onClose={onClose} title={t('admin.redeem-codes.form.resultTitle')} width={560}>
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <Badge tone="ok">生成成功</Badge>
+            <Badge tone="ok">{t('admin.redeem-codes.form.resultBadge')}</Badge>
             <span className="text-sm text-ink-2">
-              批次 {result.batch_no || '—'} · 共 {result.count} 张
+              {t('admin.redeem-codes.form.resultSummary', { batch: result.batch_no || '—', count: result.count })}
             </span>
           </div>
-          <CodeBlock code={result.items.map((item) => item.code).join('\n')} title="本批兑换码（复制分发）" />
-          <div className="text-xs text-ink-3">请尽快复制分发；关闭后仍可在列表中查看本批明文码。</div>
+          <CodeBlock code={result.items.map((item) => item.code).join('\n')} title={t('admin.redeem-codes.form.copyTitle')} />
+          <div className="text-xs text-ink-3">{t('admin.redeem-codes.form.resultHint')}</div>
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="primary" onClick={onClose}>
-            完成
+            {t('admin.redeem-codes.form.done')}
           </Button>
         </div>
       </Modal>
@@ -331,34 +335,34 @@ function RedeemGenerateModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="批量生成兑换码" width={560}>
+    <Modal open={open} onClose={onClose} title={t('admin.redeem-codes.form.title')} width={560}>
       <div className="space-y-4">
-        <Field label="生成数量" required help="1~500 之间的整数">
+        <Field label={t('admin.redeem-codes.form.count')} required help={t('admin.redeem-codes.form.countHelp')}>
           <Input value={count} onChange={(e) => setCount(e.target.value)} type="number" placeholder="10" />
         </Field>
 
-        <Field label="每张面额（¥）" required help="用户兑换后获得的人民币面额，如 10 表示 10 元">
+        <Field label={t('admin.redeem-codes.form.quota')} required help={t('admin.redeem-codes.form.quotaHelp')}>
           <Input value={quota} onChange={(e) => setQuota(e.target.value)} type="number" placeholder="10" />
         </Field>
 
-        <Field label="有效期（天）" help="0 表示永不过期">
+        <Field label={t('admin.redeem-codes.form.expiresDays')} help={t('admin.redeem-codes.form.expiresHelp')}>
           <Input value={expiresDays} onChange={(e) => setExpiresDays(e.target.value)} type="number" placeholder="0" />
         </Field>
 
-        <Field label="备注">
-          <Input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="给本批码写个说明（如：双十一活动）" />
+        <Field label={t('admin.redeem-codes.form.remark')}>
+          <Input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder={t('admin.redeem-codes.form.remarkPlaceholder')} />
         </Field>
 
-        <Field label="批次号" help="留空由服务端按时间自动生成">
-          <Input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} placeholder="如 20261001-A" />
+        <Field label={t('admin.redeem-codes.form.batch')} help={t('admin.redeem-codes.form.batchHelp')}>
+          <Input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} placeholder={t('admin.redeem-codes.form.batchPlaceholder')} />
         </Field>
       </div>
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>
-          取消
+          {t('admin.redeem-codes.form.cancel')}
         </Button>
         <Button variant="primary" loading={loading} onClick={handleSubmit}>
-          生成
+          {t('admin.redeem-codes.form.submit')}
         </Button>
       </div>
     </Modal>

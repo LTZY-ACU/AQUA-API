@@ -30,6 +30,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Select, Switch, Textarea } from '@/components/ui/Form'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { formatDateTime } from '@/utils/format'
 
@@ -46,11 +47,11 @@ function levelTone(level: AnnouncementLevel): 'info' | 'ok' | 'warn' | 'err' {
   }
 }
 
-const LEVEL_LABEL: Record<AnnouncementLevel, string> = {
-  info: '信息',
-  success: '成功',
-  warning: '警示',
-  danger: '紧急',
+const LEVEL_LABEL_KEYS: Record<AnnouncementLevel, string> = {
+  info: 'admin.announcements.level.info',
+  success: 'admin.announcements.level.success',
+  warning: 'admin.announcements.level.warning',
+  danger: 'admin.announcements.level.danger',
 }
 
 export default function AdminAnnouncementsPage() {
@@ -61,6 +62,7 @@ export default function AdminAnnouncementsPage() {
   const [editing, setEditing] = useState<Announcement | null | 'new'>(null)
   const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null)
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -83,52 +85,52 @@ export default function AdminAnnouncementsPage() {
     if (!deleteTarget) return
     try {
       await deleteAnnouncement(deleteTarget.id)
-      toast('公告已删除')
+      toast(t('admin.announcements.toast.deleted'))
       setDeleteTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '删除失败')
+      toastError(err instanceof Error ? err.message : t('admin.announcements.toast.deleteFailed'))
     }
   }
 
   const columns: Column<Announcement>[] = [
     {
-      title: '标题',
+      title: t('admin.announcements.col.title'),
       render: (row) => (
         <span className="flex items-center gap-1.5">
-          {row.pinned && <span className="text-[13px] leading-none text-brand" title="已置顶">★</span>}
+          {row.pinned && <span className="text-[13px] leading-none text-brand" title={t('admin.announcements.pinned')}>★</span>}
           <span className="font-medium text-ink">{row.title}</span>
         </span>
       ),
     },
-    { title: '语气', render: (row) => <Badge tone={levelTone(row.level)}>{LEVEL_LABEL[row.level] ?? row.level_text}</Badge> },
+    { title: t('admin.announcements.col.level'), render: (row) => <Badge tone={levelTone(row.level)}>{t(LEVEL_LABEL_KEYS[row.level])}</Badge> },
     {
-      title: '状态',
-      render: (row) => (row.enabled ? <Badge tone="ok">启用</Badge> : <Badge tone="off">停用</Badge>),
+      title: t('admin.announcements.col.status'),
+      render: (row) => (row.enabled ? <Badge tone="ok">{t('admin.announcements.statusEnabled')}</Badge> : <Badge tone="off">{t('admin.announcements.statusDisabled')}</Badge>),
     },
     {
-      title: '发布开始',
+      title: t('admin.announcements.col.publishStart'),
       render: (row) => (
-        <span className="text-ink-2">{row.publish_at > 0 ? formatDateTime(row.publish_at) : '立即发布'}</span>
+        <span className="text-ink-2">{row.publish_at > 0 ? formatDateTime(row.publish_at) : t('admin.announcements.publishNow')}</span>
       ),
     },
     {
-      title: '到期',
+      title: t('admin.announcements.col.expire'),
       render: (row) => (
-        <span className="text-ink-2">{row.expire_at > 0 ? formatDateTime(row.expire_at) : '永不过期'}</span>
+        <span className="text-ink-2">{row.expire_at > 0 ? formatDateTime(row.expire_at) : t('admin.announcements.neverExpire')}</span>
       ),
     },
-    { title: '更新时间', render: (row) => <span className="text-ink-2">{formatDateTime(row.updated_at)}</span> },
+    { title: t('admin.announcements.col.updatedAt'), render: (row) => <span className="text-ink-2">{formatDateTime(row.updated_at)}</span> },
     {
-      title: '操作',
+      title: t('admin.announcements.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="flex items-center justify-end gap-2 text-[13px]">
           <button type="button" onClick={() => setEditing(row)} className="text-ink-3 hover:text-brand">
-            编辑
+            {t('admin.announcements.action.edit')}
           </button>
           <button type="button" onClick={() => setDeleteTarget(row)} className="text-ink-3 hover:text-err">
-            删除
+            {t('admin.announcements.action.delete')}
           </button>
         </span>
       ),
@@ -139,10 +141,10 @@ export default function AdminAnnouncementsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">站点公告</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">前台横幅与公告列表的内容来源（共 {total} 条）</p>
+          <h1 className="text-xl font-bold text-ink">{t('admin.announcements.title')}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.announcements.subtitle', { total })}</p>
         </div>
-        <Button variant="primary" onClick={() => setEditing('new')}>新建公告</Button>
+        <Button variant="primary" onClick={() => setEditing('new')}>{t('admin.announcements.create')}</Button>
       </div>
 
       <Card padding="none">
@@ -151,8 +153,8 @@ export default function AdminAnnouncementsPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.id}
-          emptyTitle="还没有公告"
-          emptyDescription="新建一条公告，它将出现在前台横幅与公告列表"
+          emptyTitle={t('admin.announcements.emptyTitle')}
+          emptyDescription={t('admin.announcements.emptyDescription')}
         />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
@@ -168,10 +170,10 @@ export default function AdminAnnouncementsPage() {
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="删除公告"
-        message={`确认删除公告「${deleteTarget?.title}」？删除后不可恢复。`}
+        title={t('admin.announcements.delete.title')}
+        message={t('admin.announcements.delete.message', { title: deleteTarget?.title ?? '' })}
         danger
-        confirmText="删除"
+        confirmText={t('admin.announcements.delete.confirm')}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -193,6 +195,7 @@ function AnnouncementFormModal({
   onSaved: () => void
 }) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [level, setLevel] = useState<AnnouncementLevel>('info')
@@ -211,11 +214,11 @@ function AnnouncementFormModal({
 
   async function handleSubmit() {
     if (!title.trim()) {
-      toastError('请填写公告标题')
+      toastError(t('admin.announcements.error.titleRequired'))
       return
     }
     if (!content.trim()) {
-      toastError('请填写公告内容')
+      toastError(t('admin.announcements.error.contentRequired'))
       return
     }
     setLoading(true)
@@ -229,55 +232,55 @@ function AnnouncementFormModal({
       }
       if (announcement) {
         await updateAnnouncement(announcement.id, payload)
-        toast('公告已更新')
+        toast(t('admin.announcements.toast.updated'))
       } else {
         await createAnnouncement(payload)
-        toast('公告已创建')
+        toast(t('admin.announcements.toast.created'))
       }
       onSaved()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : t('admin.announcements.toast.saveFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={announcement ? '编辑公告' : '新建公告'} width={560}>
+    <Modal open={open} onClose={onClose} title={announcement ? t('admin.announcements.form.editTitle') : t('admin.announcements.form.newTitle')} width={560}>
       <div className="space-y-4">
-        <Field label="标题" required>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="公告标题" />
+        <Field label={t('admin.announcements.form.title')} required>
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('admin.announcements.form.titlePlaceholder')} />
         </Field>
 
-        <Field label="内容" required>
-          <Textarea value={content} onChange={(e) => setContent(e.target.value)} rows={5} placeholder="公告正文" />
+        <Field label={t('admin.announcements.form.content')} required>
+          <Textarea value={content} onChange={(e) => setContent(e.target.value)} rows={5} placeholder={t('admin.announcements.form.contentPlaceholder')} />
         </Field>
 
         <div className="grid grid-cols-2 gap-4">
-          <Field label="语气">
+          <Field label={t('admin.announcements.form.level')}>
             <Select value={level} onChange={(e) => setLevel(e.target.value as AnnouncementLevel)}>
-              <option value="info">信息（蓝）</option>
-              <option value="success">成功（绿）</option>
-              <option value="warning">警示（橙）</option>
-              <option value="danger">紧急（红）</option>
+              <option value="info">{t('admin.announcements.levelOption.info')}</option>
+              <option value="success">{t('admin.announcements.levelOption.success')}</option>
+              <option value="warning">{t('admin.announcements.levelOption.warning')}</option>
+              <option value="danger">{t('admin.announcements.levelOption.danger')}</option>
             </Select>
           </Field>
 
           <div className="flex flex-col gap-3 pt-1">
             <label className="flex items-center justify-between text-[13px] text-ink-2">
-              <span>置顶</span>
-              <Switch checked={pinned} onChange={setPinned} label="置顶公告" />
+              <span>{t('admin.announcements.form.pinned')}</span>
+              <Switch checked={pinned} onChange={setPinned} label={t('admin.announcements.form.pinnedSwitch')} />
             </label>
             <label className="flex items-center justify-between text-[13px] text-ink-2">
-              <span>启用</span>
-              <Switch checked={enabled} onChange={setEnabled} label="启用公告" />
+              <span>{t('admin.announcements.form.enabled')}</span>
+              <Switch checked={enabled} onChange={setEnabled} label={t('admin.announcements.form.enabledSwitch')} />
             </label>
           </div>
         </div>
       </div>
       <div className="mt-5 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>取消</Button>
-        <Button variant="primary" loading={loading} onClick={handleSubmit}>{announcement ? '保存' : '创建'}</Button>
+        <Button variant="secondary" onClick={onClose}>{t('common.action.cancel')}</Button>
+        <Button variant="primary" loading={loading} onClick={handleSubmit}>{announcement ? t('admin.announcements.form.save') : t('admin.announcements.form.create')}</Button>
       </div>
     </Modal>
   )

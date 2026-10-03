@@ -10,6 +10,7 @@ import { DataTable, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Switch } from '@/components/ui/Form'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 
 export default function AdminOAuthPage() {
@@ -19,6 +20,7 @@ export default function AdminOAuthPage() {
   const [editing, setEditing] = useState<OAuthProvider | null | 'new'>(null)
   const [deleteTarget, setDeleteTarget] = useState<OAuthProvider | null>(null)
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   // 接口不分页：一次取回全部提供方（数量级很小），因此本页不渲染 Pagination
   const load = useCallback(async () => {
@@ -42,40 +44,40 @@ export default function AdminOAuthPage() {
     if (!deleteTarget) return
     try {
       await deleteOAuthProvider(deleteTarget.id)
-      toast('提供方已删除')
+      toast(t('admin.oauth.toast.deleted'))
       setDeleteTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '删除失败')
+      toastError(err instanceof Error ? err.message : t('admin.oauth.toast.deleteFailed'))
     }
   }
 
   const columns: Column<OAuthProvider>[] = [
-    { title: '名称', render: (row) => <span className="font-medium text-ink">{row.name}</span> },
+    { title: t('admin.oauth.col.name'), render: (row) => <span className="font-medium text-ink">{row.name}</span> },
     {
-      title: '令牌地址',
+      title: t('admin.oauth.col.tokenUrl'),
       render: (row) => (
         <span className="max-w-56 block truncate text-[13px] text-ink-2" title={row.token_url}>
           {row.token_url}
         </span>
       ),
     },
-    { title: 'Client ID', render: (row) => <code className="font-mono text-[13px] text-ink-2">{row.client_id}</code> },
-    { title: 'Scope', render: (row) => <span className="text-[13px] text-ink-2">{row.scope || '—'}</span> },
+    { title: t('admin.oauth.col.clientId'), render: (row) => <code className="font-mono text-[13px] text-ink-2">{row.client_id}</code> },
+    { title: t('admin.oauth.col.scope'), render: (row) => <span className="text-[13px] text-ink-2">{row.scope || '—'}</span> },
     {
-      title: '启用',
-      render: (row) => <Badge tone={row.enabled ? 'ok' : 'off'}>{row.enabled ? '启用' : '停用'}</Badge>,
+      title: t('admin.oauth.col.enabled'),
+      render: (row) => <Badge tone={row.enabled ? 'ok' : 'off'}>{row.enabled ? t('admin.oauth.statusEnabled') : t('admin.oauth.statusDisabled')}</Badge>,
     },
     {
-      title: '操作',
+      title: t('admin.oauth.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="flex items-center justify-end gap-2 text-[13px]">
           <button type="button" onClick={() => setEditing(row)} className="text-ink-3 hover:text-brand">
-            编辑
+            {t('admin.oauth.action.edit')}
           </button>
           <button type="button" onClick={() => setDeleteTarget(row)} className="text-ink-3 hover:text-err">
-            删除
+            {t('admin.oauth.action.delete')}
           </button>
         </span>
       ),
@@ -86,11 +88,11 @@ export default function AdminOAuthPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">订阅账号</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">OAuth 提供方配置，订阅账号凭据刷新令牌时使用（{total}）</p>
+          <h1 className="text-xl font-bold text-ink">{t('admin.oauth.title')}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.oauth.subtitle', { total })}</p>
         </div>
         <Button variant="primary" onClick={() => setEditing('new')}>
-          新建提供方
+          {t('admin.oauth.create')}
         </Button>
       </div>
 
@@ -100,8 +102,8 @@ export default function AdminOAuthPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.id}
-          emptyTitle="还没有 OAuth 提供方"
-          emptyDescription="新建提供方后，订阅账号凭据才能刷新访问令牌"
+          emptyTitle={t('admin.oauth.emptyTitle')}
+          emptyDescription={t('admin.oauth.emptyDescription')}
         />
       </Card>
 
@@ -117,10 +119,10 @@ export default function AdminOAuthPage() {
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="删除提供方"
-        message={`确认删除 OAuth 提供方「${deleteTarget?.name}」？使用它的订阅账号凭据将无法再刷新令牌。`}
+        title={t('admin.oauth.delete.title')}
+        message={t('admin.oauth.delete.message', { name: deleteTarget?.name ?? '' })}
         danger
-        confirmText="删除"
+        confirmText={t('admin.oauth.delete.confirm')}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -142,6 +144,7 @@ function OAuthFormModal({
   onSaved: () => void
 }) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
   const [name, setName] = useState('')
   const [tokenUrl, setTokenUrl] = useState('')
   const [clientId, setClientId] = useState('')
@@ -164,19 +167,19 @@ function OAuthFormModal({
 
   async function handleSubmit() {
     if (!name.trim()) {
-      toastError('请填写提供方名称')
+      toastError(t('admin.oauth.error.nameRequired'))
       return
     }
     if (!tokenUrl.trim()) {
-      toastError('请填写令牌地址')
+      toastError(t('admin.oauth.error.tokenUrlRequired'))
       return
     }
     if (!clientId.trim()) {
-      toastError('请填写 Client ID')
+      toastError(t('admin.oauth.error.clientIdRequired'))
       return
     }
     if (!provider && !clientSecret.trim()) {
-      toastError('新建提供方必须填写 Client Secret')
+      toastError(t('admin.oauth.error.clientSecretRequired'))
       return
     }
     setLoading(true)
@@ -192,66 +195,66 @@ function OAuthFormModal({
       if (provider) {
         if (clientSecret.trim()) payload.client_secret = clientSecret.trim()
         await updateOAuthProvider(provider.id, payload)
-        toast('提供方已更新')
+        toast(t('admin.oauth.toast.updated'))
       } else {
         payload.client_secret = clientSecret.trim()
         await createOAuthProvider(payload)
-        toast('提供方已创建')
+        toast(t('admin.oauth.toast.created'))
       }
       onSaved()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : t('admin.oauth.toast.saveFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={provider ? '编辑提供方' : '新建提供方'} width={560}>
+    <Modal open={open} onClose={onClose} title={provider ? t('admin.oauth.form.editTitle') : t('admin.oauth.form.newTitle')} width={560}>
       <div className="space-y-4">
-        <Field label="名称" required>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="如 ChatGPT / Codex" />
+        <Field label={t('admin.oauth.form.name')} required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('admin.oauth.form.namePlaceholder')} />
         </Field>
 
-        <Field label="令牌地址" required help="OAuth2 token 端点（换 access_token 用）">
+        <Field label={t('admin.oauth.form.tokenUrl')} required help={t('admin.oauth.form.tokenUrlHelp')}>
           <Input value={tokenUrl} onChange={(e) => setTokenUrl(e.target.value)} placeholder="https://auth.openai.com/oauth/token" />
         </Field>
 
-        <Field label="Client ID" required>
-          <Input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="OAuth 客户端 ID" />
+        <Field label={t('admin.oauth.form.clientId')} required>
+          <Input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder={t('admin.oauth.form.clientIdPlaceholder')} />
         </Field>
 
-        <Field label="Client Secret" required={!provider} help={provider ? '明文永不回显，留空表示不修改' : 'OAuth 客户端密钥'}>
+        <Field label={t('admin.oauth.form.clientSecret')} required={!provider} help={provider ? t('admin.oauth.form.clientSecretHelpEdit') : t('admin.oauth.form.clientSecretHelpNew')}>
           <Input
             value={clientSecret}
             onChange={(e) => setClientSecret(e.target.value)}
             type="password"
-            placeholder={provider ? '留空表示不修改' : 'OAuth 客户端密钥'}
+            placeholder={provider ? t('admin.oauth.form.clientSecretPlaceholderKeep') : t('admin.oauth.form.clientSecretPlaceholderNew')}
             autoComplete="new-password"
           />
         </Field>
 
-        <Field label="Scope" help="授权范围，空格分隔；留空表示使用默认范围">
-          <Input value={scope} onChange={(e) => setScope(e.target.value)} placeholder="openid profile email" />
+        <Field label={t('admin.oauth.form.scope')} help={t('admin.oauth.form.scopeHelp')}>
+          <Input value={scope} onChange={(e) => setScope(e.target.value)} placeholder={t('admin.oauth.form.scopePlaceholder')} />
         </Field>
 
-        <Field label="备注">
-          <Input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="选填" />
+        <Field label={t('admin.oauth.form.remark')}>
+          <Input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder={t('admin.oauth.form.remarkPlaceholder')} />
         </Field>
 
-        <Field label="启用">
+        <Field label={t('admin.oauth.form.enabled')}>
           <div className="flex items-center justify-between rounded-md border border-line bg-surface px-3 py-2">
-            <span className="text-[13px] text-ink-2">启用该提供方</span>
+            <span className="text-[13px] text-ink-2">{t('admin.oauth.form.enabledSwitch')}</span>
             <Switch checked={enabled} onChange={setEnabled} />
           </div>
         </Field>
       </div>
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>
-          取消
+          {t('admin.oauth.form.cancel')}
         </Button>
         <Button variant="primary" loading={loading} onClick={handleSubmit}>
-          {provider ? '保存' : '创建'}
+          {provider ? t('admin.oauth.form.save') : t('admin.oauth.form.create')}
         </Button>
       </div>
     </Modal>

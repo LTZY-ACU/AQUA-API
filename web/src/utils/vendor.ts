@@ -18,6 +18,7 @@
  * 扩展（Extend）：
  *   想在侧栏显示中文厂商名时，在 VENDOR_LABELS 里补一条即可（缺失则回退前缀本身）。
  */
+import { translate } from '@/i18n'
 
 /** 独立厂商（模型名不含斜杠时使用）：多为自研或单模型仓库 */
 export const VENDOR_OTHER = 'other'
@@ -60,7 +61,7 @@ export function vendorOf(model: string): string {
 
 /** 厂商展示名 */
 export function vendorLabel(vendor: string): string {
-  if (vendor === VENDOR_OTHER) return '其他'
+  if (vendor === VENDOR_OTHER) return translate('common.value.other')
   return VENDOR_LABELS[vendor] || vendor
 }
 

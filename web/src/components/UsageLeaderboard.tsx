@@ -25,6 +25,7 @@ import { fetchLeaderboard } from '@/api/portal'
 import type { LeaderboardEntry, LeaderboardStats } from '@/api/types'
 import { useAuth } from '@/lib/auth/auth-context'
 import { StatCard } from '@/components/ui/Display'
+import { useI18n } from '@/i18n'
 import { formatNumber } from '@/utils/format'
 
 /** 头像配色候选（与 utils/vendor.ts 同风格：浅底深字 + 内描边，昼夜两套） */
@@ -74,6 +75,7 @@ function SuccessRateBadge({ rate }: { rate: number }) {
 
 /** 单行渲染（表格行）。highlight 表示当前登录用户所在行。 */
 function LeaderboardRow({ entry, highlight }: { entry: LeaderboardEntry; highlight: boolean }) {
+  const { t } = useI18n()
   return (
     <tr
       className={`border-b border-line/70 transition last:border-0 ${
@@ -93,7 +95,9 @@ function LeaderboardRow({ entry, highlight }: { entry: LeaderboardEntry; highlig
             {entry.rank}
           </span>
           {highlight && (
-            <span className="rounded bg-brand px-1.5 py-0.5 text-[11px] font-semibold text-on-brand">我</span>
+            <span className="rounded bg-brand px-1.5 py-0.5 text-[11px] font-semibold text-on-brand">
+              {t('components.leaderboard.me')}
+            </span>
           )}
         </div>
       </td>
@@ -132,22 +136,23 @@ function LeaderboardRow({ entry, highlight }: { entry: LeaderboardEntry; highlig
 
 /** 榜单主体（一个 Tab 的表格） */
 function LeaderboardTable({ section }: { section: LeaderboardEntry[] }) {
+  const { t } = useI18n()
   if (!section || section.length === 0) {
-    return <div className="px-4 py-8 text-center text-[13px] text-ink-3">暂无数据</div>
+    return <div className="px-4 py-8 text-center text-[13px] text-ink-3">{t('common.state.empty')}</div>
   }
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-line bg-surface/70 text-[12px] text-ink-3">
-            <th className="px-3 py-2 text-left font-medium">名次</th>
-            <th className="px-3 py-2 text-left font-medium">账号</th>
-            <th className="px-3 py-2 text-right font-medium">请求数</th>
-            <th className="px-3 py-2 text-right font-medium">Token</th>
-            <th className="px-3 py-2 text-right font-medium">成功率</th>
-            <th className="px-3 py-2 text-right font-medium">综合分数</th>
-            <th className="px-3 py-2 text-right font-medium">平均耗时</th>
-            <th className="px-3 py-2 text-right font-medium">峰值并发</th>
+            <th className="px-3 py-2 text-left font-medium">{t('components.leaderboard.col.rank')}</th>
+            <th className="px-3 py-2 text-left font-medium">{t('components.leaderboard.col.account')}</th>
+            <th className="px-3 py-2 text-right font-medium">{t('components.leaderboard.col.requests')}</th>
+            <th className="px-3 py-2 text-right font-medium">{t('components.leaderboard.col.tokens')}</th>
+            <th className="px-3 py-2 text-right font-medium">{t('components.leaderboard.col.successRate')}</th>
+            <th className="px-3 py-2 text-right font-medium">{t('components.leaderboard.col.score')}</th>
+            <th className="px-3 py-2 text-right font-medium">{t('components.leaderboard.col.avgLatency')}</th>
+            <th className="px-3 py-2 text-right font-medium">{t('components.leaderboard.col.peakConcurrency')}</th>
           </tr>
         </thead>
         <tbody>
@@ -164,6 +169,7 @@ type TabKey = 'paid' | 'free'
 
 export function UsageLeaderboard() {
   const { isAdmin } = useAuth()
+  const { t } = useI18n()
   const [stats, setStats] = useState<LeaderboardStats | null>(null)
   const [tab, setTab] = useState<TabKey>('paid')
   const [days, setDays] = useState(30)
@@ -194,19 +200,19 @@ export function UsageLeaderboard() {
       {/* ── 全站汇总：与主站概览页同款 StatCard（复用组件，深浅色自动适配） ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
-          label="总请求"
+          label={t('components.leaderboard.totalRequests')}
           value={stats ? formatNumber(stats.totals.requests) : '—'}
-          hint={`近 ${days} 天 · ${stats ? stats.totals.users : 0} 位用户`}
+          hint={t('components.leaderboard.lastDaysUsers', { days, users: stats ? stats.totals.users : 0 })}
         />
         <StatCard
-          label="总 Token"
+          label={t('components.leaderboard.totalTokens')}
           value={stats ? formatNumber(stats.totals.tokens) : '—'}
-          hint="输入 + 输出"
+          hint={t('components.leaderboard.inputOutput')}
         />
         <StatCard
-          label="总成功率"
+          label={t('components.leaderboard.totalSuccessRate')}
           value={stats ? `${(stats.totals.success_rate * 100).toFixed(1)}%` : '—'}
-          hint={`近 ${days} 天`}
+          hint={t('components.leaderboard.lastDays', { days })}
         />
       </div>
 
@@ -214,8 +220,8 @@ export function UsageLeaderboard() {
       {/* 头部：标题 + 窗口切换 + 管理员完整榜单开关 */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
         <div>
-          <h2 className="text-[15px] font-semibold text-ink">用量排行榜</h2>
-          <p className="mt-0.5 text-[12px] text-ink-3">综合分数 = 请求数 50% + Token 消耗 50%，按用户归一化</p>
+          <h2 className="text-[15px] font-semibold text-ink">{t('components.leaderboard.title')}</h2>
+          <p className="mt-0.5 text-[12px] text-ink-3">{t('components.leaderboard.formula')}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex gap-1 rounded-lg border border-line bg-surface p-1">
@@ -228,7 +234,7 @@ export function UsageLeaderboard() {
                   days === d ? 'bg-card text-ink shadow-sm' : 'text-ink-3 hover:text-ink-2'
                 }`}
               >
-                {d} 天
+                {t('components.leaderboard.days', { count: d })}
               </button>
             ))}
           </div>
@@ -242,7 +248,7 @@ export function UsageLeaderboard() {
                   : 'border-line text-ink-3 hover:border-brand/40 hover:text-brand'
               }`}
             >
-              {showAll ? '完整榜单 ✓' : '完整榜单'}
+              {showAll ? t('components.leaderboard.fullRankOn') : t('components.leaderboard.fullRank')}
             </button>
           )}
         </div>
@@ -252,8 +258,8 @@ export function UsageLeaderboard() {
       <div className="flex gap-1 border-b border-line px-4 pt-2">
         {(
           [
-            { key: 'paid', label: '付费榜' },
-            { key: 'free', label: '免费榜' },
+            { key: 'paid', label: t('components.leaderboard.paid') },
+            { key: 'free', label: t('components.leaderboard.free') },
           ] as { key: TabKey; label: string }[]
         ).map((item) => (
           <button
@@ -272,7 +278,7 @@ export function UsageLeaderboard() {
         {/* 我的名次（未上榜不显示） */}
         {myRank > 0 && (
           <div className="ml-auto self-center pb-1 text-[12px] text-ink-3">
-            我的名次：<span className="font-semibold text-ink">{myRank}</span>
+            {t('components.leaderboard.myRank')}<span className="font-semibold text-ink">{myRank}</span>
           </div>
         )}
       </div>
@@ -280,7 +286,7 @@ export function UsageLeaderboard() {
       {/* 榜单主体 */}
       <div className="p-1">
         {loading ? (
-          <div className="px-4 py-8 text-center text-[13px] text-ink-3">加载中…</div>
+          <div className="px-4 py-8 text-center text-[13px] text-ink-3">{t('common.state.loading')}</div>
         ) : (
           <LeaderboardTable section={section} />
         )}

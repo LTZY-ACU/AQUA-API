@@ -593,4 +593,26 @@ export default {
   authContext: {
     notLoggedIn: 'Sin sesión',
   },
+  channelStatus: {
+    enabled: 'Habilitado',
+    manualDisabled: 'Deshabilitado manualmente',
+    autoDisabled: 'Deshabilitado automáticamente',
+    unknown: 'Estado desconocido',
+    unknownCode: 'Estado desconocido ({code})',
+  },
+  channelType: {
+    openaiCompatible: 'Compatible con OpenAI',
+    generic: 'Tipo {type}',
+    unknown: 'Tipo desconocido',
+  },
+  userRole: {
+    admin: 'Administrador',
+    user: 'Usuario',
+    unknown: 'Rol desconocido',
+    code: 'Rol {role}',
+  },
+  modelsSummary: {
+    all: 'Todos los modelos',
+    count: '{count} modelos',
+  },
 }

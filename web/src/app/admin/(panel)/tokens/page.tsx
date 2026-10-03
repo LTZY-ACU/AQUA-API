@@ -11,6 +11,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Select, Switch } from '@/components/ui/Form'
 import { Modal, ConfirmDialog, CopyButton } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { useSite } from '@/lib/site/site-context'
 import { formatExpiry, parseModelList } from '@/utils/format'
@@ -34,17 +35,22 @@ type TokenWithBudget = AccessToken & {
 
 /** 周期预算的下拉选项：值必须与后端 model.BudgetPeriod* 常量一致 */
 const BUDGET_PERIOD_OPTIONS = [
-  { value: '', label: '不启用（取消周期预算）' },
-  { value: 'daily', label: '每日' },
-  { value: 'weekly', label: '每周' },
-  { value: 'monthly', label: '每月' },
+  { value: '', labelKey: 'admin.tokens.form.periodDisable' },
+  { value: 'daily', labelKey: 'admin.tokens.form.periodDaily' },
+  { value: 'weekly', labelKey: 'admin.tokens.form.periodWeekly' },
+  { value: 'monthly', labelKey: 'admin.tokens.form.periodMonthly' },
 ] as const
 
-/** 周期标识 → 中文短名（列表展示用） */
-const BUDGET_PERIOD_LABEL: Record<string, string> = { daily: '日', weekly: '周', monthly: '月' }
+/** 周期标识 → 词条键（列表展示用） */
+const BUDGET_PERIOD_LABEL: Record<string, string> = {
+  daily: 'admin.tokens.period.daily',
+  weekly: 'admin.tokens.period.weekly',
+  monthly: 'admin.tokens.period.monthly',
+}
 
 export default function AdminTokensPage() {
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   const [items, setItems] = useState<TokenWithBudget[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -71,7 +77,7 @@ export default function AdminTokensPage() {
       const data = await getTokenKey(token.id)
       setRevealed((prev) => ({ ...prev, [token.id]: data.key }))
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '获取密钥失败')
+      toastError(err instanceof Error ? err.message : t('admin.tokens.toast.revealFailed'))
     } finally {
       setRevealing(null)
     }
@@ -98,19 +104,19 @@ export default function AdminTokensPage() {
     if (!deleteTarget) return
     try {
       await deleteToken(deleteTarget.id)
-      toast('令牌已删除')
+      toast(t('admin.tokens.toast.deleted'))
       setDeleteTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '删除失败')
+      toastError(err instanceof Error ? err.message : t('admin.tokens.toast.deleteFailed'))
     }
   }
 
   const columns: Column<TokenWithBudget>[] = [
-    { title: 'ID', render: (row) => <span className="text-ink-3">#{row.id}</span> },
-    { title: '名称', render: (row) => <span className="font-medium text-ink">{row.name}</span> },
+    { title: t('admin.tokens.col.id'), render: (row) => <span className="text-ink-3">#{row.id}</span> },
+    { title: t('admin.tokens.col.name'), render: (row) => <span className="font-medium text-ink">{row.name}</span> },
     {
-      title: '密钥',
+      title: t('admin.tokens.col.key'),
       render: (row) => {
         const shown = revealed[row.id]
         return (
@@ -122,67 +128,67 @@ export default function AdminTokensPage() {
               disabled={revealing === row.id}
               className="text-[13px] text-ink-3 transition hover:text-brand disabled:opacity-50"
             >
-              {revealing === row.id ? '…' : shown ? '收起' : '查看原文'}
+              {revealing === row.id ? '…' : shown ? t('admin.tokens.collapse') : t('admin.tokens.reveal')}
             </button>
-            {shown && <CopyButton text={shown} label="复制" />}
+            {shown && <CopyButton text={shown} label={t('admin.tokens.copy')} />}
           </span>
         )
       },
     },
     {
-      title: '状态',
+      title: t('admin.tokens.col.status'),
       render: (row) => (
         <Badge tone={row.status === STATUS_ENABLED ? 'ok' : 'off'}>
-          {row.status_text ?? (row.status === STATUS_ENABLED ? '启用' : '停用')}
+          {row.status_text ?? (row.status === STATUS_ENABLED ? t('admin.tokens.statusEnabled') : t('admin.tokens.statusDisabled'))}
         </Badge>
       ),
     },
     {
-      title: '剩余',
+      title: t('admin.tokens.col.remain'),
       align: 'right',
       render: (row) => (
         <span className="text-ink-2">
-          {row.unlimited_quota ? '不限' : formatYuanFromQuota(row.remain_quota, quotaPerYuan)}
+          {row.unlimited_quota ? t('admin.tokens.unlimited') : formatYuanFromQuota(row.remain_quota, quotaPerYuan)}
         </span>
       ),
     },
     {
-      title: '已用',
+      title: t('admin.tokens.col.used'),
       align: 'right',
       render: (row) => <span className="text-ink-2">{formatYuanFromQuota(row.used_quota, quotaPerYuan)}</span>,
     },
     {
-      title: '周期预算',
+      title: t('admin.tokens.col.budget'),
       align: 'right',
       render: (row) => {
         const budget = row.budget_quota ?? 0
         const period = row.budget_period ?? ''
-        if (!(budget > 0) || !period) return <span className="text-ink-3">不限</span>
+        if (!(budget > 0) || !period) return <span className="text-ink-3">{t('admin.tokens.unlimited')}</span>
         return (
           <span className="text-ink-2">
-            {formatYuanFromQuota(budget, quotaPerYuan)} / {BUDGET_PERIOD_LABEL[period] ?? period}
+            {t('admin.tokens.budgetValue', { amount: formatYuanFromQuota(budget, quotaPerYuan), period: BUDGET_PERIOD_LABEL[period] ? t(BUDGET_PERIOD_LABEL[period]) : period })}
           </span>
         )
       },
     },
     {
-      title: '到期',
+      title: t('admin.tokens.col.expire'),
       render: (row) => <span className="text-[13px] text-ink-3">{formatExpiry(row.expires_at)}</span>,
     },
     {
-      title: '归属用户',
+      title: t('admin.tokens.col.owner'),
       render: (row) => <span className="text-ink-2">{row.username ?? (row.user_id ? `#${row.user_id}` : '—')}</span>,
     },
     {
-      title: '操作',
+      title: t('admin.tokens.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="flex items-center justify-end gap-2 text-[13px]">
           <button type="button" onClick={() => setEditing(row)} className="text-ink-3 hover:text-brand">
-            编辑
+            {t('admin.tokens.action.edit')}
           </button>
           <button type="button" onClick={() => setDeleteTarget(row)} className="text-ink-3 hover:text-err">
-            删除
+            {t('admin.tokens.action.delete')}
           </button>
         </span>
       ),
@@ -193,11 +199,11 @@ export default function AdminTokensPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">令牌管理</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">全站 API 访问令牌（{total}）</p>
+          <h1 className="text-xl font-bold text-ink">{t('admin.tokens.title')}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.tokens.subtitle', { total })}</p>
         </div>
         <Button variant="primary" onClick={() => setEditing('new')}>
-          新建令牌
+          {t('admin.tokens.create')}
         </Button>
       </div>
 
@@ -207,8 +213,8 @@ export default function AdminTokensPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.id}
-          emptyTitle="还没有令牌"
-          emptyDescription="为用户创建的 API 令牌会出现在这里"
+          emptyTitle={t('admin.tokens.emptyTitle')}
+          emptyDescription={t('admin.tokens.emptyDescription')}
         />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
@@ -226,10 +232,10 @@ export default function AdminTokensPage() {
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="删除令牌"
-        message={`确认删除令牌「${deleteTarget?.name}」？使用该令牌的调用将立即失败。`}
+        title={t('admin.tokens.delete.title')}
+        message={t('admin.tokens.delete.message', { name: deleteTarget?.name ?? '' })}
         danger
-        confirmText="删除"
+        confirmText={t('admin.tokens.delete.confirm')}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -250,6 +256,7 @@ function TokenFormModal({
 }) {
   const { toast, toastError } = useToast()
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   // 新建字段
   const [name, setName] = useState('')
   const [expiresInDays, setExpiresInDays] = useState('0')
@@ -284,18 +291,18 @@ function TokenFormModal({
   async function handleSubmit() {
     if (createdKey) return // 已创建成功，等待关闭
     if (!token && !name.trim()) {
-      toastError('请填写令牌名称')
+      toastError(t('admin.tokens.error.nameRequired'))
       return
     }
     if (!token && !userId.trim()) {
-      toastError('请填写归属用户 ID')
+      toastError(t('admin.tokens.error.userIdRequired'))
       return
     }
     // 周期预算：选了周期就必须给一个 > 0 的金额；金额 <= 0 视为「不启用」。
     // 后端约束：budget_quota > 0 时必须带合法 budget_period；取消时两者都清空。
     const budgetQuota = budgetPeriod ? yuanToQuota(Number(budgetYuan || 0), quotaPerYuan) : 0
     if (budgetPeriod && (!budgetQuota || budgetQuota <= 0)) {
-      toastError('启用周期预算时必须填写大于 0 的金额（元）；如需取消请将周期选为“不启用”')
+      toastError(t('admin.tokens.error.budgetInvalid'))
       return
     }
     setLoading(true)
@@ -311,7 +318,7 @@ function TokenFormModal({
           budget_period: budgetPeriod,
         }
         await updateToken(token.id, payload)
-        toast('令牌已更新')
+        toast(t('admin.tokens.toast.updated'))
         onClose()
       } else {
         const payload: CreateTokenPayload = {
@@ -324,10 +331,10 @@ function TokenFormModal({
         }
         const result = await createTokenForUser(payload)
         setCreatedKey(result.key)
-        toast('令牌已创建')
+        toast(t('admin.tokens.toast.created'))
       }
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : t('admin.tokens.toast.saveFailed'))
     } finally {
       setLoading(false)
     }
@@ -337,7 +344,7 @@ function TokenFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={createdKey ? '令牌已创建' : token ? '编辑令牌' : '新建令牌'}
+      title={createdKey ? t('admin.tokens.form.createdTitle') : token ? t('admin.tokens.form.editTitle') : t('admin.tokens.form.newTitle')}
       width={560}
     >
       {createdKey ? (
@@ -345,55 +352,55 @@ function TokenFormModal({
         <div className="space-y-4">
           <div className="rounded-md border border-warn/40 bg-warn/10 p-4">
             <div className="flex items-center gap-2">
-              <Badge tone="warn">仅此一次</Badge>
-              <span className="text-sm font-medium text-warn">请立即复制保存，关闭后不再显示明文</span>
+              <Badge tone="warn">{t('admin.tokens.form.oneTime')}</Badge>
+              <span className="text-sm font-medium text-warn">{t('admin.tokens.form.createdHint')}</span>
             </div>
             <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-line bg-surface px-3 py-2">
               <code className="break-all font-mono text-[13px] text-ink">{createdKey}</code>
-              <CopyButton text={createdKey} label="复制密钥" className="shrink-0" />
+              <CopyButton text={createdKey} label={t('admin.tokens.form.copyKey')} className="shrink-0" />
             </div>
           </div>
-          <div className="text-xs text-ink-3">明文密钥仅返回一次；丢失后只能删除重建，无法找回。</div>
+          <div className="text-xs text-ink-3">{t('admin.tokens.form.createdNote')}</div>
         </div>
       ) : (
         <div className="space-y-4">
           {!token && (
             <>
-              <Field label="令牌名称" required>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="给这个令牌起个名字" />
+              <Field label={t('admin.tokens.form.name')} required>
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('admin.tokens.form.namePlaceholder')} />
               </Field>
 
-              <Field label="有效期（天）" help="0 表示永不过期">
+              <Field label={t('admin.tokens.form.expiresIn')} help={t('admin.tokens.form.expiresHelp')}>
                 <Input value={expiresInDays} onChange={(e) => setExpiresInDays(e.target.value)} type="number" placeholder="0" />
               </Field>
 
-              <Field label="模型限制" help="逗号分隔模型名；留空表示不限制模型">
-                <Input value={modelsText} onChange={(e) => setModelsText(e.target.value)} placeholder="gpt-4o, claude-3-5-sonnet" />
+              <Field label={t('admin.tokens.form.models')} help={t('admin.tokens.form.modelsHelp')}>
+                <Input value={modelsText} onChange={(e) => setModelsText(e.target.value)} placeholder={t('admin.tokens.form.modelsPlaceholder')} />
               </Field>
 
-              <Field label="归属用户 ID" required help="为该用户创建令牌">
-                <Input value={userId} onChange={(e) => setUserId(e.target.value)} type="number" placeholder="用户 ID" />
+              <Field label={t('admin.tokens.form.userId')} required help={t('admin.tokens.form.userIdHelp')}>
+                <Input value={userId} onChange={(e) => setUserId(e.target.value)} type="number" placeholder={t('admin.tokens.form.userIdPlaceholder')} />
               </Field>
             </>
           )}
 
           {token && (
-            <Field label="状态">
+            <Field label={t('admin.tokens.form.status')}>
               <div className="flex items-center justify-between rounded-md border border-line bg-surface px-3 py-2">
-                <span className="text-[13px] text-ink-2">{status === STATUS_ENABLED ? '启用' : '停用'}</span>
+                <span className="text-[13px] text-ink-2">{status === STATUS_ENABLED ? t('admin.tokens.statusEnabled') : t('admin.tokens.statusDisabled')}</span>
                 <Switch checked={status === STATUS_ENABLED} onChange={(v) => setStatus(v ? STATUS_ENABLED : STATUS_DISABLED)} />
               </div>
             </Field>
           )}
 
-          <Field label="不限额度">
+          <Field label={t('admin.tokens.form.unlimited')}>
             <div className="flex items-center justify-between rounded-md border border-line bg-surface px-3 py-2">
-              <span className="text-[13px] text-ink-2">不限制可用额度</span>
+              <span className="text-[13px] text-ink-2">{t('admin.tokens.form.unlimitedHint')}</span>
               <Switch checked={unlimited} onChange={setUnlimited} />
             </div>
           </Field>
 
-          <Field label="可用余额（¥）" help={unlimited ? '不限额度时无需填写' : '该令牌可消耗的余额上限（人民币）'}>
+          <Field label={t('admin.tokens.form.remain')} help={unlimited ? t('admin.tokens.form.remainHelpUnlimited') : t('admin.tokens.form.remainHelp')}>
             <Input
               value={remainQuota}
               onChange={(e) => setRemainQuota(e.target.value)}
@@ -408,8 +415,8 @@ function TokenFormModal({
           {token && (
             <>
               <Field
-                label="周期预算（¥）"
-                help="该令牌每个周期可消耗的额度上限（人民币）；周期选「不启用」即取消。注：不限额度令牌不受周期预算影响。"
+                label={t('admin.tokens.form.budget')}
+                help={t('admin.tokens.form.budgetHelp')}
               >
                 <Input
                   value={budgetYuan}
@@ -421,11 +428,11 @@ function TokenFormModal({
                 />
               </Field>
 
-              <Field label="周期" help="预算窗口长度：日 / 周 / 月（滚动窗口）">
+              <Field label={t('admin.tokens.form.period')} help={t('admin.tokens.form.periodHelp')}>
                 <Select value={budgetPeriod} onChange={(e) => setBudgetPeriod(e.target.value)}>
                   {BUDGET_PERIOD_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
-                      {option.label}
+                      {t(option.labelKey)}
                     </option>
                   ))}
                 </Select>
@@ -438,15 +445,15 @@ function TokenFormModal({
       <div className="mt-5 flex justify-end gap-2">
         {createdKey ? (
           <Button variant="primary" onClick={onClose}>
-            完成
+            {t('admin.tokens.form.done')}
           </Button>
         ) : (
           <>
             <Button variant="secondary" onClick={onClose}>
-              取消
+              {t('admin.tokens.form.cancel')}
             </Button>
             <Button variant="primary" loading={loading} onClick={handleSubmit}>
-              {token ? '保存' : '创建'}
+              {token ? t('admin.tokens.form.save') : t('admin.tokens.form.create')}
             </Button>
           </>
         )}

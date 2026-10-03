@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useSpeedTestRunner, type SpeedTestEntry } from '@/components/admin/useSpeedTestRunner'
+import { useI18n } from '@/i18n'
 import { formatLatency } from '@/utils/format'
 
 export function SpeedTestModal({
@@ -41,6 +42,7 @@ export function SpeedTestModal({
   models: string[]
   onClose: () => void
 }) {
+  const { t } = useI18n()
   const runner = useSpeedTestRunner(open ? channelId : null, open ? models : [])
   const [sorted, setSorted] = useState(false)
 
@@ -58,15 +60,14 @@ export function SpeedTestModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`模型测速${channelName ? ` · ${channelName}` : ''}`}
+      title={channelName ? t('components.speedTest.titleWithChannel', { name: channelName }) : t('components.speedTest.title')}
       width={760}
     >
       <div className="space-y-4">
         <div className="rounded-md border border-line bg-surface p-3 text-xs text-ink-3">
-          逐模型发送最小请求测<strong className="text-ink-2">首字延迟</strong>
-          （提示词 ping + 输出截断 1 token，每个模型约消耗 2~3 个 token，
-          测到首字即断开）。结果会保存并在模型广场展示；
-          上游明确拒绝（403/404）的模型将自动从渠道移除。
+          {t('components.speedTest.descPart1')}
+          <strong className="text-ink-2">{t('components.speedTest.descStrong')}</strong>
+          {t('components.speedTest.descPart2')}
         </div>
 
         {runner.batchMessage && (
@@ -78,12 +79,12 @@ export function SpeedTestModal({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3 text-[13px] text-ink-2">
             <span>
-              进度 <span className="font-mono text-ink">{done}</span>/{total}
+              {t('components.speedTest.progress')} <span className="font-mono text-ink">{done}</span>/{total}
             </span>
             <span>
-              成功 <span className="font-mono text-ok">{okCount}</span>
+              {t('common.state.success')} <span className="font-mono text-ok">{okCount}</span>
             </span>
-            {running && <span className="text-ink-3">测速中…</span>}
+            {running && <span className="text-ink-3">{t('components.speedTest.running')}</span>}
           </div>
           <div className="flex items-center gap-2">
             <label className="flex cursor-pointer items-center gap-1.5 text-[13px] text-ink-3">
@@ -93,16 +94,16 @@ export function SpeedTestModal({
                 onChange={(e) => setSorted(e.target.checked)}
                 className="accent-[var(--brand)]"
               />
-              按延迟排序
+              {t('components.speedTest.sortByLatency')}
             </label>
             {!running ? (
               <Button variant="primary" onClick={runner.start} disabled={done === total}>
-                {done === 0 ? '开始测速' : '继续测速'}
+                {done === 0 ? t('components.speedTest.start') : t('components.speedTest.resume')}
               </Button>
             ) : (
-              <Button variant="secondary" onClick={runner.stop}>停止</Button>
+              <Button variant="secondary" onClick={runner.stop}>{t('common.action.stop')}</Button>
             )}
-            <Button variant="secondary" onClick={runner.reset} disabled={running}>重置</Button>
+            <Button variant="secondary" onClick={runner.reset} disabled={running}>{t('common.action.reset')}</Button>
           </div>
         </div>
 
@@ -110,11 +111,11 @@ export function SpeedTestModal({
           <table className="w-full text-[13px]">
             <thead className="sticky top-0 bg-surface text-ink-3">
               <tr>
-                <th className="px-3 py-2 text-left font-medium">模型</th>
-                <th className="px-3 py-2 text-left font-medium">状态</th>
-                <th className="px-3 py-2 text-right font-medium">首字延迟</th>
-                <th className="px-3 py-2 text-right font-medium">总耗时</th>
-                <th className="px-3 py-2 text-left font-medium">说明</th>
+                <th className="px-3 py-2 text-left font-medium">{t('components.speedTest.col.model')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('components.speedTest.col.status')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('components.speedTest.col.ttfb')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('components.speedTest.col.total')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('components.speedTest.col.message')}</th>
               </tr>
             </thead>
             <tbody>
@@ -130,6 +131,7 @@ export function SpeedTestModal({
 }
 
 function SpeedTestRow({ entry }: { entry: SpeedTestEntry }) {
+  const { t } = useI18n()
   const result = entry.result
   return (
     <tr className="border-t border-line">
@@ -137,9 +139,9 @@ function SpeedTestRow({ entry }: { entry: SpeedTestEntry }) {
         {entry.model}
       </td>
       <td className="px-3 py-2">
-        {entry.status === 'pending' && <Badge tone="off">待测</Badge>}
-        {entry.status === 'running' && <Badge tone="warn">测速中</Badge>}
-        {entry.status === 'done' && result && (result.ok ? <Badge tone="ok">成功</Badge> : result.blocked ? <Badge tone="warn">已移除</Badge> : <Badge tone="err">失败</Badge>)}
+        {entry.status === 'pending' && <Badge tone="off">{t('components.speedTest.pending')}</Badge>}
+        {entry.status === 'running' && <Badge tone="warn">{t('components.speedTest.testing')}</Badge>}
+        {entry.status === 'done' && result && (result.ok ? <Badge tone="ok">{t('common.state.success')}</Badge> : result.blocked ? <Badge tone="warn">{t('components.speedTest.removed')}</Badge> : <Badge tone="err">{t('common.state.failed')}</Badge>)}
       </td>
       <td className="px-3 py-2 text-right font-mono tabular-nums text-ink">
         {result?.ok ? latencyText(result.ttfb_ms) : '—'}

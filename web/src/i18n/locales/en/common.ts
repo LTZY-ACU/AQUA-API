@@ -64,4 +64,31 @@ export default {
   confirm: {
     defaultMessage: 'Are you sure you want to proceed?',
   },
+  value: {
+    neverExpires: 'Never expires',
+    unlimitedQuota: 'Unlimited quota',
+    other: 'Other',
+  },
+  money: {
+    quotaUnit: 'quota',
+    originalPrice: 'List price',
+    discount: '{ratio}% of price',
+    perCall: '/call',
+  },
+  api: {
+    timeout: 'Request timed out. Check your network and try again.',
+    network: 'Cannot reach the server. Please make sure the backend service is running.',
+    http400: 'Invalid request parameters',
+    http401: 'Your session has expired. Please sign in again.',
+    http403: 'You do not have permission to perform this action',
+    http404: 'The requested resource does not exist',
+    http409: 'Conflict: the record may already exist',
+    http429: 'Too many requests, or your quota is exhausted',
+    http500: 'Server error. Please try again later.',
+    http503: 'No upstream channel is currently available',
+    httpGeneric: 'Request failed (HTTP {status})',
+    exportConnectFailed: 'Cannot reach the server. Export failed.',
+    exportFailed: 'Export failed (HTTP {status})',
+    downloadFailed: 'Download failed (HTTP {status})',
+  },
 }
