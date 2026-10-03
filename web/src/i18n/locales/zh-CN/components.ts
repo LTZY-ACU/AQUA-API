@@ -257,6 +257,7 @@ export default {
       sensitiveWords: '内容安全',
       maintenanceMonitor: '运维监控',
       settings: '系统设置',
+      agent: 'AI 助手',
     },
     console: {
       console: '控制台',
@@ -273,6 +274,7 @@ export default {
       logs: '调用日志',
       referral: '邀请奖励',
       externalAccounts: '第三方账号',
+      support: '智能客服',
     },
   },
 }

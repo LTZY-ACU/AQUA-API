@@ -153,13 +153,13 @@ func (s *Server) handleUpdateAgentSettings(c *gin.Context) {
 	}
 
 	values := map[string]string{
-		model.SettingKeyAgentEnabled:              strconv.FormatBool(next.Enabled),
-		model.SettingKeyAgentDefaultModel:         next.DefaultModel,
-		model.SettingKeyAgentOpsModel:             next.OpsModel,
-		model.SettingKeyAgentSupportModel:         next.SupportModel,
-		model.SettingKeyAgentOpsSystemPrompt:      next.OpsSystemPrompt,
-		model.SettingKeyAgentSupportSystemPrompt:  next.SupportSystemPrompt,
-		model.SettingKeyAgentHistoryEnabled:       strconv.FormatBool(next.HistoryEnabled),
+		model.SettingKeyAgentEnabled:             strconv.FormatBool(next.Enabled),
+		model.SettingKeyAgentDefaultModel:        next.DefaultModel,
+		model.SettingKeyAgentOpsModel:            next.OpsModel,
+		model.SettingKeyAgentSupportModel:        next.SupportModel,
+		model.SettingKeyAgentOpsSystemPrompt:     next.OpsSystemPrompt,
+		model.SettingKeyAgentSupportSystemPrompt: next.SupportSystemPrompt,
+		model.SettingKeyAgentHistoryEnabled:      strconv.FormatBool(next.HistoryEnabled),
 	}
 	if err := s.deps.Settings.SetMany(c.Request.Context(), values); err != nil {
 		s.respondInternalError(c, "保存 agent 配置失败", err)
@@ -171,16 +171,16 @@ func (s *Server) handleUpdateAgentSettings(c *gin.Context) {
 // buildAgentSettingsResponse 组装配置响应。
 func buildAgentSettingsResponse(s model.AgentSettings) agentSettingsResponse {
 	return agentSettingsResponse{
-		Enabled:                 s.Enabled,
-		DefaultModel:            s.DefaultModel,
-		OpsModel:                s.OpsModel,
-		SupportModel:            s.SupportModel,
-		OpsPrompt:               s.OpsSystemPrompt,
-		SupportPrompt:           s.SupportSystemPrompt,
-		HistoryEnabled:          s.HistoryEnabled,
-		OpsPromptIsDefault:      strings.TrimSpace(s.OpsSystemPrompt) == "",
-		SupportPromptIsDefault:  strings.TrimSpace(s.SupportSystemPrompt) == "",
-		PromptPlaceholder:       model.SiteAgentPromptPlaceholder,
+		Enabled:                s.Enabled,
+		DefaultModel:           s.DefaultModel,
+		OpsModel:               s.OpsModel,
+		SupportModel:           s.SupportModel,
+		OpsPrompt:              s.OpsSystemPrompt,
+		SupportPrompt:          s.SupportSystemPrompt,
+		HistoryEnabled:         s.HistoryEnabled,
+		OpsPromptIsDefault:     strings.TrimSpace(s.OpsSystemPrompt) == "",
+		SupportPromptIsDefault: strings.TrimSpace(s.SupportSystemPrompt) == "",
+		PromptPlaceholder:      model.SiteAgentPromptPlaceholder,
 	}
 }
 
@@ -198,10 +198,16 @@ type agentKeyResponse struct {
 	// Expired 单独下发而不是让前端比较时间：
 	// 时间比较在前端要处理时区与"零值"两种情况，
 	// 而"永不过期"在前端表现为 1970 年的时间戳，很容易被误判成"已过期"。
-	Expired  bool   `json:"expired"`
-	Active   bool   `json:"active"`
-	ExpiresAt string `json:"expires_at,omitempty"`
-	CreatedAt string `json:"created_at"`
+	Expired bool `json:"expired"`
+	Active  bool `json:"active"`
+	// ExpiresAt / CreatedAt 是 Unix 秒，与全站其余接口一致。
+	//
+	// 为什么不用 RFC3339 字符串：前端的 formatDateTime 只接受 Unix 秒
+	// （i18n/format.ts 的 DateInput），而全站已有二十多个页面按这个契约写。
+	// 让 agent 单独用另一种格式，就要在前端开一个特例函数——
+	// 而那个特例函数的存在本身会成为"这里有个不一致"的长期提示。
+	ExpiresAt int64 `json:"expires_at,omitempty"`
+	CreatedAt int64 `json:"created_at"`
 }
 
 // createAgentKeyRequest 是创建密钥请求。
@@ -331,7 +337,7 @@ func (s *Server) handleCreateAgentKey(c *gin.Context) {
 // 用 *bool 而非 bool：见 model.AgentKey 里 enabled 的同类讨论——
 // "没传"与"传 false"必须能区分，否则一次只改备注的请求会把密钥停用掉。
 type updateAgentKeyRequest struct {
-	Status *int `json:"status"`
+	Status *int    `json:"status"`
 	Name   *string `json:"name"`
 }
 
@@ -484,12 +490,12 @@ func buildAgentKeyResponse(key *model.AgentKey) agentKeyResponse {
 		Status:    key.Status,
 		Expired:   key.Expired(),
 		Active:    key.IsActive(),
-		CreatedAt: key.CreatedAt.UTC().Format(time.RFC3339),
+		CreatedAt: key.CreatedAt.UTC().Unix(),
 	}
-	// 永不过期时不下发 expires_at：前端拿到空串就知道"没有期限"，
-	// 而拿到 "1970-01-01..." 会被多数日期控件当成过期时间显示。
+	// 永不过期时不下发 expires_at：前端拿到 undefined 就知道"没有期限"，
+	// 而拿到 0 会被多数日期控件当成"1970 年已过期"显示。
 	if !key.ExpiresAt.IsZero() {
-		resp.ExpiresAt = key.ExpiresAt.UTC().Format(time.RFC3339)
+		resp.ExpiresAt = key.ExpiresAt.UTC().Unix()
 	}
 	return resp
 }

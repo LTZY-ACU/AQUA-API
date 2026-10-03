@@ -262,6 +262,7 @@ export default {
       sensitiveWords: 'Безопасность контента',
       maintenanceMonitor: 'Мониторинг и резервные копии',
       settings: 'Настройки',
+      agent: 'ИИ-помощник',
     },
     console: {
       console: 'Консоль',
@@ -278,6 +279,7 @@ export default {
       logs: 'Журнал вызовов',
       referral: 'Приглашения и отметки',
       externalAccounts: 'Привязанные аккаунты',
+      support: 'Поддержка',
     },
   },
 }

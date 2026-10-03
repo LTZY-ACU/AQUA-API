@@ -24,6 +24,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/LTZY-ACU/ltzy-api/internal/agent"
 	"github.com/LTZY-ACU/ltzy-api/internal/config"
 	"github.com/LTZY-ACU/ltzy-api/internal/crypto"
 	"github.com/LTZY-ACU/ltzy-api/internal/model"
@@ -358,6 +359,52 @@ func TestCreateAgentKey_明文只返回一次(t *testing.T) {
 	}
 }
 
+// TestAgentKeyResponse_时间为Unix秒 守住全站时间字段契约。
+//
+// 前端 formatDateTime 只接受 Unix 秒，而全站二十多个页面都按这个契约写。
+// agent 若单独改用 RFC3339，就要在前端开一个特例函数，
+// 表现为"密钥列表页的时间显示成一串原始字符串"或直接渲染不出来。
+// 契约不一致比 Bug 更难查，因此在这里钉死。
+func TestAgentKeyResponse_时间为Unix秒(t *testing.T) {
+	srv, _ := newAgentTestServer(t)
+	issueAgentKey(t, srv.deps.AgentKeys, model.AgentRoleSupport, "客服")
+
+	keys, err := srv.deps.AgentKeys.List(context.Background(), model.AgentKeyQuery{})
+	if err != nil || len(keys) == 0 {
+		t.Fatalf("列表失败: %v", err)
+	}
+	resp := buildAgentKeyResponse(keys[0])
+
+	if resp.CreatedAt != keys[0].CreatedAt.UTC().Unix() {
+		t.Errorf("created_at = %d，期望 Unix 秒 %d", resp.CreatedAt, keys[0].CreatedAt.UTC().Unix())
+	}
+	// 永不过期的密钥绝不能下发 0：前端会把它渲染成 1970 年，
+	// 界面上就成了"一把 1970 年就过期的密钥"。
+	if resp.ExpiresAt != 0 {
+		t.Errorf("永不过期时 expires_at 应为 0（并被 omitempty 省略），实际 %d", resp.ExpiresAt)
+	}
+
+	// JSON 层同样验证一次：字段名与"被省略"的行为都要对。
+	encoded, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("序列化失败: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if _, ok := decoded["expires_at"]; ok {
+		t.Errorf("永不过期时不应下发 expires_at 字段: %s", encoded)
+	}
+	if _, ok := decoded["created_at"]; !ok {
+		t.Errorf("应下发 created_at: %s", encoded)
+	}
+	// 数字（Unix 秒）而非字符串（RFC3339）。
+	if _, isString := decoded["created_at"].(string); isString {
+		t.Errorf("created_at 应为数字，收到字符串: %s", encoded)
+	}
+}
+
 // TestCreateAgentKey_角色必填 验证漏填不会被默认成运维。
 //
 // 若空角色默认成 ops，站长在前端漏选一个下拉框就产出了
@@ -538,6 +585,155 @@ func TestAgentSettings_响应带内置提示词标记(t *testing.T) {
 	if resp.Enabled {
 		t.Error("agent 默认应为关闭状态")
 	}
+}
+
+// ── 总开关 ────────────────────────────────────────────────────────
+
+// TestAgentChat_总开关关闭后全部入口拒绝 是本批修掉的那个真实缺陷的回归测试。
+//
+// 曾经的漏洞：handleAgentChat 读完 settings 只用了 ModelFor，
+// Enabled 从头到尾没人检查——站长关掉开关、手里还有密钥就能继续对话。
+// 而 agent 每次对话都是真金白银的上游支出，"关了等于没关"是必须堵上的。
+//
+// 覆盖三个入口：只有当判定写在【共用的处理器】里，三条路由才会同时生效。
+// 若哪天有人为了"让后台还能用"把判定挪到公开入口，运维入口就会漏判。
+func TestAgentChat_总开关关闭后全部入口拒绝(t *testing.T) {
+	srv, keys := newAgentTestServer(t)
+	supportKey := issueAgentKey(t, keys, model.AgentRoleSupport, "外部人用")
+
+	// 前置：显式写出"关闭"状态，而不是依赖默认值。
+	// 依赖默认值看似等价，但一旦将来默认值被改成 true，
+	// 这条测试就会静默失去它要守的东西。
+	ctx := context.Background()
+	if err := srv.deps.Settings.SetMany(ctx, map[string]string{
+		model.SettingKeyAgentEnabled:      "false",
+		model.SettingKeyAgentDefaultModel: "某个模型",
+	}); err != nil {
+		t.Fatalf("预置配置失败: %v", err)
+	}
+
+	cases := []struct {
+		name   string
+		path   string
+		bearer string
+	}{
+		{"公开客服（密钥鉴权）", "/api/agent/chat", supportKey},
+		{"门户客服（会话鉴权，未登录）", "/api/user/agent/chat", ""},
+		{"后台运维（管理员鉴权，未登录）", "/api/admin/agent/chat", ""},
+	}
+	for _, tc := range cases {
+		rec := postAgentChat(t, srv, tc.path, tc.bearer, map[string]string{"question": "你好"})
+		// 前两个入口在开关判定之前还会先过鉴权（未登录会被 401 拦下），
+		// 因此这里只断言"绝不可能是 200"——本用例要守的是
+		// "开关关着就不会有回答流出去"，而不是逐个入口的状态码。
+		if rec.Code == http.StatusOK {
+			t.Errorf("%s：总开关已关闭却拿到 200 响应 = %s", tc.name, rec.Body.String())
+		}
+	}
+
+	// 更强的断言：公开客服入口带着【有效密钥】也必须被拒。
+	// 上面的循环里它是唯一鉴权能过的入口，因此这条断言才真正
+	// 命中了"开关判定生效"这件事。
+	rec := postAgentChat(t, srv, "/api/agent/chat", supportKey,
+		map[string]string{"question": "你好"})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("密钥有效但总开关关闭，应 503，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAgentChat_总开关开启后进入对话流程 验证上一条不是"永远 503"。
+func TestAgentChat_总开关开启后进入对话流程(t *testing.T) {
+	srv, keys := newAgentTestServer(t)
+	supportKey := issueAgentKey(t, keys, model.AgentRoleSupport, "外部人用")
+
+	if err := srv.deps.Settings.SetMany(context.Background(), map[string]string{
+		model.SettingKeyAgentEnabled: "true",
+	}); err != nil {
+		t.Fatalf("预置配置失败: %v", err)
+	}
+
+	rec := postAgentChat(t, srv, "/api/agent/chat", supportKey,
+		map[string]string{"question": "你好"})
+
+	// 没配模型时是 503 agent_model_not_configured：
+	// 说明请求已经越过开关判定与鉴权，停在"配置不完整"这一步。
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("开启后应走到模型检查这一步，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "agent_model_not_configured") {
+		t.Errorf("应是「未配置模型」而非「未启用」，实际: %s", rec.Body.String())
+	}
+}
+
+// ── 门户客服入口 ──────────────────────────────────────────────────
+
+// TestPortalAgentChat_未登录被拒 保证它真的需要登录态。
+func TestPortalAgentChat_未登录被拒(t *testing.T) {
+	srv, _ := newAgentTestServer(t)
+	if err := srv.deps.Settings.SetMany(context.Background(), map[string]string{
+		model.SettingKeyAgentEnabled: "true",
+	}); err != nil {
+		t.Fatalf("预置配置失败: %v", err)
+	}
+
+	rec := postAgentChat(t, srv, "/api/user/agent/chat", "", map[string]string{"question": "你好"})
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("门户客服必须登录，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestPortalAgentChat_登录后可用 且拿不到运维密钥才有的能力。
+func TestPortalAgentChat_登录后可用(t *testing.T) {
+	srv, _ := newAgentTestServer(t)
+	ctx := context.Background()
+	if err := srv.deps.Settings.SetMany(ctx, map[string]string{
+		model.SettingKeyAgentEnabled: "true",
+	}); err != nil {
+		t.Fatalf("预置配置失败: %v", err)
+	}
+
+	// 会话必须挂在真实存在的用户上：SessionAuth 会载入用户并校验其状态，
+	// 用户的 user_id 若不存在会得到"账号不存在"而不是进入处理器。
+	user := &model.User{
+		Username: "portal-user", PasswordHash: "test-hash",
+		Role: model.UserRoleUser, Status: model.UserStatusEnabled,
+		Quota: model.QuotaUnlimited,
+	}
+	if err := srv.deps.Users.Create(ctx, user); err != nil {
+		t.Fatalf("创建测试用户失败: %v", err)
+	}
+	token := createAgentPortalSession(t, srv.deps.Sessions, user.ID, "portal")
+
+	rec := postAgentChat(t, srv, "/api/user/agent/chat", token,
+		map[string]string{"question": "你好", "model": "超贵的模型"})
+
+	// 会话有效但没配模型 → 503 agent_model_not_configured，
+	// 说明鉴权与开关都已通过。
+	if rec.Code != http.StatusServiceUnavailable ||
+		!strings.Contains(rec.Body.String(), "agent_model_not_configured") {
+		t.Fatalf("登录后应走到模型检查这一步，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// 关键：门户用户不得通过请求体指定模型（否则谁都能烧站长的钱）。
+	tools := agent.ToolsForRole(model.AgentRoleSupport, srv.agentToolDeps())
+	if len(tools) != 0 {
+		t.Errorf("客服角色应拿到零工具，实际 %d 个", len(tools))
+	}
+}
+
+// createAgentPortalSession 为指定用户建立一条有效会话并返回明文令牌。
+func createAgentPortalSession(t *testing.T, sessions model.SessionRepository, userID uint64, tag string) string {
+	t.Helper()
+	token := "agent-portal-session-" + tag + "-" + strconv.FormatUint(userID, 10)
+	if err := sessions.Create(context.Background(), &model.Session{
+		UserID:    userID,
+		TokenHash: crypto.SHA256Hex(token),
+		ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("创建测试会话失败: %v", err)
+	}
+	return token
 }
 
 // ── SSE 输出格式 ─────────────────────────────────────────────────

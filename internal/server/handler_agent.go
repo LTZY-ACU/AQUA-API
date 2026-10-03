@@ -16,11 +16,16 @@
 //	  → AgentKeyAuth → 角色必须是 support，否则 403
 //	  → handleAgentChat（流式）
 //
+//	POST /api/user/agent/chat   （门户客服，登录会话，无需密钥）
+//	  → SessionAuth → handleAgentChat（流式，角色固定 support）
+//
 //	POST /api/admin/agent/chat  （后台运维，管理员会话，无需 agent key）
 //	  → RequireAdmin → handleAgentChat（流式，角色固定 ops）
 //
-//	两条路由最终调用同一个处理器：共用一段流式与事件拼装逻辑，
+//	三条路由最终调用同一个处理器：共用一段流式与事件拼装逻辑，
 //	避免"客服的流式行为与运维的不一致"这种只有细看才发现的差异。
+//	总开关（AgentSettings.Enabled）也在该处理器里判定，
+//	因此关掉开关对三个入口同时生效——见函数内的说明。
 //
 // 【为什么客服路由不接受 ops 密钥】
 //
@@ -199,6 +204,24 @@ func (s *Server) handleAgentChat(role model.AgentRole) gin.HandlerFunc {
 		settings, err := model.LoadAgentSettings(c.Request.Context(), s.deps.Settings)
 		if err != nil {
 			s.respondInternalError(c, "读取 agent 配置失败")
+			return
+		}
+
+		// 【总开关必须在这里判，且所有入口都要判】
+		//
+		// 曾经的漏洞：本函数读完 settings 只用了其中的 ModelFor，
+		// Enabled 从头到尾没人看。于是站长在后台把开关关掉、
+		// 前端也提示"已停用"，但只要手里还有一把密钥就能继续对话——
+		// 而 agent 的每次对话都是真金白银的上游支出。
+		//
+		// 放在处理器而不是路由的原因：Enabled 是运行期可改的配置，
+		// 路由注册发生在启动那一刻，那时读不到它的值。
+		// 三个入口（运维 / 公开客服 / 门户客服）都经过本函数，
+		// 因此这一处判定覆盖全部入口，不需要各自重复。
+		if !settings.Enabled {
+			oai.WriteErrorKey(c.Writer, http.StatusServiceUnavailable,
+				"agent.not_enabled", oai.TypeServer, "agent_not_enabled",
+				reqctx.Locale(c.Request.Context()))
 			return
 		}
 
@@ -394,6 +417,25 @@ func buildAgentResultDTO(
 // 角色固定 ops（站长本人，带工具）。
 func (s *Server) handleAdminAgentChat(c *gin.Context) {
 	s.handleAgentChat(model.AgentRoleOps)(c)
+}
+
+// handlePortalAgentChat 处理 POST /api/user/agent/chat（登录用户的在线客服）。
+//
+// 【为什么需要第三个入口】
+//
+// 站长要的是"其他人登录网站后就能问客服"。若沿用公开客服入口，
+// 每位用户都得先去后台领一把 ak- 密钥——那等于把后台的管理动作
+// 摊到每一个访客面前，用户嫌麻烦站长也懒得发。
+//
+// 鉴权用【会话】而非密钥：会话是登录态自带的，零额外操作。
+// 角色固定 support 且【不接受 model 覆盖】（见 resolveAgentModel），
+// 因此这里的用户拿到的能力与拿密钥的外部人完全一致——
+// 不多不少，正是"客服"该有的样子。
+//
+// 为什么这条路不会变成提权通道：会话只带普通用户身份，
+// 而工具授权在 agent.ToolsForRole 一处决定，与鉴权方式无关。
+func (s *Server) handlePortalAgentChat(c *gin.Context) {
+	s.handleAgentChat(model.AgentRoleSupport)(c)
 }
 
 // handlePublicAgentChat 处理 POST /api/agent/chat（面向外部人的在线客服）。

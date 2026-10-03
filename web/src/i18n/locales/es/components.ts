@@ -260,6 +260,7 @@ export default {
       sensitiveWords: 'Seguridad del contenido',
       maintenanceMonitor: 'Mantenimiento y copias',
       settings: 'Ajustes',
+      agent: 'Asistente de IA',
     },
     console: {
       console: 'Consola',
@@ -276,6 +277,7 @@ export default {
       logs: 'Registros de uso',
       referral: 'Referidos y registro diario',
       externalAccounts: 'Cuentas vinculadas',
+      support: 'Chat de soporte',
     },
   },
 }

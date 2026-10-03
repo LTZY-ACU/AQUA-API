@@ -33,6 +33,9 @@ const GROUPS: ShellNavGroup[] = [
   {
     title: '我的',
     items: [
+      // 智能客服放在"我的"组首位：它是登录用户最可能主动找的东西，
+      // 而不是必须排在最后的功能之一。
+      { label: '智能客服', href: '/console/support', labelKey: 'components.nav.console.support', icon: 'chat' },
       { label: '调用日志', href: '/console/logs', labelKey: 'components.nav.console.logs', icon: 'list' },
       { label: '生成任务', href: '/console/tasks', labelKey: 'components.nav.console.tasks', icon: 'image' },
       { label: '财务记录', href: '/console/finance', labelKey: 'components.nav.console.finance', icon: 'wallet' },

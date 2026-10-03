@@ -262,6 +262,7 @@ export default {
       sensitiveWords: 'Sécurité du contenu',
       maintenanceMonitor: 'Supervision',
       settings: 'Paramètres',
+      agent: 'Assistant IA',
     },
     console: {
       console: 'Console',
@@ -278,6 +279,7 @@ export default {
       logs: 'Journaux d’appels',
       referral: 'Parrainage et pointage',
       externalAccounts: 'Comptes liés',
+      support: 'Chat support',
     },
   },
 }

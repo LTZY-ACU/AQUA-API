@@ -262,6 +262,17 @@ func (s *Server) registerRoutes() {
 	// 而路由注册发生在启动时，那时读不到运行期可改的配置。
 	agentPublic.POST("/chat", s.handlePublicAgentChat)
 
+	// 门户在线客服：登录用户直接问客服，无需先去后台领一把 agent key。
+	//
+	// 挂在 portal（= authed 之下）即自动继承 SessionAuth：会话带的是普通
+	// 用户身份，而工具授权由 agent.ToolsForRole 决定，与鉴权方式无关，
+	// 因此这里拿到的能力与持 support 密钥的外部人完全相同（零工具）。
+	//
+	// 不与 /agent 公开入口合并：后者在公网、用密钥、拒绝运维密钥；
+	// 前者要求登录、用会话。合成一条再按鉴权方式分支，
+	// 迟早会出现"某个分支忘了判角色"——那正是越权。
+	portal.POST("/agent/chat", s.handlePortalAgentChat)
+
 	// ── 充值（用户自己的订单）────────────────────────────────────
 	portal.POST("/orders", s.handleCreateOrder)
 	portal.GET("/orders", s.handleMyListOrders)

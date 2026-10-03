@@ -86,13 +86,14 @@ export interface AgentKeyItem {
   /** 是否当前可用（启用且未过期） */
   active: boolean
   /**
-   * 过期时间（RFC3339）。
+   * 过期时间（Unix 秒）。
    *
-   * 永不过期时服务端【不下发】此字段，而不是下发 1970 年的零值——
-   * 后者会被多数日期控件当成"已过期"显示出来。
+   * 永不过期时服务端【不下发】此字段，而不是下发 0——
+   * 后者会被 formatDateTime 渲染成 1970 年的日期，显示成"已过期"。
    */
-  expires_at?: string
-  created_at: string
+  expires_at?: number
+  /** 创建时间（Unix 秒） */
+  created_at: number
 }
 
 /** 创建密钥的响应 */
@@ -247,6 +248,26 @@ export function chatWithSupport(
   signal?: AbortSignal,
 ): Promise<void> {
   return streamChat('/agent/chat', input, onEvent, signal, agentKey)
+}
+
+/**
+ * 与在线客服对话（门户入口，用本站登录会话）。
+ *
+ * 与另两个入口的区别只在路径与凭据来源：
+ *   - 后台运维  /admin/agent/chat  管理员会话（带工具）
+ *   - 门户客服  /user/agent/chat   普通用户会话（零工具）
+ *   - 公开客服  /agent/chat        agent key（零工具）
+ *
+ * 门户入口【不需要】站长发密钥：用户登录后即可使用。
+ * 这也是把 streamChat 抽出来的原因——三条路径的 SSE 解析完全相同，
+ * 而真正会分叉的只有"拿什么当凭据"这一件事。
+ */
+export function chatWithPortal(
+  input: AgentChatInput,
+  onEvent: (event: AgentStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return streamChat('/user/agent/chat', input, onEvent, signal)
 }
 
 /**

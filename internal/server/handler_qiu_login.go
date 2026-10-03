@@ -119,6 +119,32 @@ func (s *Server) qiuReady(c *gin.Context) bool {
 	return true
 }
 
+// qiuUserAgent 是访问 QIU 接口时携带的 User-Agent。
+//
+// 【为什么必须显式设置，勿删】
+//
+//	Go 的 http.Client 在没有 UA 时会发 "Go-http-client/1.1"。
+//	QIU 前面挂了 WAF（响应头 server: retinbox），实测它会因此返回 403，
+//	拦截页列出的原因之一正是 "Your request was not initiated by a browser"。
+//	也就是说：不带 UA 时这个登录功能【永远不可用】，而报错只有一句
+//	"对方返回 HTTP 403"，从本站日志完全看不出是被 UA 拦的。
+//
+//	为什么伪装成浏览器：这是站后端到第三方服务的服务端调用，
+//	不是浏览器请求，但对方的风控按"是不是浏览器请求"来放行。
+//	那几条并列原因（"IP 被用于攻击""系统时间不对"…）说明它对
+//	机房 IP 也会一并拦——UA 只是必要条件，不保证一定放行。
+//
+//	保留 LTZY-API 后缀：不能伪装成别人的浏览器，
+//	而带上可识别后缀能让 QIU 侧在日志里一眼认出这是哪个站点发起的。
+const qiuUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+	"(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 LTZY-API/1"
+
+// qiuAcceptLanguage 是随请求带上的语言。
+//
+// 部分国内站点的风控会按 Accept-Language 判断请求是否来自中文环境，
+// 缺失时按"境外请求"处理。显式给出比留空更稳妥。
+const qiuAcceptLanguage = "zh-CN,zh;q=0.9"
+
 // qiuClient 构造用于访问 QIU 接口的 HTTP 客户端。
 //
 // 每次新建而非复用长连接：第三方登录是低频操作（一次登录两三个请求），
@@ -187,6 +213,11 @@ func callQIU(ctx context.Context, client *http.Client, endpoint string, out any)
 	if err != nil {
 		return fmt.Errorf("构造请求失败: %w", err)
 	}
+	// 必须显式带 UA 与语言：对方 WAF 会因 Go 默认的
+	// "Go-http-client/1.1" 直接返回 403，详见 qiuUserAgent 的注释。
+	req.Header.Set("User-Agent", qiuUserAgent)
+	req.Header.Set("Accept-Language", qiuAcceptLanguage)
+	req.Header.Set("Accept", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("请求 %s 失败: %w", endpoint, err)
@@ -198,6 +229,15 @@ func callQIU(ctx context.Context, client *http.Client, endpoint string, out any)
 		return fmt.Errorf("读取响应失败: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// 403 单独给出提示：实测这是对方 WAF 拦截（server: retinbox），
+		// 它的判据里除了 UA，还有一条"IP 属于机房 / 云服务器"。
+		// 不点明的话站长只能看到"第三方登录不可用"，无从下手——
+		// 而这两个原因的处理方式完全不同（改代码 vs 联系对方加白名单）。
+		if resp.StatusCode == http.StatusForbidden {
+			return fmt.Errorf(
+				"对方返回 HTTP 403：多半是其 WAF 拦截了本站服务器 IP（机房段常见），" +
+					"请让对方把本站出口 IP 加入白名单；UA 已按浏览器形式携带")
+		}
 		return fmt.Errorf("对方返回 HTTP %d", resp.StatusCode)
 	}
 	if err := json.Unmarshal(body, out); err != nil {

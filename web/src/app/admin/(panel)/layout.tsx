@@ -55,6 +55,9 @@ const GROUPS: ShellNavGroup[] = [
     title: '合规与运维',
     titleKey: 'components.nav.admin.operations',
     items: [
+      // AI 助手放在运维组首位：它是站长问"站点怎么了"的第一入口，
+      // 排在调用日志之前——出问题时先问助手，而不是先手动翻日志。
+      { label: 'AI 助手', href: '/admin/agent', labelKey: 'components.nav.admin.agent', icon: 'sparkles' },
       { label: '调用日志', href: '/admin/logs', labelKey: 'components.nav.admin.logs', icon: 'list' },
       { label: '操作审计', href: '/admin/audit-logs', labelKey: 'components.nav.admin.audit', icon: 'shield' },
       { label: '站点公告', href: '/admin/announcements', labelKey: 'components.nav.admin.announcements', icon: 'info' },

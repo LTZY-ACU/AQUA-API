@@ -253,6 +253,7 @@ export default {
       sensitiveWords: 'أمان المحتوى',
       maintenanceMonitor: 'المراقبة والنسخ الاحتياطي',
       settings: 'الإعدادات',
+      agent: 'مساعد الذكاء الاصطناعي',
     },
     console: {
       console: 'وحدة التحكم',
@@ -269,6 +270,7 @@ export default {
       logs: 'سجلات الاستخدام',
       referral: 'الدعوات والتحقق اليومي',
       externalAccounts: 'الحسابات المرتبطة',
+      support: 'دردشة الدعم',
     },
   },
 }

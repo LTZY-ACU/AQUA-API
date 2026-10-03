@@ -255,6 +255,7 @@ export default {
       sensitiveWords: 'Content Safety',
       maintenanceMonitor: 'Maintenance',
       settings: 'Settings',
+      agent: 'AI Assistant',
     },
     console: {
       console: 'Console',
@@ -271,6 +272,7 @@ export default {
       logs: 'Usage Logs',
       referral: 'Referrals & Check-in',
       externalAccounts: 'Linked Accounts',
+      support: 'Support Chat',
     },
   },
 }
