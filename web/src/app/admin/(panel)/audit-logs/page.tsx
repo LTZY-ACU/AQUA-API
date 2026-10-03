@@ -22,6 +22,7 @@ import { Badge, Card } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
 import { Field, Input } from '@/components/ui/Form'
 import { DataTable, Pagination, type Column } from '@/components/ui/Table'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { formatDateTime, formatLatency } from '@/utils/format'
 
@@ -49,6 +50,7 @@ export default function AdminAuditLogsPage() {
   const [statusCode, setStatusCode] = useState('')
 
   const { toastError } = useToast()
+  const { t } = useI18n()
 
   const load = useCallback(async () => {
     setLoading(true)

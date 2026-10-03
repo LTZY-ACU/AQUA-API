@@ -32,10 +32,23 @@ export default {
     view: '查看',
     open: '打开',
     more: '更多',
+    enable: '启用',
+    disable: '禁用',
+    restore: '恢复',
+    addRow: '新增一行',
+    stop: '停止',
   },
   state: {
     loading: '加载中…',
     empty: '暂无数据',
+    enabled: '启用',
+    disabled: '禁用',
+    removed: '已摘除',
+    notSet: '未录入',
+    available: '可用',
+    unavailable: '不可用',
+    success: '成功',
+    failed: '失败',
   },
   unit: {
     items: '条',
@@ -43,6 +56,8 @@ export default {
   },
   toast: {
     operationFailed: '操作失败，请稍后重试',
+    loadFailed: '加载失败',
+    saveFailed: '保存失败',
   },
   language: {
     label: '语言',

@@ -15,12 +15,14 @@ import { resetPassword, sendEmailCode } from '@/api/auth'
 import { SiteFooter } from '@/components/site/SiteFooter'
 import { Button } from '@/components/ui/Button'
 import { Field, Input } from '@/components/ui/Form'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { clearSession } from '@/api/client'
 
 export default function ForgotPasswordPage() {
   const router = useRouter()
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
@@ -31,12 +33,12 @@ export default function ForgotPasswordPage() {
 
   async function handleSend() {
     if (!email.trim() || !email.includes('@')) {
-      toastError('请先填写正确的邮箱')
+      toastError(t('site.auth.forgot.errEmail'))
       return
     }
     try {
       const result = await sendEmailCode(email.trim(), 'reset')
-      toast(result.message || '验证码已发送')
+      toast(result.message || t('site.auth.forgot.codeSent'))
       if (result.cooldown > 0) {
         setCountdown(result.cooldown)
         const timer = setInterval(() => {
@@ -50,7 +52,7 @@ export default function ForgotPasswordPage() {
         }, 1000)
       }
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '发送失败')
+      toastError(err instanceof Error ? err.message : t('site.auth.forgot.sendFailed'))
     }
   }
 
@@ -58,17 +60,17 @@ export default function ForgotPasswordPage() {
     e.preventDefault()
     setError('')
     if (!email.trim() || !code.trim() || password.length < 8) {
-      setError('请完整填写邮箱、验证码与新密码（至少 8 位）')
+      setError(t('site.auth.forgot.errIncomplete'))
       return
     }
     setLoading(true)
     try {
       await resetPassword(email.trim(), code.trim(), password)
       clearSession()
-      toast('密码已重置，请用新密码登录')
+      toast(t('site.auth.forgot.resetSuccess'))
       router.replace('/login')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '重置失败')
+      setError(err instanceof Error ? err.message : t('site.auth.forgot.errFailed'))
     } finally {
       setLoading(false)
     }
@@ -84,34 +86,34 @@ export default function ForgotPasswordPage() {
 
       <main className="flex flex-1 items-start justify-center px-4 py-16 sm:py-24">
         <div className="w-full max-w-sm">
-          <h1 className="text-xl font-bold text-ink">重置密码</h1>
-          <p className="mt-1 text-[13px] text-ink-3">通过已验证邮箱重置登录密码</p>
+          <h1 className="text-xl font-bold text-ink">{t('site.auth.forgot.title')}</h1>
+          <p className="mt-1 text-[13px] text-ink-3">{t('site.auth.forgot.subtitle')}</p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <Field label="邮箱">
+            <Field label={t('site.auth.forgot.emailLabel')}>
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" />
             </Field>
-            <Field label="验证码">
+            <Field label={t('site.auth.forgot.codeLabel')}>
               <div className="flex gap-2">
-                <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="6 位验证码" autoComplete="one-time-code" />
+                <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder={t('site.auth.forgot.codePlaceholder')} autoComplete="one-time-code" />
                 <Button type="button" variant="secondary" disabled={countdown > 0} onClick={handleSend} className="shrink-0">
-                  {countdown > 0 ? `${countdown}s` : '发送验证码'}
+                  {countdown > 0 ? `${countdown}s` : t('site.auth.forgot.sendCode')}
                 </Button>
               </div>
             </Field>
-            <Field label="新密码" help="至少 8 位">
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="新密码" autoComplete="new-password" />
+            <Field label={t('site.auth.forgot.newPasswordLabel')} help={t('site.auth.forgot.newPasswordHelp')}>
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('site.auth.forgot.newPasswordPlaceholder')} autoComplete="new-password" />
             </Field>
 
             {error && <div className="rounded-md border border-err/25 bg-err/8 px-3 py-2 text-[13px] text-err">{error}</div>}
 
             <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading}>
-              重置密码
+              {t('site.auth.forgot.submit')}
             </Button>
           </form>
 
           <div className="mt-4 text-center text-[13px]">
-            想起密码了？<Link href="/login" className="text-brand hover:underline">去登录</Link>
+            {t('site.auth.forgot.remember')}<Link href="/login" className="text-brand hover:underline">{t('site.auth.forgot.loginLink')}</Link>
           </div>
         </div>
       </main>

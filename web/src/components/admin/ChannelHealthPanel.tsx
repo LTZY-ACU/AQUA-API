@@ -25,6 +25,7 @@ import { fetchDashboard } from '@/api/admin'
 import { fetchMaintenanceOverview, type MaintenanceOverview } from '@/api/maintenance'
 import type { DashboardStats } from '@/api/types'
 import { Badge, Skeleton, StatCard } from '@/components/ui/Display'
+import { useI18n } from '@/i18n'
 import { useSite } from '@/lib/site/site-context'
 import { formatLatency, formatNumber } from '@/utils/format'
 import { formatYuanFromQuota } from '@/utils/money'
@@ -43,6 +44,7 @@ function formatRate(rate: number): string {
 
 export function ChannelHealthPanel() {
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
 
   const [dash, setDash] = useState<DashboardStats | null>(null)
   const [overview, setOverview] = useState<MaintenanceOverview | null>(null)
@@ -61,7 +63,7 @@ export function ChannelHealthPanel() {
       })
       .catch((err) => {
         // 不静默：加载失败必须让站长看到，否则空卡片会被误读成"没有数据"
-        if (alive) setError(err instanceof Error ? err.message : '健康数据加载失败')
+        if (alive) setError(err instanceof Error ? err.message : t('components.healthPanel.loadFailed'))
       })
       .finally(() => {
         if (alive) setLoading(false)
@@ -80,8 +82,8 @@ export function ChannelHealthPanel() {
   const header = (
     <div className="flex flex-wrap items-end justify-between gap-2">
       <div>
-        <h2 className="text-sm font-semibold text-ink">渠道健康概览</h2>
-        <p className="mt-0.5 text-xs text-ink-3">渠道状态分布 · 近 24h 全站调用健康度（滚动窗口）</p>
+        <h2 className="text-sm font-semibold text-ink">{t('components.healthPanel.title')}</h2>
+        <p className="mt-0.5 text-xs text-ink-3">{t('components.healthPanel.subtitle')}</p>
       </div>
       {error && <span className="text-xs text-err">{error}</span>}
     </div>
@@ -112,43 +114,43 @@ export function ChannelHealthPanel() {
 
       {/* 渠道三态分布 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="渠道总数" value={channels ? formatNumber(channels.total) : '—'} />
-        <StatCard label="启用" value={channels ? formatNumber(channels.enabled) : '—'} />
-        <StatCard label="手动停用" value={channels ? formatNumber(disabled) : '—'} />
+        <StatCard label={t('components.healthPanel.totalChannels')} value={channels ? formatNumber(channels.total) : '—'} />
+        <StatCard label={t('common.state.enabled')} value={channels ? formatNumber(channels.enabled) : '—'} />
+        <StatCard label={t('components.healthPanel.disabledManual')} value={channels ? formatNumber(disabled) : '—'} />
         <StatCard
-          label="自动停用"
+          label={t('components.healthPanel.disabledAuto')}
           value={channels ? formatNumber(channels.auto_disabled) : '—'}
-          hint="系统因连续失败自动摘除"
-          extra={channels && channels.auto_disabled > 0 ? <Badge tone="warn">需关注</Badge> : undefined}
+          hint={t('components.healthPanel.autoHint')}
+          extra={channels && channels.auto_disabled > 0 ? <Badge tone="warn">{t('components.healthPanel.needsAttention')}</Badge> : undefined}
         />
       </div>
 
       {/* 近 24h 全站调用健康度 + 今日消耗 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="近 24h 请求"
+          label={t('components.healthPanel.requests24h')}
           value={usage24h ? formatNumber(usage24h.requests) : '—'}
-          hint={usage24h ? `失败 ${formatNumber(usage24h.failures)}（${formatRate(usage24h.failure_rate)}）` : undefined}
+          hint={usage24h ? t('components.healthPanel.failuresHint', { count: formatNumber(usage24h.failures), rate: formatRate(usage24h.failure_rate) }) : undefined}
         />
         <StatCard
-          label="近 24h 成功率"
+          label={t('components.healthPanel.success24h')}
           value={usage24h ? formatRate(successRate24h) : '—'}
           extra={
             usage24h ? (
               <Badge tone={successTone(successRate24h)}>
-                {successRate24h >= 0.9 ? '正常' : successRate24h >= 0.7 ? '偏高失败' : '严重失败'}
+                {successRate24h >= 0.9 ? t('components.healthPanel.normal') : successRate24h >= 0.7 ? t('components.healthPanel.highFailure') : t('components.healthPanel.severeFailure')}
               </Badge>
             ) : undefined
           }
         />
         <StatCard
-          label="近 24h 平均延迟"
+          label={t('components.healthPanel.latency24h')}
           value={usage24h && usage24h.avg_latency_ms > 0 ? formatLatency(usage24h.avg_latency_ms) : '—'}
         />
         <StatCard
-          label="今日消耗"
+          label={t('components.healthPanel.todayCost')}
           value={today ? formatYuanFromQuota(today.quota, quotaPerYuan) : '—'}
-          hint={today ? `今日 ${formatNumber(today.requests)} 次请求` : undefined}
+          hint={today ? t('components.healthPanel.todayRequests', { count: formatNumber(today.requests) }) : undefined}
         />
       </div>
     </section>

@@ -7,6 +7,7 @@
  * 流转（Flow）：
  *   /admin/login 放在 (panel) 之外独立渲染，不经过本守卫外壳，
  *   避免「要登录后台才能看到登录页」死循环；其余 /admin/* 全部套本布局。
+ *   导航文案一律走 t('admin.nav.*')（词条见 locales/<lang>/admin.ts）。
  */
 'use client'
 
@@ -14,50 +15,56 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 
 import { AppShell, type ShellNavGroup } from '@/components/AppShell'
+import type { IconName } from '@/components/AppIcon'
+import { useI18n } from '@/i18n'
 import { useAuth } from '@/lib/auth/auth-context'
 import { useToast } from '@/lib/toast/toast-context'
 
-const GROUPS: ShellNavGroup[] = [
+/** 导航分组：labelKey / titleKey 为词条键，渲染时经 t() 解析（见组件） */
+const GROUPS: {
+  titleKey: string
+  items: { labelKey: string; href: string; icon: IconName; exact?: boolean }[]
+}[] = [
   {
-    title: '总览',
+    titleKey: 'admin.nav.overview',
     items: [
-      { label: '仪表盘', href: '/admin', icon: 'home', exact: true },
-      { label: '模型广场', href: '/admin/models', icon: 'grid' },
+      { labelKey: 'admin.nav.dashboard', href: '/admin', icon: 'home', exact: true },
+      { labelKey: 'admin.nav.models', href: '/admin/models', icon: 'grid' },
     ],
   },
   {
-    title: '资源',
+    titleKey: 'admin.nav.resources',
     items: [
-      { label: '渠道管理', href: '/admin/channels', icon: 'server' },
-      { label: '模型测速', href: '/admin/speedtest', icon: 'bolt' },
-      { label: '模型映射', href: '/admin/model-mappings', icon: 'layers' },
-      { label: '模型分组', href: '/admin/groups', icon: 'tag' },
-      { label: '计价规则', href: '/admin/prices', icon: 'quota' },
-      { label: '异步任务', href: '/admin/tasks', icon: 'image' },
+      { labelKey: 'admin.nav.channels', href: '/admin/channels', icon: 'server' },
+      { labelKey: 'admin.nav.speedtest', href: '/admin/speedtest', icon: 'bolt' },
+      { labelKey: 'admin.nav.modelMappings', href: '/admin/model-mappings', icon: 'layers' },
+      { labelKey: 'admin.nav.groups', href: '/admin/groups', icon: 'tag' },
+      { labelKey: 'admin.nav.prices', href: '/admin/prices', icon: 'quota' },
+      { labelKey: 'admin.nav.tasks', href: '/admin/tasks', icon: 'image' },
     ],
   },
   {
-    title: '业务',
+    titleKey: 'admin.nav.business',
     items: [
-      { label: '充值订单', href: '/admin/orders', icon: 'cart' },
-      { label: '财务对账', href: '/admin/finance', icon: 'wallet' },
-      { label: '订阅账号', href: '/admin/oauth', icon: 'globe' },
-      { label: '令牌管理', href: '/admin/tokens', icon: 'key' },
-      { label: '用户管理', href: '/admin/users', icon: 'users' },
-      { label: '兑换码', href: '/admin/redeem-codes', icon: 'tag' },
-      { label: '群发邮件', href: '/admin/broadcast', icon: 'info' },
+      { labelKey: 'admin.nav.orders', href: '/admin/orders', icon: 'cart' },
+      { labelKey: 'admin.nav.finance', href: '/admin/finance', icon: 'wallet' },
+      { labelKey: 'admin.nav.oauth', href: '/admin/oauth', icon: 'globe' },
+      { labelKey: 'admin.nav.tokens', href: '/admin/tokens', icon: 'key' },
+      { labelKey: 'admin.nav.users', href: '/admin/users', icon: 'users' },
+      { labelKey: 'admin.nav.redeemCodes', href: '/admin/redeem-codes', icon: 'tag' },
+      { labelKey: 'admin.nav.broadcast', href: '/admin/broadcast', icon: 'info' },
     ],
   },
   {
-    title: '合规与运维',
+    titleKey: 'admin.nav.compliance',
     items: [
-      { label: '调用日志', href: '/admin/logs', icon: 'list' },
-      { label: '操作审计', href: '/admin/audit-logs', icon: 'shield' },
-      { label: '站点公告', href: '/admin/announcements', icon: 'info' },
-      { label: '内容安全', href: '/admin/sensitive-words', icon: 'filter' },
-      { label: '语料共建', href: '/admin/corpus', icon: 'layers' },
-      { label: '运维监控', href: '/admin/maintenance', icon: 'trend' },
-      { label: '系统设置', href: '/admin/settings', icon: 'sliders' },
+      { labelKey: 'admin.nav.logs', href: '/admin/logs', icon: 'list' },
+      { labelKey: 'admin.nav.audit', href: '/admin/audit-logs', icon: 'shield' },
+      { labelKey: 'admin.nav.announcements', href: '/admin/announcements', icon: 'info' },
+      { labelKey: 'admin.nav.sensitiveWords', href: '/admin/sensitive-words', icon: 'filter' },
+      { labelKey: 'admin.nav.corpus', href: '/admin/corpus', icon: 'layers' },
+      { labelKey: 'admin.nav.maintenance', href: '/admin/maintenance', icon: 'trend' },
+      { labelKey: 'admin.nav.settings', href: '/admin/settings', icon: 'sliders' },
     ],
   },
 ]
@@ -67,6 +74,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname()
   const router = useRouter()
   const { toastError } = useToast()
+  const { t } = useI18n()
 
   useEffect(() => {
     if (!ready) return
@@ -74,17 +82,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (!isLoggedIn) {
       router.replace(`/admin/login?redirect=${encodeURIComponent(pathname)}`)
     } else if (!isAdmin) {
-      toastError('没有权限访问管理后台')
+      toastError(t('admin.nav.noPermission'))
       router.replace('/console')
     }
-  }, [ready, isLoggedIn, isAdmin, pathname, router, toastError])
+  }, [ready, isLoggedIn, isAdmin, pathname, router, toastError, t])
 
   if (!ready || !isLoggedIn || !isAdmin) {
-    return <div className="flex min-h-screen items-center justify-center text-[13px] text-ink-3">正在进入管理后台…</div>
+    return <div className="flex min-h-screen items-center justify-center text-[13px] text-ink-3">{t('admin.nav.entering')}</div>
   }
 
+  // 把词条键解析为 AppShell 需要的展示文本（导航随语言切换实时更新）
+  const groups: ShellNavGroup[] = GROUPS.map((group) => ({
+    title: t(group.titleKey),
+    items: group.items.map((item) => ({
+      label: t(item.labelKey),
+      href: item.href,
+      icon: item.icon,
+      exact: item.exact,
+    })),
+  }))
+
   return (
-    <AppShell groups={GROUPS} brand="管理后台">
+    <AppShell groups={groups} brand={t('admin.nav.brand')}>
       {children}
     </AppShell>
   )

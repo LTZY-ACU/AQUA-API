@@ -14,19 +14,21 @@
 'use client'
 
 import { Card } from '@/components/ui/Display'
+import { useI18n } from '@/i18n'
 
 export default function ConsoleAnyDoorPage() {
+  const { t } = useI18n()
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">任意门</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">游乐场下的功能入口（开发中）</p>
+        <h1 className="text-xl font-bold text-ink">{t('portal.anydoor.title')}</h1>
+        <p className="mt-0.5 text-[13px] text-ink-3">{t('portal.anydoor.subtitle')}</p>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
         <Card className="flex flex-col">
           <div className="flex min-h-72 items-center justify-center text-[13px] text-ink-3">
-            任意门功能即将开放
+            {t('portal.anydoor.comingSoon')}
           </div>
         </Card>
 

@@ -16,19 +16,20 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { AppIcon, type IconName } from '@/components/AppIcon'
+import { translate, useI18n } from '@/i18n'
 import { useTheme, type ThemeMode } from '@/lib/theme/theme-context'
 
 /** 三套配色 + 自动：自动只在浅/深之间随北京时间切换，深蓝为手动专属。 */
-const OPTIONS: { value: ThemeMode; label: string; icon: IconName }[] = [
-  { value: 'auto', label: '自动（北京时间）', icon: 'monitor' },
-  { value: 'light', label: '浅色', icon: 'sun' },
-  { value: 'dark', label: '深色', icon: 'moon' },
-  { value: 'navy', label: '深蓝', icon: 'droplet' },
+const OPTIONS: { value: ThemeMode; labelKey: string; icon: IconName }[] = [
+  { value: 'auto', labelKey: 'components.theme.auto', icon: 'monitor' },
+  { value: 'light', labelKey: 'components.theme.light', icon: 'sun' },
+  { value: 'dark', labelKey: 'components.theme.dark', icon: 'moon' },
+  { value: 'navy', labelKey: 'components.theme.navy', icon: 'droplet' },
 ]
 
 /** 把北京时间小时数转成「正在跟随：白天/夜晚」提示 */
 function phaseLabel(hour: number): string {
-  return hour >= 6 && hour < 18 ? '白天' : '夜晚'
+  return hour >= 6 && hour < 18 ? translate('components.theme.day') : translate('components.theme.night')
 }
 
 /** 把北京时间小时数格式化为 HH:MM */
@@ -39,6 +40,7 @@ function formatBeijing(hour: number): string {
 }
 
 export function ThemeToggle({ compact = false }: { compact?: boolean }) {
+  const { t } = useI18n()
   const { mode, resolved, beijingHour, setMode } = useTheme()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -64,8 +66,8 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] text-ink-2 transition hover:bg-ink/5 hover:text-ink"
-        aria-label="切换昼夜主题"
-        title="切换主题"
+        aria-label={t('components.theme.toggleAria')}
+        title={t('components.theme.toggleTitle')}
       >
         <AppIcon name={currentIcon} size={15} />
         {!compact && <AppIcon name="chevron-down" size={13} />}
@@ -86,16 +88,19 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
               }`}
             >
               <AppIcon name={opt.icon} size={15} />
-              <span className="flex-1">{opt.label}</span>
+              <span className="flex-1">{t(opt.labelKey)}</span>
               {opt.value === mode && <AppIcon name="check" size={14} />}
             </button>
           ))}
 
           {/* 说明当前自动判断依据：让「为什么现在是这个色调」一目了然 */}
           <div className="mt-1 border-t border-line px-3 pb-1.5 pt-2 text-[12px] leading-relaxed text-ink-3">
-            北京时间 {formatBeijing(beijingHour)} · {phaseLabel(beijingHour)}
+            {t('components.theme.beijingNow', {
+              time: formatBeijing(beijingHour),
+              phase: phaseLabel(beijingHour),
+            })}
             <br />
-            自动模式在 06:00–18:00 用浅色，其余时段用深色；深蓝需手动选择。
+            {t('components.theme.autoNote')}
           </div>
         </div>
       )}

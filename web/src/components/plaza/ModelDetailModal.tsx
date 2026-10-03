@@ -26,6 +26,7 @@ import { Modal } from '@/components/ui/Modal'
 import { formatDiscountLabel, formatYuanPerCall, formatYuanPerMillion } from '@/utils/money'
 import { formatDateTime } from '@/utils/format'
 import { useSite } from '@/lib/site/site-context'
+import { useI18n } from '@/i18n'
 
 import { ModelPriceCalculator } from './ModelPriceCalculator'
 import { billingKindLabel, billingKindOf, cachePriceLabel, ratioLabel } from './pricing'
@@ -39,15 +40,16 @@ interface Props {
 
 export function ModelDetailModal({ model, viewer, onClose }: Props) {
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   if (!model) return null
 
   return (
     <Modal open onClose={onClose} title={model.model} width={640}>
       <div className="flex flex-wrap items-center gap-2">
         {viewer && <Badge tone="warn">{viewer.label}</Badge>}
-        {model.available ? <Badge tone="ok">可用</Badge> : <Badge tone="err">不可用</Badge>}
-        <Badge tone="off">{model.channel_count} 个启用渠道</Badge>
-        <Badge tone="info">{model.groups.length} 个分组</Badge>
+        {model.available ? <Badge tone="ok">{t('common.state.available')}</Badge> : <Badge tone="err">{t('common.state.unavailable')}</Badge>}
+        <Badge tone="off">{t('components.modelDetailModal.channelsEnabled', { count: model.channel_count })}</Badge>
+        <Badge tone="info">{t('components.modelDetailModal.groupsCount', { count: model.groups.length })}</Badge>
       </div>
 
       {viewer && <AgentNote viewer={viewer} />}
@@ -58,9 +60,11 @@ export function ModelDetailModal({ model, viewer, onClose }: Props) {
             <table className="w-full text-left text-[13px]">
               <thead className="bg-surface">
                 <tr className="font-mono text-[11px] uppercase tracking-wider text-ink-3">
-                  <th className="px-3 py-2 font-normal">分组</th>
-                  <th className="px-3 py-2 font-normal">计费方式</th>
-                  <th className="px-3 py-2 text-right font-normal">{viewer ? '原价 / 代理拿货价' : '价格'}</th>
+                  <th className="px-3 py-2 font-normal">{t('components.modelDetailModal.col.group')}</th>
+                  <th className="px-3 py-2 font-normal">{t('components.modelDetailModal.col.billing')}</th>
+                  <th className="px-3 py-2 text-right font-normal">
+                    {viewer ? t('components.modelDetailModal.col.agentPrice') : t('components.modelDetailModal.col.price')}
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -77,13 +81,11 @@ export function ModelDetailModal({ model, viewer, onClose }: Props) {
             </table>
           </div>
           {model.prices.length > 1 && !viewer && (
-            <p className="mt-2 text-[11px] text-ink-3">
-              同一模型在不同分组价格不同，差异来自各分组的计费倍率（倍率越低越便宜）。
-            </p>
+            <p className="mt-2 text-[11px] text-ink-3">{t('components.modelDetailModal.groupRatioNote')}</p>
           )}
         </>
       ) : (
-        <p className="mt-4 text-sm text-ink-3">该模型暂未配置价格规则。</p>
+        <p className="mt-4 text-sm text-ink-3">{t('components.modelDetailModal.noPriceRule')}</p>
       )}
 
       <div className="mt-4">
@@ -106,10 +108,12 @@ export function ModelDetailModal({ model, viewer, onClose }: Props) {
 /* ── 代理身份说明：讲清"你当前按哪一档拿货" ──────────────── */
 
 function AgentNote({ viewer }: { viewer: PlazaViewer }) {
+  const { t } = useI18n()
   return (
     <div className="mt-3 rounded-md border border-warn/30 bg-warn/8 px-3.5 py-2.5 text-[12px] text-ink-2">
-      你当前是「<span className="font-medium text-ink">{viewer.label}</span>」代理档（
-      {formatDiscountLabel(viewer.ratio)}）：下方价格已按此折扣结算，并与划线原价对照。
+      {t('components.modelDetailModal.agentNoteBefore')}
+      <span className="font-medium text-ink">{viewer.label}</span>
+      {t('components.modelDetailModal.agentNoteAfter', { discount: formatDiscountLabel(viewer.ratio) })}
     </div>
   )
 }
@@ -127,6 +131,7 @@ function PriceRow({
   viewer?: PlazaViewer
   quotaPerYuan: number
 }) {
+  const { t } = useI18n()
   const kind = billingKindOf(price)
   // 代理视图下 prices[].ratio 恒为 100（价格已折算过），真正生效的折扣在 viewer.ratio
   const ratio = viewer ? viewer.ratio : price.ratio
@@ -141,7 +146,7 @@ function PriceRow({
         {effectiveAt > 0 && (
           <div className="mt-0.5 flex items-center gap-1 text-[11px] text-ink-3">
             <AppIcon name="clock" size={11} />
-            价格生效 {formatDateTime(effectiveAt)}
+            {t('components.modelDetailModal.priceEffective', { time: formatDateTime(effectiveAt) })}
           </div>
         )}
       </td>
@@ -169,19 +174,26 @@ function PriceLines({
   quotaPerYuan: number
   className?: string
 }) {
+  const { t } = useI18n()
   const kind = billingKindOf(price)
   const cache = cachePriceLabel(price, quotaPerYuan)
   if (kind === 'free') return <span className="text-ink-3">—</span>
   return (
     <div className={`flex flex-col gap-0.5 font-mono text-[12px] ${className}`}>
       {kind === 'per_call' ? (
-        <span>{price.per_call_price > 0 ? formatYuanPerCall(price.per_call_price, quotaPerYuan) : '按次计费'}</span>
+        <span>
+          {price.per_call_price > 0
+            ? formatYuanPerCall(price.per_call_price, quotaPerYuan)
+            : t('components.modelDetailModal.perCallBilling')}
+        </span>
       ) : (
         <>
-          <span>输入 {formatYuanPerMillion(price.prompt_price, quotaPerYuan)}</span>
-          <span>输出 {formatYuanPerMillion(price.completion_price, quotaPerYuan)}</span>
+          <span>{t('components.modelDetailModal.inputLine', { price: formatYuanPerMillion(price.prompt_price, quotaPerYuan) })}</span>
+          <span>{t('components.modelDetailModal.outputLine', { price: formatYuanPerMillion(price.completion_price, quotaPerYuan) })}</span>
           {/* 未配置缓存价时不渲染此行，避免「¥0.00/M」误导 */}
-          {cache && <span className="text-ink-3">缓存命中 {cache}</span>}
+          {cache && (
+            <span className="text-ink-3">{t('components.modelDetailModal.cacheHitLine', { price: cache })}</span>
+          )}
         </>
       )}
     </div>

@@ -2,28 +2,31 @@
  *
  * 意图（Why）：
  *   公示漏洞披露渠道与致谢名单（负责任的披露文化）。
+ *
+ * 流转（Flow）：
+ *   LegalDocLayout + 段落与致谢按钮；文案一律走 t('site.legal.security.*')，
+ *   致谢名单默认折叠，收到有效报告后由「查看已致谢研究者」展开。
  */
 'use client'
 
 import { useState } from 'react'
 
 import { LegalDocLayout } from '@/components/site/LegalDocLayout'
+import { useI18n } from '@/i18n'
 
 export default function SecurityCreditsPage() {
   const [revealed, setRevealed] = useState(false)
+  const { t } = useI18n()
   return (
-    <LegalDocLayout title="安全致谢" updatedAt="最近更新：2026-09-30">
-      <h2>漏洞报告</h2>
-      <p>
-        如果你发现本站存在安全漏洞，欢迎负责任地披露：请勿公开传播漏洞细节，
-        先通过邮件/群聊联系管理员，我们会在修复后公开致谢。
-      </p>
-      <h2>报告内容</h2>
-      <p>请描述：漏洞类型、影响范围、复现步骤（尽量简洁）、建议修复方案。请勿进行破坏性测试。</p>
-      <h2>致谢名单</h2>
-      <p>我们感谢以下研究者对本站安全做出的贡献：</p>
+    <LegalDocLayout title={t('site.legal.security.title')} updatedAt={t('site.legal.security.updatedAt')}>
+      <h2>{t('site.legal.security.s1Title')}</h2>
+      <p>{t('site.legal.security.s1Body')}</p>
+      <h2>{t('site.legal.security.s2Title')}</h2>
+      <p>{t('site.legal.security.s2Body')}</p>
+      <h2>{t('site.legal.security.s3Title')}</h2>
+      <p>{t('site.legal.security.s3Body')}</p>
       <button type="button" onClick={() => setRevealed(true)} className="text-brand hover:underline" disabled={revealed}>
-        {revealed ? '（名单将在收到有效报告后在此公布）' : '查看已致谢研究者'}
+        {revealed ? t('site.legal.security.thanksRevealed') : t('site.legal.security.thanksShow')}
       </button>
     </LegalDocLayout>
   )

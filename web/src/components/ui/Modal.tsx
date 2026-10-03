@@ -9,6 +9,7 @@
 import { Fragment, useEffect, type ReactNode } from 'react'
 
 import { AppIcon } from '@/components/AppIcon'
+import { useI18n } from '@/i18n'
 import { Button } from './Button'
 
 interface ModalProps {
@@ -22,6 +23,7 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, width = 560, children, footer }: ModalProps) {
+  const { t } = useI18n()
   // Esc 关闭 + 打开时锁定背景滚动
   useEffect(() => {
     if (!open) return
@@ -52,7 +54,7 @@ export function Modal({ open, onClose, title, width = 560, children, footer }: M
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <h3 className="text-[15px] font-semibold text-ink">{title}</h3>
-          <button type="button" onClick={onClose} className="rounded p-1 text-ink-3 hover:bg-ink/5 hover:text-ink" aria-label="关闭">
+          <button type="button" onClick={onClose} className="rounded p-1 text-ink-3 hover:bg-ink/5 hover:text-ink" aria-label={t('components.modal.close')}>
             <AppIcon name="close" size={18} />
           </button>
         </div>
@@ -79,22 +81,23 @@ export function ConfirmDialog({
   open,
   title,
   message,
-  confirmText = '确认',
-  cancelText = '取消',
+  confirmText,
+  cancelText,
   danger,
   loading,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useI18n()
   return (
     <Modal open={open} onClose={onCancel} title={title} width={420}>
-      <div className="text-sm text-ink-2">{message || '确认执行该操作？'}</div>
+      <div className="text-sm text-ink-2">{message || t('common.confirm.defaultMessage')}</div>
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="secondary" onClick={onCancel}>
-          {cancelText}
+          {cancelText ?? t('common.action.cancel')}
         </Button>
         <Button variant={danger ? 'danger' : 'primary'} loading={loading} onClick={onConfirm}>
-          {confirmText}
+          {confirmText ?? t('common.action.confirm')}
         </Button>
       </div>
     </Modal>
@@ -113,7 +116,8 @@ interface CopyButtonProps {
   className?: string
 }
 
-export function CopyButton({ text, label = '复制', className }: CopyButtonProps) {
+export function CopyButton({ text, label, className }: CopyButtonProps) {
+  const { t } = useI18n()
   const [copied, setCopied] = useState(false)
   const { toastError } = useToast()
   async function handleCopy() {
@@ -124,7 +128,7 @@ export function CopyButton({ text, label = '复制', className }: CopyButtonProp
     } else {
       // 失败必须有明确反馈：否则用户看到按钮纹丝不动，会以为"无法复制"，
       // 而真实的根因（剪贴板被占用/权限被拒）完全被静默吞掉。
-      toastError('复制失败：请手动选择并复制，或检查浏览器剪贴板权限')
+      toastError(t('components.copy.failedHint'))
     }
   }
   return (
@@ -134,7 +138,7 @@ export function CopyButton({ text, label = '复制', className }: CopyButtonProp
       className={`inline-flex items-center gap-1 text-[13px] text-ink-3 transition hover:text-brand ${className ?? ''}`}
     >
       <AppIcon name={copied ? 'check' : 'copy'} size={14} />
-      {copied ? '已复制' : label}
+      {copied ? t('components.copy.copied') : label ?? t('components.copy.copy')}
     </button>
   )
 }

@@ -17,6 +17,7 @@ import { BrandLogo } from '@/components/BrandMark'
 import { AppIcon, type IconName } from '@/components/AppIcon'
 import { LocaleSwitcher } from '@/components/site/LocaleSwitcher'
 import { ThemeToggle } from '@/components/site/ThemeToggle'
+import { useI18n } from '@/i18n'
 import { useAuth } from '@/lib/auth/auth-context'
 
 export interface ShellNavItem {
@@ -101,6 +102,7 @@ export function AppShell({ groups, brand, children }: AppShellProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { user, displayName, signOut, isAdmin } = useAuth()
+  const { t } = useI18n()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const isActive = (item: ShellNavItem) => {
@@ -139,7 +141,7 @@ export function AppShell({ groups, brand, children }: AppShellProps) {
           <aside className="fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-line bg-card">
             <div className="flex h-14 items-center justify-between border-b border-line px-4">
               <span className="font-semibold text-ink">{brand}</span>
-              <button type="button" onClick={() => setSidebarOpen(false)} aria-label="关闭菜单">
+              <button type="button" onClick={() => setSidebarOpen(false)} aria-label={t('components.shell.closeMenu')}>
                 <AppIcon name="close" size={18} className="text-ink-3" />
               </button>
             </div>
@@ -158,7 +160,7 @@ export function AppShell({ groups, brand, children }: AppShellProps) {
       {/* 内容区 */}
       <div className="flex min-w-0 flex-1 flex-col lg:pl-56">
         <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-line bg-surface/90 px-4 backdrop-blur lg:px-6">
-          <button type="button" className="rounded p-1.5 text-ink-3 hover:bg-ink/5 lg:hidden" onClick={() => setSidebarOpen(true)} aria-label="打开菜单">
+          <button type="button" className="rounded p-1.5 text-ink-3 hover:bg-ink/5 lg:hidden" onClick={() => setSidebarOpen(true)} aria-label={t('components.shell.openMenu')}>
             <AppIcon name="menu" size={20} />
           </button>
           <div className="hidden text-[13px] text-ink-3 lg:block">{brand}</div>
@@ -167,7 +169,7 @@ export function AppShell({ groups, brand, children }: AppShellProps) {
             <LocaleSwitcher compact />
             <div className="flex items-center gap-2 rounded-md border border-line bg-card px-2.5 py-1.5 text-[13px]">
               <span className="max-w-28 truncate text-ink-2">{displayName}</span>
-              {user && user.role === 10 && <span className="rounded bg-brand/10 px-1 text-xs text-brand">管理员</span>}
+              {user && user.role === 10 && <span className="rounded bg-brand/10 px-1 text-xs text-brand">{t('components.shell.roleAdmin')}</span>}
             </div>
             <button
               type="button"
@@ -175,7 +177,7 @@ export function AppShell({ groups, brand, children }: AppShellProps) {
               className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] text-ink-3 transition hover:bg-ink/5 hover:text-err"
             >
               <AppIcon name="logout" size={15} />
-              退出
+              {t('components.shell.signOut')}
             </button>
           </div>
         </header>

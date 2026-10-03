@@ -14,6 +14,7 @@ import { Badge, Card } from '@/components/ui/Display'
 import { DataTable, Pagination, type Column } from '@/components/ui/Table'
 import { ConfirmDialog } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { formatDateTime } from '@/utils/format'
 
@@ -35,6 +36,7 @@ export default function ConsoleTasksPage() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [cancelTarget, setCancelTarget] = useState<Task | null>(null)
+  const { t } = useI18n()
   const { toast, toastError } = useToast()
 
   const load = useCallback(async () => {
@@ -58,18 +60,18 @@ export default function ConsoleTasksPage() {
     if (!cancelTarget) return
     try {
       // 门户暂无取消接口，交由后台处理；此处仅展示确认（实际可在 api/portal 扩展）
-      toast('已提交取消请求')
+      toast(t('portal.tasks.cancelSubmitted'))
       setCancelTarget(null)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '取消失败')
+      toastError(err instanceof Error ? err.message : t('portal.tasks.cancelFailed'))
     }
   }
 
   const columns: Column<Task>[] = [
-    { title: '任务', render: (row) => <span className="text-ink">{row.kind_text} · {row.model}</span> },
-    { title: '状态', render: (row) => <Badge tone={statusTone(row.status)}>{row.status_text}</Badge> },
+    { title: t('portal.tasks.colTask'), render: (row) => <span className="text-ink">{row.kind_text} · {row.model}</span> },
+    { title: t('portal.tasks.colStatus'), render: (row) => <Badge tone={statusTone(row.status)}>{row.status_text}</Badge> },
     {
-      title: '进度',
+      title: t('portal.tasks.colProgress'),
       render: (row) => (
         <div className="flex items-center gap-2">
           <div className="h-1.5 w-20 overflow-hidden rounded-full bg-ink/10">
@@ -80,27 +82,27 @@ export default function ConsoleTasksPage() {
       ),
     },
     {
-      title: '结果',
+      title: t('portal.tasks.colResult'),
       render: (row) =>
         row.result_url ? (
-          <a href={row.result_url} target="_blank" rel="noreferrer" className="text-brand hover:underline">查看结果</a>
+          <a href={row.result_url} target="_blank" rel="noreferrer" className="text-brand hover:underline">{t('portal.tasks.viewResult')}</a>
         ) : (
           <span className="text-ink-3">—</span>
         ),
     },
-    { title: '提示词', render: (row) => <span className="max-w-48 truncate text-ink-2" title={row.prompt}>{row.prompt || '—'}</span> },
-    { title: '时间', render: (row) => <span className="text-ink-2">{formatDateTime(row.created_at)}</span> },
+    { title: t('portal.tasks.colPrompt'), render: (row) => <span className="max-w-48 truncate text-ink-2" title={row.prompt}>{row.prompt || '—'}</span> },
+    { title: t('portal.tasks.colTime'), render: (row) => <span className="text-ink-2">{formatDateTime(row.created_at)}</span> },
   ]
 
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">生成任务</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">图像 / 视频 / 音乐等异步生成任务</p>
+        <h1 className="text-xl font-bold text-ink">{t('portal.tasks.title')}</h1>
+        <p className="mt-0.5 text-[13px] text-ink-3">{t('portal.tasks.subtitle')}</p>
       </div>
 
       <Card padding="none">
-        <DataTable columns={columns} rows={loading ? null : items} loading={loading} rowKey={(row) => row.task_ref} emptyTitle="还没有生成任务" />
+        <DataTable columns={columns} rows={loading ? null : items} loading={loading} rowKey={(row) => row.task_ref} emptyTitle={t('portal.tasks.empty')} />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </div>
@@ -108,10 +110,10 @@ export default function ConsoleTasksPage() {
 
       <ConfirmDialog
         open={Boolean(cancelTarget)}
-        title="取消任务"
-        message="确认取消该任务？将退还对应费用。"
+        title={t('portal.tasks.cancelTitle')}
+        message={t('portal.tasks.cancelMessage')}
         danger
-        confirmText="取消任务"
+        confirmText={t('portal.tasks.cancelConfirm')}
         onConfirm={handleCancel}
         onCancel={() => setCancelTarget(null)}
       />

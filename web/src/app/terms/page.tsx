@@ -2,64 +2,38 @@
  *
  * 意图（Why）：
  *   经营性服务必须公示的条款：账号、额度、服务可用性与责任边界。
+ *
+ * 流转（Flow）：
+ *   LegalDocLayout + 条款段落；文案一律走 t('site.legal.terms.*')，随语言切换实时更新。
  */
+'use client'
+
 import { LegalDocLayout } from '@/components/site/LegalDocLayout'
+import { useI18n } from '@/i18n'
 
 export default function TermsPage() {
+  const { t } = useI18n()
   return (
-    <LegalDocLayout title="用户协议" updatedAt="最近更新：2026-09-30">
-      <h2>一、总则</h2>
-      <p>
-        本服务是由本站经营者提供的 LLM API 中转服务。使用本服务即表示您已阅读并同意本协议全部条款；
-        如不同意，请停止使用。
-      </p>
-      <h2>二、账号与安全</h2>
-      <p>
-        您应妥善保管账号与访问令牌，不得出借、转让或用于恶意用途。因保管不善导致的使用后果由您自行承担。
-        发现账号被盗用应立即联系管理员。
-      </p>
-      <h2>三、余额与计费</h2>
-      <p>
-        本服务的余额以人民币计价，充值金额用于抵扣 API 调用费用，不构成任何虚拟货币或可转让权益。
-        余额仅限本人使用，不支持转让、提现。计费规则以模型广场公示为准，价格调整前会在站内公告。
-      </p>
-      <h2>四、订阅账号类上游能力接入声明</h2>
-      <p>
-        本站可能接入以第三方订阅账号为凭证的上游能力，用于扩展可用的模型与通道。此类能力仅面向学习、
-        研究与技术验证场景提供，属于对既有服务的补充，不构成任何形式的商业承诺或转售授权。
-      </p>
-      <p>
-        您在使用此类能力时，应自行确保符合相关上游服务商的服务条款以及您所在地的法律法规；不得将其
-        用于商业转售、批量抓取、绕过上游服务商的限制或额度管控，亦不得用于任何超出授权范围的用途。
-      </p>
-      <p>
-        因您违反上述约定或上游服务商条款所引发的一切后果（包括但不限于上游账号被限制、服务被中断、
-        产生争议或法律责任），由您自行承担，本站不承担连带责任。本站仅提供技术接入，不对上游账号的
-        可用性与合规性作出保证。
-      </p>
-      <p>
-        本站保留在收到上游服务商投诉、监管要求或发现违规使用情形时，暂停或终止相关服务、限制或注销
-        相应账号的权利。
-      </p>
-      <h2>五、内容合规</h2>
-      <p>
-        您不得通过本服务生成、传播违法违规内容（包括但不限于危害国家安全、色情暴力、侵犯他人权益等）。
-        本站设有敏感词过滤与内容安全机制，违规内容将被拒绝并可能触发账号处置。
-      </p>
-      <h2>六、服务可用性</h2>
-      <p>
-        本服务尽力保障稳定运行，但不对服务的绝对可用性作出承诺。因上游服务商故障、网络波动、
-        计划维护等导致的不可用，本站将尽力修复，但不承担由此产生的间接损失。
-      </p>
-      <h2>七、免责声明</h2>
-      <p>
-        因不可抗力、黑客攻击、系统故障、第三方服务中断等非本站原因造成的损失，本站不承担责任。
-        更完整的免责说明见《免责声明》。
-      </p>
-      <h2>八、协议的变更</h2>
-      <p>
-        本站有权根据运营需要修订本协议，修订后将在本站页面公示。继续使用即视为接受修订后的条款。
-      </p>
+    <LegalDocLayout title={t('site.legal.terms.title')} updatedAt={t('site.legal.terms.updatedAt')}>
+      <h2>{t('site.legal.terms.s1Title')}</h2>
+      <p>{t('site.legal.terms.s1Body')}</p>
+      <h2>{t('site.legal.terms.s2Title')}</h2>
+      <p>{t('site.legal.terms.s2Body')}</p>
+      <h2>{t('site.legal.terms.s3Title')}</h2>
+      <p>{t('site.legal.terms.s3Body')}</p>
+      <h2>{t('site.legal.terms.s4Title')}</h2>
+      <p>{t('site.legal.terms.s4Body1')}</p>
+      <p>{t('site.legal.terms.s4Body2')}</p>
+      <p>{t('site.legal.terms.s4Body3')}</p>
+      <p>{t('site.legal.terms.s4Body4')}</p>
+      <h2>{t('site.legal.terms.s5Title')}</h2>
+      <p>{t('site.legal.terms.s5Body')}</p>
+      <h2>{t('site.legal.terms.s6Title')}</h2>
+      <p>{t('site.legal.terms.s6Body')}</p>
+      <h2>{t('site.legal.terms.s7Title')}</h2>
+      <p>{t('site.legal.terms.s7Body')}</p>
+      <h2>{t('site.legal.terms.s8Title')}</h2>
+      <p>{t('site.legal.terms.s8Body')}</p>
     </LegalDocLayout>
   )
 }

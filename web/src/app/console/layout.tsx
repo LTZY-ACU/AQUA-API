@@ -11,48 +11,51 @@ import { useEffect } from 'react'
 
 import { AppShell, type ShellNavGroup } from '@/components/AppShell'
 import { ComplianceGate } from '@/components/site/ComplianceGate'
+import { useI18n } from '@/i18n'
 import { useAuth } from '@/lib/auth/auth-context'
-
-const GROUPS: ShellNavGroup[] = [
-  {
-    title: '总览',
-    items: [
-      { label: '概览', href: '/console', icon: 'home', exact: true },
-      { label: '模型广场', href: '/console/models', icon: 'grid' },
-    ],
-  },
-  {
-    title: '接入',
-    items: [
-      { label: '访问令牌', href: '/console/tokens', icon: 'key' },
-      { label: '接入示例', href: '/console/docs', icon: 'book' },
-      {
-        label: '游乐场',
-        href: '/console/playground',
-        icon: 'play',
-        // exact：只让「游乐场」页本身高亮。否则进子页（任意门）时，
-        // 前缀匹配会让父项与子项同时高亮，视觉上分不清当前所在层级。
-        exact: true,
-        children: [{ label: '任意门', href: '/console/playground/anydoor', icon: 'door' }],
-      },
-    ],
-  },
-  {
-    title: '我的',
-    items: [
-      { label: '调用日志', href: '/console/logs', icon: 'list' },
-      { label: '生成任务', href: '/console/tasks', icon: 'image' },
-      { label: '财务记录', href: '/console/finance', icon: 'wallet' },
-      { label: '账户充值', href: '/console/recharge', icon: 'cart' },
-      { label: '邀请奖励', href: '/console/referral', icon: 'users' },
-    ],
-  },
-]
 
 export default function ConsoleLayout({ children }: { children: React.ReactNode }) {
   const { ready, isLoggedIn } = useAuth()
+  const { t } = useI18n()
   const pathname = usePathname()
   const router = useRouter()
+
+  // 导航分组随语言切换实时更新，故在组件内按 t() 构建（文案见 portal.nav.*）
+  const groups: ShellNavGroup[] = [
+    {
+      title: t('portal.nav.groupOverview'),
+      items: [
+        { label: t('portal.nav.overview'), href: '/console', icon: 'home', exact: true },
+        { label: t('portal.nav.models'), href: '/console/models', icon: 'grid' },
+      ],
+    },
+    {
+      title: t('portal.nav.groupAccess'),
+      items: [
+        { label: t('portal.nav.tokens'), href: '/console/tokens', icon: 'key' },
+        { label: t('portal.nav.docs'), href: '/console/docs', icon: 'book' },
+        {
+          label: t('portal.nav.playground'),
+          href: '/console/playground',
+          icon: 'play',
+          // exact：只让「游乐场」页本身高亮。否则进子页（任意门）时，
+          // 前缀匹配会让父项与子项同时高亮，视觉上分不清当前所在层级。
+          exact: true,
+          children: [{ label: t('portal.nav.anydoor'), href: '/console/playground/anydoor', icon: 'door' }],
+        },
+      ],
+    },
+    {
+      title: t('portal.nav.groupMine'),
+      items: [
+        { label: t('portal.nav.logs'), href: '/console/logs', icon: 'list' },
+        { label: t('portal.nav.tasks'), href: '/console/tasks', icon: 'image' },
+        { label: t('portal.nav.finance'), href: '/console/finance', icon: 'wallet' },
+        { label: t('portal.nav.recharge'), href: '/console/recharge', icon: 'cart' },
+        { label: t('portal.nav.referral'), href: '/console/referral', icon: 'users' },
+      ],
+    },
+  ]
 
   useEffect(() => {
     if (ready && !isLoggedIn) {
@@ -61,11 +64,11 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
   }, [ready, isLoggedIn, pathname, router])
 
   if (!ready || !isLoggedIn) {
-    return <div className="flex min-h-screen items-center justify-center text-[13px] text-ink-3">正在进入门户…</div>
+    return <div className="flex min-h-screen items-center justify-center text-[13px] text-ink-3">{t('portal.layout.entering')}</div>
   }
 
   return (
-    <AppShell groups={GROUPS} brand="用户门户">
+    <AppShell groups={groups} brand={t('components.shell.portal')}>
       {/* 首次进入控制台弹一次合规确认（自包含：内部判断路由与已确认状态） */}
       <ComplianceGate />
       {children}

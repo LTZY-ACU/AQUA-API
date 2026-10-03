@@ -25,12 +25,14 @@ import { SiteFooter } from '@/components/site/SiteFooter'
 import { SiteHeader } from '@/components/site/SiteHeader'
 import { Badge, EmptyState, Skeleton, Tabs } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
+import { useI18n } from '@/i18n'
 import { useSite } from '@/lib/site/site-context'
 import { formatLatency } from '@/utils/format'
 import { formatDiscountLabel } from '@/utils/money'
 import { vendorLabel, vendorOf, vendorTone } from '@/utils/vendor'
 
 export default function ModelPlazaPage() {
+  const { t } = useI18n()
   const [data, setData] = useState<ModelPlaza | null>(null)
   const [error, setError] = useState(false)
   const [group, setGroup] = useState('all')
@@ -69,12 +71,12 @@ export default function ModelPlazaPage() {
   }, [data])
 
   const tabs = useMemo(() => {
-    const items: { value: string; label: string; count?: number }[] = [{ value: 'all', label: '全部' }]
+    const items: { value: string; label: string; count?: number }[] = [{ value: 'all', label: t('site.models.tabAll') }]
     for (const g of data?.groups ?? []) {
       items.push({ value: g.name, label: g.label, count: g.model_count })
     }
     return items
-  }, [data])
+  }, [data, t])
 
   return (
     <>
@@ -85,9 +87,9 @@ export default function ModelPlazaPage() {
             <div className="font-mono text-[12px] text-ink-3">
               <span className="text-brand">/</span> models
             </div>
-            <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-ink">模型与价格</h1>
+            <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-ink">{t('site.models.title')}</h1>
             <p className="mt-1 text-[13px] text-ink-3">
-              {viewer ? '你看到的为代理拿货档的模型与折扣价。' : '当前可用模型与分组价格，实时来自站点信息。'}
+              {viewer ? t('site.models.descAgent') : t('site.models.descPublic')}
             </p>
           </div>
           <div className="flex max-w-xs flex-1 items-center gap-2 rounded-md border border-line-2 bg-card px-3 focus-within:border-brand">
@@ -95,7 +97,7 @@ export default function ModelPlazaPage() {
             <input
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
-              placeholder="搜索模型…"
+              placeholder={t('site.models.searchPlaceholder')}
               className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-ink-3"
             />
           </div>
@@ -113,11 +115,11 @@ export default function ModelPlazaPage() {
         {error ? (
           <div className="mt-6 rounded-lg border border-err/30 bg-err/5">
             <EmptyState
-              title="模型广场加载失败"
-              description="网络或服务暂时不可用，请稍后重试。"
+              title={t('site.models.errorTitle')}
+              description={t('site.models.errorDesc')}
               action={
                 <Button variant="secondary" size="sm" onClick={() => void load()}>
-                  重试
+                  {t('site.models.retry')}
                 </Button>
               }
             />
@@ -131,8 +133,8 @@ export default function ModelPlazaPage() {
         ) : data.items.length === 0 ? (
           <div className="mt-6 rounded-lg border border-line bg-card">
             <EmptyState
-              title="没有匹配的模型"
-              description={viewer ? '当前代理档尚未配置模型价格，请联系管理员。' : '换一个关键词或分组试试'}
+              title={t('site.models.emptyTitle')}
+              description={viewer ? t('site.models.emptyDescAgent') : t('site.models.emptyDesc')}
             />
           </div>
         ) : (
@@ -140,11 +142,11 @@ export default function ModelPlazaPage() {
             <table className="w-full text-left text-[13px]">
               <thead className="bg-surface">
                 <tr className="font-mono text-[11px] uppercase tracking-wider text-ink-3">
-                  <th className="px-4 py-2.5 font-normal">模型</th>
-                  <th className="hidden px-4 py-2.5 font-normal sm:table-cell">分组</th>
-                  <th className="px-4 py-2.5 text-right font-normal">价格</th>
-                  <th className="hidden px-4 py-2.5 text-right font-normal md:table-cell">渠道</th>
-                  <th className="hidden px-4 py-2.5 text-right font-normal md:table-cell">首字延迟</th>
+                  <th className="px-4 py-2.5 font-normal">{t('site.models.colModel')}</th>
+                  <th className="hidden px-4 py-2.5 font-normal sm:table-cell">{t('site.models.colGroup')}</th>
+                  <th className="px-4 py-2.5 text-right font-normal">{t('site.models.colPrice')}</th>
+                  <th className="hidden px-4 py-2.5 text-right font-normal md:table-cell">{t('site.models.colChannel')}</th>
+                  <th className="hidden px-4 py-2.5 text-right font-normal md:table-cell">{t('site.models.colLatency')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -172,7 +174,7 @@ export default function ModelPlazaPage() {
           </div>
         )}
 
-        <div className="mt-4 font-mono text-[12px] text-ink-3">共 {data?.total ?? 0} 个模型</div>
+        <div className="mt-4 font-mono text-[12px] text-ink-3">{t('site.models.total', { n: data?.total ?? 0 })}</div>
       </main>
 
       <SiteFooter />
@@ -185,18 +187,19 @@ export default function ModelPlazaPage() {
 /* ── 代理身份横幅：说明"你正在以什么身份看这份清单" ───────── */
 
 function AgentBanner({ viewer }: { viewer: PlazaViewer }) {
+  const { t } = useI18n()
   return (
     <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-warn/30 bg-warn/8 px-4 py-3">
       <Badge tone="warn">{viewer.label}</Badge>
-      <span className="text-[13px] font-medium text-ink">代理拿货价</span>
+      <span className="text-[13px] font-medium text-ink">{t('site.models.agentBannerTitle')}</span>
       <span className="font-mono text-[12px] text-ink-2">
-        基础价 × {viewer.ratio}% = {discountLabel(viewer.ratio)}
+        {t('site.models.agentFormula', { ratio: viewer.ratio, discount: discountLabel(viewer.ratio) })}
       </span>
-      <span className="text-[12px] text-ink-3">下方价格已按你的拿货折扣结算，与原价并排展示。</span>
+      <span className="text-[12px] text-ink-3">{t('site.models.agentHint')}</span>
       {/* 分组 RPM 提示：仅当后端下发且 >0 时显示（0/缺失 = 不限速，不显示） */}
       {viewer.rpm_limit && viewer.rpm_limit > 0 ? (
         <span className="w-full text-[12px] text-ink-3">
-          该分组每分钟请求上限：{viewer.rpm_limit} 次/分钟
+          {t('site.models.agentRpm', { rpm: viewer.rpm_limit })}
         </span>
       ) : null}
     </div>
@@ -206,6 +209,7 @@ function AgentBanner({ viewer }: { viewer: PlazaViewer }) {
 /* ── 表格行 ─────────────────────────────────────────────── */
 
 function ModelRow({ model, viewer, onOpen }: { model: PlazaModel; viewer?: PlazaViewer; onOpen: () => void }) {
+  const { t } = useI18n()
   const { quotaPerYuan } = useSite()
   const price = model.prices?.[0]
   return (
@@ -213,7 +217,7 @@ function ModelRow({ model, viewer, onOpen }: { model: PlazaModel; viewer?: Plaza
       <td className="px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="font-mono text-ink">{model.model}</span>
-          {model.available ? <Badge tone="ok">可用</Badge> : <Badge tone="err">不可用</Badge>}
+          {model.available ? <Badge tone="ok">{t('site.models.available')}</Badge> : <Badge tone="err">{t('site.models.unavailable')}</Badge>}
         </div>
       </td>
       <td className="hidden px-4 py-2.5 font-mono text-ink-3 sm:table-cell">{model.groups?.join(' / ') || '—'}</td>
@@ -239,10 +243,11 @@ function ModelRow({ model, viewer, onOpen }: { model: PlazaModel; viewer?: Plaza
  * 颜色分档：<1s 快（绿）、1~3s 正常（默认）、>3s 慢（橙），扫视即可分拣。
  */
 function SpeedCell({ ms }: { ms?: number }) {
+  const { t } = useI18n()
   if (!ms || ms <= 0) return <span className="font-mono text-ink-3">—</span>
   const tone = ms < 1000 ? 'text-ok' : ms < 3000 ? 'text-ink-2' : 'text-warn'
   return (
-    <span className={`font-mono tabular-nums ${tone}`} title="后台测速快照（首字延迟，非实时）">
+    <span className={`font-mono tabular-nums ${tone}`} title={t('site.models.speedTitle')}>
       {formatLatency(ms)}
     </span>
   )
@@ -260,7 +265,8 @@ function AgentPriceCell({
   ratio: number
   quotaPerYuan: number
 }) {
-  if (!price) return <span className="text-ink-3">待定价</span>
+  const { t } = useI18n()
+  if (!price) return <span className="text-ink-3">{t('site.models.priceTbd')}</span>
   return (
     <span className="inline-flex items-center justify-end gap-2 align-middle">
       {listPrice && (

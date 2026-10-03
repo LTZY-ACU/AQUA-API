@@ -12,7 +12,7 @@ import { AppIcon } from '@/components/AppIcon'
 import { SUPPORTED_LOCALES, useI18n } from '@/i18n'
 
 export function LocaleSwitcher({ compact = false }: { compact?: boolean }) {
-  const { locale, setLocale } = useI18n()
+  const { locale, t, setLocale } = useI18n()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -29,7 +29,7 @@ export function LocaleSwitcher({ compact = false }: { compact?: boolean }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] text-ink-2 transition hover:bg-ink/5 hover:text-ink"
-        aria-label="切换语言"
+        aria-label={t('common.language.switch')}
       >
         <AppIcon name="globe" size={15} />
         <span>{compact ? '' : current.name}</span>

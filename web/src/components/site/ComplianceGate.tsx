@@ -23,13 +23,11 @@ import { usePathname } from 'next/navigation'
 
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import {
-  COMPLIANCE_ACK_KEY,
-  COMPLIANCE_GATE_MESSAGE,
-  COMPLIANCE_GATE_TITLE,
-} from '@/lib/site/compliance'
+import { useI18n } from '@/i18n'
+import { COMPLIANCE_ACK_KEY } from '@/lib/site/compliance'
 
 export function ComplianceGate() {
+  const { t } = useI18n()
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
 
@@ -60,20 +58,20 @@ export function ComplianceGate() {
     <Modal
       open={open}
       onClose={acknowledge}
-      title={COMPLIANCE_GATE_TITLE}
+      title={t('components.compliance.gateTitle')}
       width={480}
       footer={
         <>
           <Link href="/terms" className="mr-auto self-center text-[13px] text-brand hover:underline">
-            查看用户协议
+            {t('components.compliance.viewTerms')}
           </Link>
           <Button variant="primary" onClick={acknowledge}>
-            我已知悉
+            {t('components.compliance.acknowledge')}
           </Button>
         </>
       }
     >
-      <p className="text-[13px] leading-relaxed text-ink-2">{COMPLIANCE_GATE_MESSAGE}</p>
+      <p className="text-[13px] leading-relaxed text-ink-2">{t('components.compliance.gateMessage')}</p>
     </Modal>
   )
 }

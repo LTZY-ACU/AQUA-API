@@ -12,8 +12,11 @@
  *   换群只需改下方两个常量；视觉变体用 variant 控制（inline 紧凑 / card 卡片）。
  */
 
+'use client'
+
 import { AppIcon } from '@/components/AppIcon'
 import { Button } from '@/components/ui/Button'
+import { useI18n } from '@/i18n'
 
 /** 群链接与群号：换群只改这两个常量 */
 const QQ_GROUP_URL = 'https://qm.qq.com/q/hHfKssRkdi'
@@ -26,17 +29,18 @@ interface QqGroupEntryProps {
 }
 
 export function QqGroupEntry({ variant = 'inline', className }: QqGroupEntryProps) {
+  const { t } = useI18n()
   const link = (
     <a
       href={QQ_GROUP_URL}
       target="_blank"
       rel="noreferrer"
-      aria-label={`加入 QQ 群「LTZY开源社区」，群号 ${QQ_GROUP_NO}`}
+      aria-label={t('site.contact.qqAria', { no: QQ_GROUP_NO })}
       className="inline-flex items-center gap-2 rounded-md border border-line-2 bg-card px-3 py-1.5 text-[13px] text-ink-2 transition hover:border-brand hover:text-brand"
     >
       <AppIcon name="qq" size={15} />
-      <span>加入群聊</span>
-      <span className="font-mono text-[12px] text-ink-3">群号 {QQ_GROUP_NO}</span>
+      <span>{t('site.contact.qqJoin')}</span>
+      <span className="font-mono text-[12px] text-ink-3">{t('site.contact.qqNo', { no: QQ_GROUP_NO })}</span>
     </a>
   )
 
@@ -50,7 +54,7 @@ export function QqGroupEntry({ variant = 'inline', className }: QqGroupEntryProp
       <a href={QQ_GROUP_URL} target="_blank" rel="noreferrer" className={className}>
         <Button variant="secondary" size="lg">
           <AppIcon name="qq" size={16} />
-          加入群聊 · 群号 {QQ_GROUP_NO}
+          {t('site.contact.qqJoinWithNo', { no: QQ_GROUP_NO })}
         </Button>
       </a>
     )
@@ -63,15 +67,15 @@ export function QqGroupEntry({ variant = 'inline', className }: QqGroupEntryProp
           <AppIcon name="qq" size={16} />
         </span>
         <div className="min-w-0">
-          <div className="text-[14px] font-semibold text-ink">LTZY 开源社区</div>
-          <div className="mt-0.5 text-[12px] text-ink-3">有问题进群聊，一起反馈、吹牛、出主意</div>
+          <div className="text-[14px] font-semibold text-ink">{t('site.contact.qqCommunity')}</div>
+          <div className="mt-0.5 text-[12px] text-ink-3">{t('site.contact.qqDesc')}</div>
         </div>
       </div>
       <div className="mt-3">
         <a href={QQ_GROUP_URL} target="_blank" rel="noreferrer" className="block">
           <Button variant="secondary" size="md" className="w-full">
             <AppIcon name="qq" size={15} />
-            加入群聊 · 群号 {QQ_GROUP_NO}
+            {t('site.contact.qqJoinWithNo', { no: QQ_GROUP_NO })}
           </Button>
         </a>
       </div>

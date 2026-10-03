@@ -2,40 +2,31 @@
  *
  * 意图（Why）：
  *   说明数据收集范围、用途与用户权利（个人信息保护义务）。
+ *
+ * 流转（Flow）：
+ *   LegalDocLayout + 政策段落；文案一律走 t('site.legal.privacy.*')，随语言切换实时更新。
  */
+'use client'
+
 import { LegalDocLayout } from '@/components/site/LegalDocLayout'
+import { useI18n } from '@/i18n'
 
 export default function PrivacyPage() {
+  const { t } = useI18n()
   return (
-    <LegalDocLayout title="隐私政策" updatedAt="最近更新：2026-09-30">
-      <h2>一、我们收集哪些信息</h2>
-      <p>
-        注册时收集的账号信息（用户名、邮箱、密码哈希）；调用日志中的请求内容与用量信息；
-        以及必要的设备与网络信息（用于安全风控）。
-      </p>
-      <h2>二、信息的用途</h2>
-      <p>
-        用于提供与维护服务、计费结算、故障排查、安全防护与合规审计。我们不会将您的个人信息
-        出售或出租给任何第三方。
-      </p>
-      <h2>三、信息的存储</h2>
-      <p>
-        数据存储于本站自有的服务器（默认 SQLite 本地存储）。密码以加盐哈希保存，绝不存储明文。
-        访问令牌明文仅在创建时显示一次。
-      </p>
-      <h2>四、您的权利</h2>
-      <p>
-        您有权访问、更正或删除您的账号信息与相关数据。如需删除账号，请联系管理员处理。
-        内容合规：涉及违法违规的请求内容，我们会依法留存并配合监管机关调查。
-      </p>
-      <h2>五、未成年人保护</h2>
-      <p>
-        本服务不面向未满 18 周岁的未成年人提供；如您是监护人，发现未成年人使用本服务，请与我们联系。
-      </p>
-      <h2>六、政策变更</h2>
-      <p>
-        本政策如有重大变更，将在本站显著位置公示。继续使用即视为接受更新后的政策。
-      </p>
+    <LegalDocLayout title={t('site.legal.privacy.title')} updatedAt={t('site.legal.privacy.updatedAt')}>
+      <h2>{t('site.legal.privacy.s1Title')}</h2>
+      <p>{t('site.legal.privacy.s1Body')}</p>
+      <h2>{t('site.legal.privacy.s2Title')}</h2>
+      <p>{t('site.legal.privacy.s2Body')}</p>
+      <h2>{t('site.legal.privacy.s3Title')}</h2>
+      <p>{t('site.legal.privacy.s3Body')}</p>
+      <h2>{t('site.legal.privacy.s4Title')}</h2>
+      <p>{t('site.legal.privacy.s4Body')}</p>
+      <h2>{t('site.legal.privacy.s5Title')}</h2>
+      <p>{t('site.legal.privacy.s5Body')}</p>
+      <h2>{t('site.legal.privacy.s6Title')}</h2>
+      <p>{t('site.legal.privacy.s6Body')}</p>
     </LegalDocLayout>
   )
 }

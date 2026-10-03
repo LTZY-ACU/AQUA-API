@@ -15,6 +15,7 @@ import { sendEmailCode } from '@/api/auth'
 import { SiteFooter } from '@/components/site/SiteFooter'
 import { Button } from '@/components/ui/Button'
 import { Field, Input } from '@/components/ui/Form'
+import { useI18n } from '@/i18n'
 import { useAuth } from '@/lib/auth/auth-context'
 import { useSite } from '@/lib/site/site-context'
 import { useToast } from '@/lib/toast/toast-context'
@@ -26,6 +27,7 @@ function RegisterForm() {
   const { signUp } = useAuth()
   const { status } = useSite()
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   const requireEmailCode = Boolean(status?.email_code_required)
   const emailServiceReady = status?.email_service_ready !== false
@@ -43,19 +45,19 @@ function RegisterForm() {
     e.preventDefault()
     setError('')
     if (!username.trim() || password.length < 8) {
-      setError('用户名必填，密码至少 8 位')
+      setError(t('site.auth.register.errUsernamePassword'))
       return
     }
     if (password !== confirm) {
-      setError('两次输入的密码不一致')
+      setError(t('site.auth.register.errPasswordMismatch'))
       return
     }
     if (!agreed) {
-      setError('请先阅读并同意《用户协议》与《隐私政策》')
+      setError(t('site.auth.register.errAgree'))
       return
     }
     if (requireEmailCode && !email.trim()) {
-      setError('本站注册需要邮箱验证，请填写邮箱')
+      setError(t('site.auth.register.errEmailRequired'))
       return
     }
     setLoading(true)
@@ -70,7 +72,7 @@ function RegisterForm() {
       })
       router.replace(user.role === 10 ? '/admin' : '/console')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '注册失败')
+      setError(err instanceof Error ? err.message : t('site.auth.register.errFailed'))
     } finally {
       setLoading(false)
     }
@@ -86,27 +88,27 @@ function RegisterForm() {
 
       <main className="flex flex-1 items-start justify-center px-4 py-12 sm:py-20">
         <div className="w-full max-w-sm">
-          <h1 className="text-xl font-bold text-ink">注册</h1>
-          <p className="mt-1 text-[13px] text-ink-3">创建账号，马上接入模型</p>
+          <h1 className="text-xl font-bold text-ink">{t('site.auth.register.title')}</h1>
+          <p className="mt-1 text-[13px] text-ink-3">{t('site.auth.register.subtitle')}</p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <Field label="用户名" required>
-              <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="2-32 位，字母数字或下划线" autoComplete="username" />
+            <Field label={t('site.auth.register.usernameLabel')} required>
+              <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('site.auth.register.usernamePlaceholder')} autoComplete="username" />
             </Field>
-            <Field label="密码" required help="至少 8 位">
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 8 位" autoComplete="new-password" />
+            <Field label={t('site.auth.register.passwordLabel')} required help={t('site.auth.register.passwordHelp')}>
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('site.auth.register.passwordPlaceholder')} autoComplete="new-password" />
             </Field>
-            <Field label="确认密码" required>
-              <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="再次输入密码" autoComplete="new-password" />
+            <Field label={t('site.auth.register.confirmLabel')} required>
+              <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder={t('site.auth.register.confirmPlaceholder')} autoComplete="new-password" />
             </Field>
             {requireEmailCode && (
               <>
-                <Field label="邮箱" required help={emailServiceReady ? '验证码将发送到该邮箱' : '邮件服务未就绪，可能收不到验证码'}>
+                <Field label={t('site.auth.register.emailLabel')} required help={emailServiceReady ? t('site.auth.register.emailHelp') : t('site.auth.register.emailHelpNotReady')}>
                   <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" />
                 </Field>
-                <Field label="邮箱验证码" required>
+                <Field label={t('site.auth.register.codeLabel')} required>
                   <div className="flex gap-2">
-                    <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="6 位验证码" autoComplete="one-time-code" />
+                    <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder={t('site.auth.register.codePlaceholder')} autoComplete="one-time-code" />
                     <SendCodeButton email={email} purpose="register" />
                   </div>
                 </Field>
@@ -121,20 +123,22 @@ function RegisterForm() {
                 className="mt-0.5 h-4 w-4 accent-brand"
               />
               <span>
-                我已阅读并同意 <Link href="/terms" className="text-brand hover:underline">《用户协议》</Link> 与{' '}
-                <Link href="/privacy" className="text-brand hover:underline">《隐私政策》</Link>
+                {t('site.auth.register.agreePrefix')}
+                <Link href="/terms" className="text-brand hover:underline">{t('site.auth.register.agreeTerms')}</Link>
+                {t('site.auth.register.agreeAnd')}
+                <Link href="/privacy" className="text-brand hover:underline">{t('site.auth.register.agreePrivacy')}</Link>
               </span>
             </label>
 
             {error && <div className="rounded-md border border-err/25 bg-err/8 px-3 py-2 text-[13px] text-err">{error}</div>}
 
             <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading}>
-              注册
+              {t('site.auth.register.submit')}
             </Button>
           </form>
 
           <div className="mt-4 text-center text-[13px]">
-            已有账号？<Link href="/login" className="text-brand hover:underline">去登录</Link>
+            {t('site.auth.register.haveAccount')}<Link href="/login" className="text-brand hover:underline">{t('site.auth.register.loginLink')}</Link>
           </div>
         </div>
       </main>
@@ -147,15 +151,16 @@ function RegisterForm() {
 function SendCodeButton({ email, purpose }: { email: string; purpose: 'register' | 'login' | 'reset' }) {
   const [countdown, setCountdown] = useState(0)
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   async function handleSend() {
     if (!email.trim() || !email.includes('@')) {
-      toastError('请先填写正确的邮箱')
+      toastError(t('site.auth.register.errEmail'))
       return
     }
     try {
       const result = await sendEmailCode(email.trim(), purpose)
-      toast(result.message || '验证码已发送')
+      toast(result.message || t('site.auth.register.codeSent'))
       if (result.cooldown > 0) {
         setCountdown(result.cooldown)
         const timer = setInterval(() => {
@@ -169,13 +174,13 @@ function SendCodeButton({ email, purpose }: { email: string; purpose: 'register'
         }, 1000)
       }
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '发送失败')
+      toastError(err instanceof Error ? err.message : t('site.auth.register.sendFailed'))
     }
   }
 
   return (
     <Button type="button" variant="secondary" disabled={countdown > 0} onClick={handleSend} className="shrink-0 whitespace-nowrap">
-      {countdown > 0 ? `${countdown}s` : '发送验证码'}
+      {countdown > 0 ? `${countdown}s` : t('site.auth.register.sendCode')}
     </Button>
   )
 }

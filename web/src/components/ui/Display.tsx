@@ -8,6 +8,8 @@
 
 import { useState, type ReactNode } from 'react'
 
+import { useI18n } from '@/i18n'
+
 /* ── Card ─────────────────────────────────────────────── */
 
 interface CardProps {
@@ -122,6 +124,7 @@ interface CodeBlockProps {
 }
 
 export function CodeBlock({ code, language, title }: CodeBlockProps) {
+  const { t } = useI18n()
   const [copied, setCopied] = useState(false)
   async function handleCopy() {
     const ok = await copyText(code)
@@ -137,7 +140,7 @@ export function CodeBlock({ code, language, title }: CodeBlockProps) {
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-2 text-xs">
         <span className="text-white/60">{title || language || 'code'}</span>
         <button type="button" onClick={handleCopy} className="flex items-center gap-1 text-white/60 hover:text-white">
-          {copied ? '已复制' : '复制'}
+          {copied ? t('components.copy.copied') : t('components.copy.copy')}
         </button>
       </div>
       <pre className="code-block overflow-x-auto p-4 text-white/90">{code}</pre>

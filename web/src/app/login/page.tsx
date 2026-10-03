@@ -13,6 +13,7 @@ import { sendEmailCode } from '@/api/auth'
 import { SiteFooter } from '@/components/site/SiteFooter'
 import { Button } from '@/components/ui/Button'
 import { Field, Input } from '@/components/ui/Form'
+import { useI18n } from '@/i18n'
 import { useAuth } from '@/lib/auth/auth-context'
 import { useToast } from '@/lib/toast/toast-context'
 import type { LoginPayload } from '@/api/types'
@@ -23,6 +24,7 @@ function LoginForm() {
   const redirect = searchParams.get('redirect') || null
   const { signIn, signInWithEmail } = useAuth()
   const { toastError } = useToast()
+  const { t } = useI18n()
 
   const [mode, setMode] = useState<'password' | 'email'>('password')
   const [username, setUsername] = useState('')
@@ -43,7 +45,7 @@ function LoginForm() {
     try {
       if (mode === 'password') {
         if (!username.trim() || !password) {
-          setError('请输入用户名/邮箱与密码')
+          setError(t('site.auth.login.errUsernamePassword'))
           return
         }
         const payload: LoginPayload = { username: username.trim(), password }
@@ -51,14 +53,14 @@ function LoginForm() {
         afterLogin(user.role === 10)
       } else {
         if (!email.trim() || !code.trim()) {
-          setError('请输入邮箱与验证码')
+          setError(t('site.auth.login.errEmailCode'))
           return
         }
         const user = await signInWithEmail(email.trim(), code.trim())
         afterLogin(user.role === 10)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '登录失败')
+      setError(err instanceof Error ? err.message : t('site.auth.login.errFailed'))
     } finally {
       setLoading(false)
     }
@@ -74,8 +76,8 @@ function LoginForm() {
 
       <main className="flex flex-1 items-start justify-center px-4 py-12 sm:py-20">
         <div className="w-full max-w-sm">
-          <h1 className="text-xl font-bold text-ink">登录</h1>
-          <p className="mt-1 text-[13px] text-ink-3">使用用户名或绑定邮箱登录</p>
+          <h1 className="text-xl font-bold text-ink">{t('site.auth.login.title')}</h1>
+          <p className="mt-1 text-[13px] text-ink-3">{t('site.auth.login.subtitle')}</p>
 
           <div className="mt-6 flex gap-1 rounded-lg border border-line bg-surface p-1">
             {(['password', 'email'] as const).map((m) => (
@@ -87,7 +89,7 @@ function LoginForm() {
                   mode === m ? 'bg-card text-ink shadow-sm' : 'text-ink-3 hover:text-ink-2'
                 }`}
               >
-                {m === 'password' ? '密码登录' : '验证码登录'}
+                {m === 'password' ? t('site.auth.login.tabPassword') : t('site.auth.login.tabEmail')}
               </button>
             ))}
           </div>
@@ -95,21 +97,21 @@ function LoginForm() {
           <form onSubmit={handleSubmit} className="mt-5 space-y-4">
             {mode === 'password' ? (
               <>
-                <Field label="用户名 / 邮箱">
-                  <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="用户名或绑定邮箱" autoComplete="username" />
+                <Field label={t('site.auth.login.usernameLabel')}>
+                  <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('site.auth.login.usernamePlaceholder')} autoComplete="username" />
                 </Field>
-                <Field label="密码">
-                  <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密码" autoComplete="current-password" />
+                <Field label={t('site.auth.login.passwordLabel')}>
+                  <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('site.auth.login.passwordPlaceholder')} autoComplete="current-password" />
                 </Field>
               </>
             ) : (
               <>
-                <Field label="邮箱">
+                <Field label={t('site.auth.login.emailLabel')}>
                   <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" />
                 </Field>
-                <Field label="验证码" help="验证码发送到该邮箱，5 分钟内有效">
+                <Field label={t('site.auth.login.codeLabel')} help={t('site.auth.login.codeHelp')}>
                   <div className="flex gap-2">
-                    <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="6 位验证码" autoComplete="one-time-code" />
+                    <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder={t('site.auth.login.codePlaceholder')} autoComplete="one-time-code" />
                     <SendCodeButton email={email} purpose="login" />
                   </div>
                 </Field>
@@ -121,13 +123,13 @@ function LoginForm() {
             )}
 
             <Button type="submit" variant="primary" loading={loading} className="w-full" size="lg">
-              登录
+              {t('site.auth.login.submit')}
             </Button>
           </form>
 
           <div className="mt-4 flex items-center justify-between text-[13px]">
-            <a href="/register" className="text-brand hover:underline">注册新账号</a>
-            <a href="/forgot-password" className="text-ink-3 hover:text-brand">忘记密码？</a>
+            <a href="/register" className="text-brand hover:underline">{t('site.auth.login.registerLink')}</a>
+            <a href="/forgot-password" className="text-ink-3 hover:text-brand">{t('site.auth.login.forgotLink')}</a>
           </div>
         </div>
       </main>
@@ -141,15 +143,16 @@ function LoginForm() {
 function SendCodeButton({ email, purpose }: { email: string; purpose: 'login' | 'register' | 'reset' }) {
   const [countdown, setCountdown] = useState(0)
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   async function handleSend() {
     if (!email.trim() || !email.includes('@')) {
-      toastError('请先填写正确的邮箱')
+      toastError(t('site.auth.login.errEmail'))
       return
     }
     try {
       const result = await sendEmailCode(email.trim(), purpose)
-      toast(result.message || '验证码已发送，请查收邮件')
+      toast(result.message || t('site.auth.login.codeSent'))
       if (result.cooldown > 0) {
         setCountdown(result.cooldown)
         const timer = setInterval(() => {
@@ -163,13 +166,13 @@ function SendCodeButton({ email, purpose }: { email: string; purpose: 'login' | 
         }, 1000)
       }
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '发送失败')
+      toastError(err instanceof Error ? err.message : t('site.auth.login.sendFailed'))
     }
   }
 
   return (
     <Button type="button" variant="secondary" disabled={countdown > 0} onClick={handleSend} className="shrink-0 whitespace-nowrap">
-      {countdown > 0 ? `${countdown}s` : '发送验证码'}
+      {countdown > 0 ? `${countdown}s` : t('site.auth.login.sendCode')}
     </Button>
   )
 }

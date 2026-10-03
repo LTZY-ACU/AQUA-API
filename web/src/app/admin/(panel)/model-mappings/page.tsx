@@ -21,6 +21,7 @@ import type { ModelMappingOverviewItem, ModelMappingPlainChannel } from '@/api/t
 import { Badge, Card } from '@/components/ui/Display'
 import { DataTable, type Column } from '@/components/ui/Table'
 import { Switch } from '@/components/ui/Form'
+import { useI18n } from '@/i18n'
 import { channelStatusLabel } from '@/utils/display'
 import { formatNumber } from '@/utils/format'
 
@@ -35,6 +36,7 @@ export default function AdminModelMappingsPage() {
   const [items, setItems] = useState<ModelMappingOverviewItem[]>([])
   const [plainChannels, setPlainChannels] = useState<ModelMappingPlainChannel[]>([])
   const [loading, setLoading] = useState(true)
+  const { t } = useI18n()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -54,33 +56,33 @@ export default function AdminModelMappingsPage() {
   }, [load])
 
   const plainColumns: Column<ModelMappingPlainChannel>[] = [
-    { title: '渠道名', render: (row) => <span className="font-medium text-ink">{row.channel_name}</span> },
+    { title: t('admin.modelMappings.col.channelName'), render: (row) => <span className="font-medium text-ink">{row.channel_name}</span> },
     {
-      title: '渠道状态',
+      title: t('admin.modelMappings.col.channelStatus'),
       render: (row) => <Badge tone={channelStatusTone(row.channel_status)}>{channelStatusLabel(row.channel_status)}</Badge>,
     },
     {
-      title: '模型数',
+      title: t('admin.modelMappings.col.modelCount'),
       align: 'right',
-      render: (row) => <span className="text-ink-2">{row.model_count > 0 ? `${formatNumber(row.model_count)} 个` : '全部模型'}</span>,
+      render: (row) => <span className="text-ink-2">{row.model_count > 0 ? t('admin.modelMappings.modelCountValue', { count: formatNumber(row.model_count) }) : t('admin.modelMappings.allModels')}</span>,
     },
   ]
 
   const mappingColumns: Column<ModelMappingOverviewItem>[] = [
-    { title: '渠道名', render: (row) => <span className="font-medium text-ink">{row.channel_name}</span> },
+    { title: t('admin.modelMappings.col.channelName'), render: (row) => <span className="font-medium text-ink">{row.channel_name}</span> },
     {
-      title: '渠道状态',
+      title: t('admin.modelMappings.col.channelStatus'),
       render: (row) => <Badge tone={channelStatusTone(row.channel_status)}>{channelStatusLabel(row.channel_status)}</Badge>,
     },
-    { title: '平台模型', render: (row) => <span className="font-mono text-[13px] text-ink-2">{row.public_model}</span> },
-    { title: '上游模型', render: (row) => <span className="font-mono text-[13px] text-ink-2">{row.upstream_model}</span> },
-    { title: '优先级', align: 'right', render: (row) => <span className="text-ink-2">{row.priority}</span> },
+    { title: t('admin.modelMappings.col.publicModel'), render: (row) => <span className="font-mono text-[13px] text-ink-2">{row.public_model}</span> },
+    { title: t('admin.modelMappings.col.upstreamModel'), render: (row) => <span className="font-mono text-[13px] text-ink-2">{row.upstream_model}</span> },
+    { title: t('admin.modelMappings.col.priority'), align: 'right', render: (row) => <span className="text-ink-2">{row.priority}</span> },
     {
-      title: '启用',
-      render: (row) => <Switch checked={row.enabled} onChange={() => undefined} disabled label={`映射 ${row.public_model} 是否启用`} />,
+      title: t('admin.modelMappings.col.enabled'),
+      render: (row) => <Switch checked={row.enabled} onChange={() => undefined} disabled label={t('admin.modelMappings.switchLabel', { model: row.public_model })} />,
     },
     {
-      title: '备注',
+      title: t('admin.modelMappings.col.remark'),
       render: (row) => (
         <span className="max-w-44 truncate text-[13px] text-ink-3" title={row.remark || undefined}>
           {row.remark || '—'}
@@ -92,36 +94,36 @@ export default function AdminModelMappingsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">模型映射总览</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">平台模型 ID ↔ 上游模型 ID；映射关系在渠道详情中维护，本页只读</p>
+        <h1 className="text-xl font-bold text-ink">{t('admin.modelMappings.title')}</h1>
+        <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.modelMappings.subtitle')}</p>
       </div>
 
       <Card padding="none">
         <div className="border-b border-line px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink">无映射渠道（模型名原样透传）</h2>
-          <p className="mt-0.5 text-xs text-ink-3">共 {plainChannels.length} 个渠道未配置映射，可在渠道详情中补充</p>
+          <h2 className="text-sm font-semibold text-ink">{t('admin.modelMappings.plainTitle')}</h2>
+          <p className="mt-0.5 text-xs text-ink-3">{t('admin.modelMappings.plainHint', { count: plainChannels.length })}</p>
         </div>
         <DataTable
           columns={plainColumns}
           rows={loading ? null : plainChannels}
           loading={loading}
           rowKey={(row) => row.channel_id}
-          emptyTitle="所有渠道都已配置映射"
+          emptyTitle={t('admin.modelMappings.emptyPlain')}
         />
       </Card>
 
       <Card padding="none">
         <div className="border-b border-line px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink">已配置的模型映射</h2>
-          <p className="mt-0.5 text-xs text-ink-3">共 {items.length} 条</p>
+          <h2 className="text-sm font-semibold text-ink">{t('admin.modelMappings.configuredTitle')}</h2>
+          <p className="mt-0.5 text-xs text-ink-3">{t('admin.modelMappings.configuredCount', { count: items.length })}</p>
         </div>
         <DataTable
           columns={mappingColumns}
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.id}
-          emptyTitle="还没有任何模型映射"
-          emptyDescription="在渠道详情中添加映射，这里会自动汇总"
+          emptyTitle={t('admin.modelMappings.emptyMappings')}
+          emptyDescription={t('admin.modelMappings.emptyMappingsHint')}
         />
       </Card>
     </div>

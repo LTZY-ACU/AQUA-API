@@ -30,10 +30,23 @@ export default {
     view: 'Ver',
     open: 'Abrir',
     more: 'Más',
+    enable: 'Activar',
+    disable: 'Desactivar',
+    restore: 'Restaurar',
+    addRow: 'Añadir fila',
+    stop: 'Detener',
   },
   state: {
     loading: 'Cargando…',
     empty: 'Sin datos',
+    enabled: 'Activado',
+    disabled: 'Desactivado',
+    removed: 'Retirado',
+    notSet: 'Sin definir',
+    available: 'Disponible',
+    unavailable: 'No disponible',
+    success: 'Correcto',
+    failed: 'Fallido',
   },
   unit: {
     items: 'elementos',
@@ -41,6 +54,8 @@ export default {
   },
   toast: {
     operationFailed: 'Se produjo un error. Inténtalo de nuevo más tarde.',
+    loadFailed: 'No se pudo cargar',
+    saveFailed: 'No se pudo guardar',
   },
   language: {
     label: 'Idioma',

@@ -15,6 +15,7 @@ import type { FinanceSummary, PaymentOrder } from '@/api/types'
 import type { ReferralInfo } from '@/api/referral'
 import { Badge, Card, StatCard } from '@/components/ui/Display'
 import { DataTable, Pagination, type Column } from '@/components/ui/Table'
+import { useI18n } from '@/i18n'
 import { useAuth } from '@/lib/auth/auth-context'
 import { useSite } from '@/lib/site/site-context'
 import { formatDateTime } from '@/utils/format'
@@ -28,6 +29,7 @@ const STATUS_PENDING = 1
 export default function ConsoleFinancePage() {
   const { refreshUser } = useAuth()
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   const [finance, setFinance] = useState<FinanceSummary | null>(null)
   const [referral, setReferral] = useState<ReferralInfo | null>(null)
   const [orders, setOrders] = useState<PaymentOrder[]>([])
@@ -66,17 +68,17 @@ export default function ConsoleFinancePage() {
   const unlimited = finance?.balance_quota === -1
 
   const columns: Column<PaymentOrder>[] = [
-    { title: '订单号', render: (row) => <span className="font-mono text-xs text-ink-2">{row.trade_no}</span> },
-    { title: '金额', align: 'right', render: (row) => <span className="text-ink-2">¥{row.amount_text}</span> },
+    { title: t('portal.finance.colTradeNo'), render: (row) => <span className="font-mono text-xs text-ink-2">{row.trade_no}</span> },
+    { title: t('portal.finance.colAmount'), align: 'right', render: (row) => <span className="text-ink-2">¥{row.amount_text}</span> },
     {
-      title: '状态',
+      title: t('portal.finance.colStatus'),
       render: (row) => (
         <Badge tone={row.status === 2 ? 'ok' : row.status === 4 ? 'off' : 'warn'}>{row.status_text}</Badge>
       ),
     },
-    { title: '时间', render: (row) => <span className="text-ink-2">{formatDateTime(row.created_at)}</span> },
+    { title: t('portal.finance.colTime'), render: (row) => <span className="text-ink-2">{formatDateTime(row.created_at)}</span> },
     {
-      title: '操作',
+      title: t('portal.finance.colActions'),
       align: 'right',
       render: (row) =>
         row.status === STATUS_PENDING && row.pay_url ? (
@@ -87,7 +89,7 @@ export default function ConsoleFinancePage() {
             }}
             className="text-[13px] text-brand hover:underline"
           >
-            继续支付
+            {t('portal.finance.continuePay')}
           </button>
         ) : (
           <span className="text-ink-3">—</span>
@@ -98,20 +100,20 @@ export default function ConsoleFinancePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-ink">财务记录</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">余额、消费与充值流水</p>
+        <h1 className="text-xl font-bold text-ink">{t('portal.finance.title')}</h1>
+        <p className="mt-0.5 text-[13px] text-ink-3">{t('portal.finance.subtitle')}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="当前余额" value={finance ? (unlimited ? '不限' : formatYuanFromQuota(finance.balance_quota, quotaPerYuan)) : '—'} />
-        <StatCard label="累计消费" value={finance ? formatYuanFromQuota(finance.used_quota, quotaPerYuan) : '—'} />
-        <StatCard label="累计充值" value={finance ? formatYuanFromQuota(finance.recharged_quota, quotaPerYuan) : '—'} hint={`${finance?.recharge_count ?? 0} 笔`} />
-        <StatCard label="邀请返利" value={referral ? formatYuanFromQuota(referral.total_reward_quota, quotaPerYuan) : '—'} hint={referral ? `${referral.invited_count} 人` : undefined} />
+        <StatCard label={t('portal.finance.balance')} value={finance ? (unlimited ? t('portal.finance.unlimited') : formatYuanFromQuota(finance.balance_quota, quotaPerYuan)) : '—'} />
+        <StatCard label={t('portal.finance.totalSpent')} value={finance ? formatYuanFromQuota(finance.used_quota, quotaPerYuan) : '—'} />
+        <StatCard label={t('portal.finance.totalRecharged')} value={finance ? formatYuanFromQuota(finance.recharged_quota, quotaPerYuan) : '—'} hint={t('portal.finance.orderCount', { n: finance?.recharge_count ?? 0 })} />
+        <StatCard label={t('portal.finance.referralReward')} value={referral ? formatYuanFromQuota(referral.total_reward_quota, quotaPerYuan) : '—'} hint={referral ? t('portal.finance.inviteeCount', { n: referral.invited_count }) : undefined} />
       </div>
 
       <Card padding="none">
-        <div className="border-b border-line px-4 py-3 text-sm font-semibold text-ink-2">充值订单</div>
-        <DataTable columns={columns} rows={loading ? null : orders} loading={loading} rowKey={(row) => row.trade_no} emptyTitle="暂无充值记录" />
+        <div className="border-b border-line px-4 py-3 text-sm font-semibold text-ink-2">{t('portal.finance.ordersTitle')}</div>
+        <DataTable columns={columns} rows={loading ? null : orders} loading={loading} rowKey={(row) => row.trade_no} emptyTitle={t('portal.finance.empty')} />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </div>

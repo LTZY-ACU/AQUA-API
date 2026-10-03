@@ -10,6 +10,7 @@ import { type ReactNode } from 'react'
 
 import { SiteFooter } from '@/components/site/SiteFooter'
 import { SiteHeader } from '@/components/site/SiteHeader'
+import { useI18n } from '@/i18n'
 
 interface LegalDocLayoutProps {
   title: string
@@ -19,12 +20,13 @@ interface LegalDocLayoutProps {
 }
 
 export function LegalDocLayout({ title, updatedAt, children }: LegalDocLayoutProps) {
+  const { t } = useI18n()
   return (
     <>
       <SiteHeader />
       <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
         <div className="font-mono text-[12px] text-ink-3">
-          <span className="text-brand">/</span> 文档
+          <span className="text-brand">/</span> {t('site.legal.docBreadcrumb')}
         </div>
         <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-ink sm:text-3xl">{title}</h1>
         {updatedAt && <div className="mt-2 font-mono text-[12px] text-ink-3">{updatedAt}</div>}

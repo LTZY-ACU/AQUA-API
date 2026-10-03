@@ -10,6 +10,7 @@ import { Badge, Card } from '@/components/ui/Display'
 import { DataTable, Pagination, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { ConfirmDialog } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { formatDateTime } from '@/utils/format'
 
@@ -29,6 +30,7 @@ export default function AdminOrdersPage() {
   const [loading, setLoading] = useState(true)
   const [confirmAction, setConfirmAction] = useState<{ type: 'paid' | 'close'; order: PaymentOrder } | null>(null)
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -53,22 +55,22 @@ export default function AdminOrdersPage() {
     try {
       if (type === 'paid') {
         await markOrderPaid(order.trade_no)
-        toast('订单已人工入账')
+        toast(t('admin.orders.toast.paid'))
       } else {
         await closeOrder(order.trade_no)
-        toast('订单已关闭')
+        toast(t('admin.orders.toast.closed'))
       }
       setConfirmAction(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '操作失败')
+      toastError(err instanceof Error ? err.message : t('admin.orders.toast.opFailed'))
     }
   }
 
   const columns: Column<PaymentOrder>[] = [
-    { title: '订单号', render: (row) => <code className="font-mono text-[13px] text-ink">{row.trade_no}</code> },
+    { title: t('admin.orders.col.tradeNo'), render: (row) => <code className="font-mono text-[13px] text-ink">{row.trade_no}</code> },
     {
-      title: '金额',
+      title: t('admin.orders.col.amount'),
       align: 'right',
       render: (row) => (
         <span className="font-medium text-ink">
@@ -78,28 +80,28 @@ export default function AdminOrdersPage() {
       ),
     },
     {
-      title: '状态',
+      title: t('admin.orders.col.status'),
       render: (row) => <Badge tone={orderTone(row.status)}>{row.status_text}</Badge>,
     },
     {
-      title: '通道',
+      title: t('admin.orders.col.method'),
       render: (row) => <span className="text-ink-2">{row.method_label ?? row.method}</span>,
     },
     {
-      title: '时间',
+      title: t('admin.orders.col.time'),
       render: (row) => <span className="text-[13px] text-ink-3">{formatDateTime(row.created_at)}</span>,
     },
     {
-      title: '操作',
+      title: t('admin.orders.col.actions'),
       align: 'right',
       render: (row) =>
         row.status === ORDER_STATUS_PENDING ? (
           <span className="flex items-center justify-end gap-2 text-[13px]">
             <button type="button" onClick={() => setConfirmAction({ type: 'paid', order: row })} className="text-ink-3 hover:text-brand">
-              人工入账
+              {t('admin.orders.action.markPaid')}
             </button>
             <button type="button" onClick={() => setConfirmAction({ type: 'close', order: row })} className="text-ink-3 hover:text-err">
-              关闭
+              {t('admin.orders.action.close')}
             </button>
           </span>
         ) : (
@@ -112,8 +114,8 @@ export default function AdminOrdersPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">充值订单</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">全站充值订单，可人工入账或关闭（{total}）</p>
+          <h1 className="text-xl font-bold text-ink">{t('admin.orders.title')}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.orders.subtitle', { total })}</p>
         </div>
       </div>
 
@@ -123,8 +125,8 @@ export default function AdminOrdersPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.trade_no}
-          emptyTitle="还没有订单"
-          emptyDescription="用户发起充值的订单会出现在这里"
+          emptyTitle={t('admin.orders.emptyTitle')}
+          emptyDescription={t('admin.orders.emptyDescription')}
         />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
@@ -133,14 +135,14 @@ export default function AdminOrdersPage() {
 
       <ConfirmDialog
         open={Boolean(confirmAction)}
-        title={confirmAction?.type === 'paid' ? '人工入账' : '关闭订单'}
+        title={confirmAction?.type === 'paid' ? t('admin.orders.confirm.paidTitle') : t('admin.orders.confirm.closeTitle')}
         message={
           confirmAction?.type === 'paid'
-            ? `确认将订单「${confirmAction?.order.trade_no}」标记为已支付并给用户入账额度？后端幂等，重复执行不会重复加额。`
-            : `确认关闭订单「${confirmAction?.order.trade_no}」？关闭后用户无法继续支付。`
+            ? t('admin.orders.confirm.paidMessage', { tradeNo: confirmAction?.order.trade_no ?? '' })
+            : t('admin.orders.confirm.closeMessage', { tradeNo: confirmAction?.order.trade_no ?? '' })
         }
         danger
-        confirmText={confirmAction?.type === 'paid' ? '确认入账' : '确认关闭'}
+        confirmText={confirmAction?.type === 'paid' ? t('admin.orders.confirm.paidConfirm') : t('admin.orders.confirm.closeConfirm')}
         onConfirm={handleConfirm}
         onCancel={() => setConfirmAction(null)}
       />

@@ -189,10 +189,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     (key: string, vars?: Record<string, string | number>): string => {
       const dict = messages[locale]
       const template = resolvePath(dict as unknown as Dictionary, key) ?? key
-      if (!vars) return template
-      return template.replace(/\{(\w+)\}/g, (_, name: string) =>
-        vars[name] !== undefined ? String(vars[name]) : `{${name}}`,
-      )
+      return interpolate(template, vars)
     },
     [locale],
   )
@@ -212,8 +209,26 @@ export function useI18n(): I18nContextValue {
   return ctx
 }
 
-/** 便捷别名：组件里 import { useI18n } 即可；翻译单例供非组件模块调用 */
-export function translate(key: string, locale: LocaleCode = currentLocale): string {
+/** 模板插值：把 {name} 替换为 vars[name]，缺失的占位符原样保留（便于发现漏传） */
+function interpolate(template: string, vars?: Record<string, string | number>): string {
+  if (!vars) return template
+  return template.replace(/\{(\w+)\}/g, (_, name: string) =>
+    vars[name] !== undefined ? String(vars[name]) : `{${name}}`,
+  )
+}
+
+/**
+ * 非组件环境的翻译单例（如工具函数、事件回调里格式化文案）。
+ *
+ * 组件内请优先用 useI18n().t —— 它能随语言切换触发重渲染；
+ * 本函数读取模块级 currentLocale，切换语言后调用方若未重渲染不会自动更新，
+ * 故仅用于「每次调用即时取当前语言」的短文案（如时长格式化）。
+ */
+export function translate(
+  key: string,
+  vars?: Record<string, string | number>,
+  locale: LocaleCode = currentLocale,
+): string {
   const dict = messages[locale]
-  return resolvePath(dict as unknown as Dictionary, key) ?? key
+  return interpolate(resolvePath(dict as unknown as Dictionary, key) ?? key, vars)
 }

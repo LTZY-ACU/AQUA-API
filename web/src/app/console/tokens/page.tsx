@@ -16,6 +16,7 @@ import { Field, Input, Select } from '@/components/ui/Form'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
 import { Badge, EmptyState } from '@/components/ui/Display'
 import { CopyButton } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { useSite } from '@/lib/site/site-context'
 import { formatDateTime } from '@/utils/format'
@@ -25,6 +26,7 @@ const PAGE_SIZE = 20
 
 export default function ConsoleTokensPage() {
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   const [items, setItems] = useState<AccessToken[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -55,7 +57,7 @@ export default function ConsoleTokensPage() {
       const data = await getMyTokenKey(token.id)
       setRevealed((prev) => ({ ...prev, [token.id]: data.key }))
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '获取密钥失败')
+      toastError(err instanceof Error ? err.message : t('portal.tokens.revealFailed'))
     } finally {
       setRevealing(null)
     }
@@ -86,11 +88,11 @@ export default function ConsoleTokensPage() {
     if (!deleteTarget) return
     try {
       await deleteMyToken(deleteTarget.id)
-      toast('令牌已删除')
+      toast(t('portal.tokens.deleted'))
       setDeleteTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '删除失败')
+      toastError(err instanceof Error ? err.message : t('portal.tokens.deleteFailed'))
     }
   }
 
@@ -99,14 +101,14 @@ export default function ConsoleTokensPage() {
       await updateMyToken(token.id, { status: token.status === 1 ? 2 : 1 })
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '操作失败')
+      toastError(err instanceof Error ? err.message : t('portal.tokens.toggleFailed'))
     }
   }
 
   const columns: Column<AccessToken>[] = [
-    { title: '名称', render: (row) => <span className="font-medium text-ink">{row.name}</span> },
+    { title: t('portal.tokens.colName'), render: (row) => <span className="font-medium text-ink">{row.name}</span> },
     {
-      title: '密钥',
+      title: t('portal.tokens.colKey'),
       render: (row) => {
         const shown = revealed[row.id]
         return (
@@ -118,44 +120,44 @@ export default function ConsoleTokensPage() {
               disabled={revealing === row.id}
               className="text-[13px] text-ink-3 transition hover:text-brand disabled:opacity-50"
             >
-              {revealing === row.id ? '…' : shown ? '收起' : '查看原文'}
+              {revealing === row.id ? '…' : shown ? t('portal.tokens.collapse') : t('portal.tokens.reveal')}
             </button>
-            {shown && <CopyButton text={shown} label="复制" />}
+            {shown && <CopyButton text={shown} label={t('common.action.copy')} />}
           </span>
         )
       },
     },
-    { title: '状态', render: (row) => (row.status === 1 ? <Badge tone="ok">启用</Badge> : <Badge tone="off">停用</Badge>) },
+    { title: t('portal.tokens.colStatus'), render: (row) => (row.status === 1 ? <Badge tone="ok">{t('portal.tokens.enabled')}</Badge> : <Badge tone="off">{t('portal.tokens.disabled')}</Badge>) },
     {
-      title: '剩余',
+      title: t('portal.tokens.colRemaining'),
       align: 'right',
       render: (row) => (
         <span className="text-ink-2">
-          {row.unlimited_quota ? '不限' : formatYuanFromQuota(row.remain_quota, quotaPerYuan)}
+          {row.unlimited_quota ? t('portal.overview.unlimited') : formatYuanFromQuota(row.remain_quota, quotaPerYuan)}
         </span>
       ),
     },
     {
-      title: '已用',
+      title: t('portal.tokens.colUsed'),
       align: 'right',
       render: (row) => <span className="text-ink-2">{formatYuanFromQuota(row.used_quota, quotaPerYuan)}</span>,
     },
     {
-      title: '周期预算',
+      title: t('portal.tokens.colBudget'),
       width: 'w-48',
       render: (row) => <BudgetCell token={row} quotaPerYuan={quotaPerYuan} />,
     },
-    { title: '到期', render: (row) => <span className="text-ink-2">{row.expires_at ? formatDateTime(row.expires_at) : '永不过期'}</span> },
+    { title: t('portal.tokens.colExpires'), render: (row) => <span className="text-ink-2">{row.expires_at ? formatDateTime(row.expires_at) : t('portal.tokens.neverExpires')}</span> },
     {
-      title: '操作',
+      title: t('portal.tokens.colActions'),
       align: 'right',
       render: (row) => (
         <span className="flex items-center justify-end gap-2">
           <button type="button" onClick={() => handleToggle(row)} className="text-[13px] text-ink-3 hover:text-brand">
-            {row.status === 1 ? '停用' : '启用'}
+            {row.status === 1 ? t('portal.tokens.disabled') : t('portal.tokens.enabled')}
           </button>
           <button type="button" onClick={() => setDeleteTarget(row)} className="text-[13px] text-ink-3 hover:text-err">
-            删除
+            {t('common.action.delete')}
           </button>
         </span>
       ),
@@ -166,16 +168,16 @@ export default function ConsoleTokensPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">访问令牌</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">用于调用本站 API 的密钥</p>
+          <h1 className="text-xl font-bold text-ink">{t('portal.tokens.title')}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-3">{t('portal.tokens.subtitle')}</p>
         </div>
         <Button variant="primary" onClick={() => setCreateOpen(true)}>
-          新建令牌
+          {t('portal.tokens.create')}
         </Button>
       </div>
 
       <Card padding="none">
-        <DataTable columns={columns} rows={loading ? null : items} loading={loading} rowKey={(row) => row.id} emptyTitle="还没有令牌" />
+        <DataTable columns={columns} rows={loading ? null : items} loading={loading} rowKey={(row) => row.id} emptyTitle={t('portal.tokens.empty')} />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
         </div>
@@ -193,27 +195,27 @@ export default function ConsoleTokensPage() {
       />
 
       {/* 一次性明文展示：最关键的提示 */}
-      <Modal open={Boolean(created)} onClose={() => setCreated(null)} title="令牌已创建" width={480}>
+      <Modal open={Boolean(created)} onClose={() => setCreated(null)} title={t('portal.tokens.createdTitle')} width={480}>
         <div className="rounded-md border border-warn/30 bg-warn/8 px-3 py-2.5 text-[13px] text-warn">
-          明文密钥只在此时显示一次，请立即保存。关闭后将无法再次查看。
+          {t('portal.tokens.createdWarning')}
         </div>
         <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-line bg-surface px-3 py-2.5 font-mono text-sm text-ink">
           <span className="break-all">{created?.key}</span>
-          <CopyButton text={created?.key ?? ''} label="复制" />
+          <CopyButton text={created?.key ?? ''} label={t('common.action.copy')} />
         </div>
         <div className="mt-4 flex justify-end">
           <Button variant="primary" onClick={() => setCreated(null)}>
-            我已保存
+            {t('portal.tokens.saved')}
           </Button>
         </div>
       </Modal>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="删除令牌"
-        message={`确认删除「${deleteTarget?.name}」？删除后使用该令牌的请求将立即失效。`}
+        title={t('portal.tokens.deleteTitle')}
+        message={t('portal.tokens.deleteMessage', { name: deleteTarget?.name ?? '' })}
         danger
-        confirmText="删除"
+        confirmText={t('common.action.delete')}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />

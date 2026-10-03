@@ -12,6 +12,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Select, Switch } from '@/components/ui/Form'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { roleLabel } from '@/utils/display'
 import { formatDateTime } from '@/utils/format'
@@ -38,6 +39,7 @@ export default function AdminUsersPage() {
   // 限时试用发放弹层：独立于单用户编辑，因为它是一次全站批量写操作
   const [trialOpen, setTrialOpen] = useState(false)
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -60,33 +62,33 @@ export default function AdminUsersPage() {
     if (!deleteTarget) return
     try {
       await deleteUser(deleteTarget.id)
-      toast('用户已删除')
+      toast(t('admin.users.toast.deleted'))
       setDeleteTarget(null)
       void load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '删除失败')
+      toastError(err instanceof Error ? err.message : t('admin.users.toast.deleteFailed'))
     }
   }
 
   const columns: Column<AdminUser>[] = [
-    { title: 'ID', render: (row) => <span className="text-ink-3">#{row.id}</span> },
-    { title: '用户名', render: (row) => <span className="font-medium text-ink">{row.username}</span> },
-    { title: '邮箱', render: (row) => <span className="text-ink-2">{row.email || '—'}</span> },
+    { title: t('admin.users.col.id'), render: (row) => <span className="text-ink-3">#{row.id}</span> },
+    { title: t('admin.users.col.username'), render: (row) => <span className="font-medium text-ink">{row.username}</span> },
+    { title: t('admin.users.col.email'), render: (row) => <span className="text-ink-2">{row.email || '—'}</span> },
     {
-      title: '角色',
+      title: t('admin.users.col.role'),
       render: (row) => <Badge tone={row.role === 10 ? 'brand' : 'off'}>{roleLabel(row.role)}</Badge>,
     },
     {
-      title: '状态',
+      title: t('admin.users.col.status'),
       render: (row) => (
         <Badge tone={row.status === STATUS_ENABLED ? 'ok' : 'off'}>
-          {row.status === STATUS_ENABLED ? '启用' : '停用'}
+          {row.status === STATUS_ENABLED ? t('admin.users.statusEnabled') : t('admin.users.statusDisabled')}
         </Badge>
       ),
     },
     {
       // 代理标记：一眼看出哪些账号在按批发档看模型广场
-      title: '代理',
+      title: t('admin.users.col.agent'),
       render: (row) =>
         row.agent_group ? (
           <Badge tone="warn">{row.agent_group}</Badge>
@@ -95,29 +97,29 @@ export default function AdminUsersPage() {
         ),
     },
     {
-      title: '余额',
+      title: t('admin.users.col.balance'),
       align: 'right',
       render: (row) => <span className="text-ink-2">{formatYuanFromQuota(row.quota, quotaPerYuan)}</span>,
     },
     {
-      title: '已用',
+      title: t('admin.users.col.used'),
       align: 'right',
       render: (row) => <span className="text-ink-2">{formatYuanFromQuota(row.used_quota, quotaPerYuan)}</span>,
     },
     {
-      title: '注册时间',
+      title: t('admin.users.col.createdAt'),
       render: (row) => <span className="text-[13px] text-ink-3">{formatDateTime(row.created_at)}</span>,
     },
     {
-      title: '操作',
+      title: t('admin.users.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="flex items-center justify-end gap-2 text-[13px]">
           <button type="button" onClick={() => setEditing(row)} className="text-ink-3 hover:text-brand">
-            编辑
+            {t('admin.users.action.edit')}
           </button>
           <button type="button" onClick={() => setDeleteTarget(row)} className="text-ink-3 hover:text-err">
-            删除
+            {t('admin.users.action.delete')}
           </button>
         </span>
       ),
@@ -128,15 +130,15 @@ export default function AdminUsersPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">用户管理</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">平台全部注册用户（{total}）</p>
+          <h1 className="text-xl font-bold text-ink">{t('admin.users.title')}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.users.subtitle', { total })}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" onClick={() => setTrialOpen(true)}>
-            发放试用
+            {t('admin.users.grantTrial')}
           </Button>
           <Button variant="primary" onClick={() => setEditing('new')}>
-            新建用户
+            {t('admin.users.create')}
           </Button>
         </div>
       </div>
@@ -147,8 +149,8 @@ export default function AdminUsersPage() {
           rows={loading ? null : items}
           loading={loading}
           rowKey={(row) => row.id}
-          emptyTitle="还没有用户"
-          emptyDescription="注册用户会出现在这里"
+          emptyTitle={t('admin.users.emptyTitle')}
+          emptyDescription={t('admin.users.emptyDescription')}
         />
         <div className="px-4 pb-3">
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
@@ -169,10 +171,10 @@ export default function AdminUsersPage() {
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="删除用户"
-        message={`确认删除用户「${deleteTarget?.username}」？该用户的令牌将一并失效。`}
+        title={t('admin.users.delete.title')}
+        message={t('admin.users.delete.message', { name: deleteTarget?.username ?? '' })}
         danger
-        confirmText="删除"
+        confirmText={t('admin.users.delete.confirm')}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -195,6 +197,7 @@ function UserFormModal({
 }) {
   const { toast, toastError } = useToast()
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [email, setEmail] = useState('')
@@ -219,11 +222,11 @@ function UserFormModal({
 
   async function handleSubmit() {
     if (!username.trim()) {
-      toastError('请填写用户名')
+      toastError(t('admin.users.error.usernameRequired'))
       return
     }
     if (!user && !password) {
-      toastError('请设置初始密码')
+      toastError(t('admin.users.error.passwordRequired'))
       return
     }
     setLoading(true)
@@ -241,13 +244,13 @@ function UserFormModal({
         if (quota.trim() !== '') {
           const value = Number(quota)
           if (!Number.isFinite(value)) {
-            toastError('额度需为数字')
+            toastError(t('admin.users.error.quotaNumber'))
             return
           }
           payload.quota = yuanToQuota(value, quotaPerYuan) ?? Math.round(value)
         }
         await updateUser(user.id, payload)
-        toast('用户已更新')
+        toast(t('admin.users.toast.updated'))
       } else {
         const payload: CreateUserPayload = {
           username: username.trim(),
@@ -257,68 +260,68 @@ function UserFormModal({
         if (email.trim()) payload.email = email.trim()
         if (agentGroup.trim()) payload.agent_group = agentGroup.trim()
         await createUser(payload)
-        toast('用户已创建')
+        toast(t('admin.users.toast.created'))
       }
       onSaved()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : t('admin.users.toast.saveFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={user ? '编辑用户' : '新建用户'} width={560}>
+    <Modal open={open} onClose={onClose} title={user ? t('admin.users.form.editTitle') : t('admin.users.form.newTitle')} width={560}>
       <div className="space-y-4">
-        <Field label="用户名" required>
-          <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="登录用户名" disabled={Boolean(user)} />
+        <Field label={t('admin.users.form.username')} required>
+          <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('admin.users.form.usernamePlaceholder')} disabled={Boolean(user)} />
         </Field>
 
         {!user && (
-          <Field label="初始密码" required>
-            <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="设置登录密码" autoComplete="new-password" />
+          <Field label={t('admin.users.form.initialPassword')} required>
+            <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder={t('admin.users.form.passwordPlaceholder')} autoComplete="new-password" />
           </Field>
         )}
 
-        <Field label="邮箱">
-          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="选填" />
+        <Field label={t('admin.users.form.email')}>
+          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('admin.users.form.emailPlaceholder')} />
         </Field>
 
-        <Field label="角色">
+        <Field label={t('admin.users.form.role')}>
           <Select value={role} onChange={(e) => setRole(Number(e.target.value))}>
-            <option value={1}>普通用户</option>
-            <option value={10}>管理员</option>
+            <option value={1}>{t('admin.users.form.roleUser')}</option>
+            <option value={10}>{t('admin.users.form.roleAdmin')}</option>
           </Select>
         </Field>
 
         {user && (
           <>
-            <Field label="状态">
+            <Field label={t('admin.users.form.status')}>
               <div className="flex items-center justify-between rounded-md border border-line bg-surface px-3 py-2">
-                <span className="text-[13px] text-ink-2">{status === STATUS_ENABLED ? '启用' : '停用'}</span>
+                <span className="text-[13px] text-ink-2">{status === STATUS_ENABLED ? t('admin.users.statusEnabled') : t('admin.users.statusDisabled')}</span>
                 <Switch checked={status === STATUS_ENABLED} onChange={(v) => setStatus(v ? STATUS_ENABLED : STATUS_DISABLED)} />
               </div>
             </Field>
 
-            <Field label="余额（¥）" help="用户当前的可用余额（元）；-1 = 不限；留空表示不修改">
-              <Input value={quota} onChange={(e) => setQuota(e.target.value)} type="number" placeholder="留空表示不修改" />
+            <Field label={t('admin.users.form.balance')} help={t('admin.users.form.balanceHelp')}>
+              <Input value={quota} onChange={(e) => setQuota(e.target.value)} type="number" placeholder={t('admin.users.form.balancePlaceholder')} />
             </Field>
           </>
         )}
 
         <Field
-          label="代理分组"
-          help="填分组标识（如 agent）后，该账号在模型广场只看到该分组下的模型与代理折扣价；留空 = 普通用户"
+          label={t('admin.users.form.agentGroup')}
+          help={t('admin.users.form.agentGroupHelp')}
         >
-          <Input value={agentGroup} onChange={(e) => setAgentGroup(e.target.value)} placeholder="留空 = 普通用户" />
+          <Input value={agentGroup} onChange={(e) => setAgentGroup(e.target.value)} placeholder={t('admin.users.form.agentGroupPlaceholder')} />
         </Field>
       </div>
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>
-          取消
+          {t('common.action.cancel')}
         </Button>
         <Button variant="primary" loading={loading} onClick={handleSubmit}>
-          {user ? '保存' : '创建'}
+          {user ? t('admin.users.form.save') : t('admin.users.form.create')}
         </Button>
       </div>
     </Modal>
@@ -348,6 +351,7 @@ function defaultBatchName(): string {
 function TrialGrantModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { toast, toastError } = useToast()
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   // 金额以人民币（元）录入——站长按"发 1 毛钱"思考；提交时换算成后端契约的「分」
   const [amountYuan, setAmountYuan] = useState('')
   const [hours, setHours] = useState('24')
@@ -373,21 +377,21 @@ function TrialGrantModal({ open, onClose }: { open: boolean; onClose: () => void
   function handleSubmit() {
     const yuan = Number(amountYuan)
     if (!Number.isFinite(yuan) || yuan <= 0) {
-      toastError('发放金额需为大于 0 的数字（元）')
+      toastError(t('admin.users.error.amountInvalid'))
       return
     }
     const amountCents = Math.round(yuan * 100)
     if (amountCents <= 0) {
-      toastError('金额过小：每位用户最小发放 0.01 元')
+      toastError(t('admin.users.error.amountTooSmall'))
       return
     }
     const h = Number(hours)
     if (!Number.isInteger(h) || h < 1 || h > 720) {
-      toastError('有效时长需为 1 到 720 之间的整数小时（上限 30 天）')
+      toastError(t('admin.users.error.hoursInvalid'))
       return
     }
     if (!batch.trim()) {
-      toastError('请填写批次标识')
+      toastError(t('admin.users.error.batchRequired'))
       return
     }
     // 冻结参数进入二次确认：发出去就进了用户余额，只能等到期才收得回，
@@ -407,13 +411,13 @@ function TrialGrantModal({ open, onClose }: { open: boolean; onClose: () => void
         batch: pending.batch,
         confirm: true,
       })
-      toast(`已向 ${result.recipients} 位用户发放试用额（批次 ${result.batch}，${result.hours} 小时后到期）`)
+      toast(t('admin.users.toast.granted', { count: result.recipients, batch: result.batch, hours: result.hours }))
       setPending(null)
       onClose()
     } catch (err) {
       // 后端会给出具体原因（批次已发放 / 未配置兑换比例 / 无符合条件用户等），原样展示；
       // 关掉确认弹层回到表单，让站长能改批次名或金额后重试。
-      toastError(err instanceof Error ? err.message : '发放失败')
+      toastError(err instanceof Error ? err.message : t('admin.users.toast.grantFailed'))
       setPending(null)
     } finally {
       setLoading(false)
@@ -424,26 +428,30 @@ function TrialGrantModal({ open, onClose }: { open: boolean; onClose: () => void
   // 比例未下发时退化为空串（后端会按自己的兑换比例入账，前端不乱猜数字）。
   const confirmQuotaText =
     pending && quotaPerYuan > 0
-      ? `（约 ${yuanToQuota(pending.amountCents / 100, quotaPerYuan)?.toLocaleString('zh-CN')} 额度）`
+      ? t('admin.users.trial.confirmQuota', { quota: (yuanToQuota(pending.amountCents / 100, quotaPerYuan) ?? 0).toLocaleString('zh-CN') })
       : ''
 
   return (
     <>
-      <Modal open={open} onClose={onClose} title="发放限时试用额度" width={560}>
+      <Modal open={open} onClose={onClose} title={t('admin.users.trial.title')} width={560}>
         <div className="space-y-4">
           {/* 先把代价说清楚再让人填数：这是全站批量加钱，不是单个用户的额度调整 */}
           <div className="rounded-md border border-warn/30 bg-warn/8 px-3 py-2 text-[13px] leading-relaxed text-ink-2">
-            这是一次<b>全站批量</b>操作：向所有「启用且额度非不限」的用户发放等额试用余额，
-            发出后只能等到期（后台自动回收），无法提前撤销。
+            {t('admin.users.trial.warningPre')}
+            <b>{t('admin.users.trial.warningStrong')}</b>
+            {t('admin.users.trial.warningSuffix')}
           </div>
 
           <Field
-            label="发放金额（元 / 每位用户）"
+            label={t('admin.users.trial.amount')}
             required
             help={
               estimatedQuota !== null
-                ? `约合每人 ${estimatedQuota.toLocaleString('zh-CN')} 额度（按 1 元 = ${quotaPerYuan.toLocaleString('zh-CN')} 额度折算）`
-                : '填写金额后按站点兑换比例折算成额度'
+                ? t('admin.users.trial.amountHelpEstimated', {
+                    quota: estimatedQuota.toLocaleString('zh-CN'),
+                    rate: quotaPerYuan.toLocaleString('zh-CN'),
+                  })
+                : t('admin.users.trial.amountHelp')
             }
           >
             <Input
@@ -452,11 +460,11 @@ function TrialGrantModal({ open, onClose }: { open: boolean; onClose: () => void
               type="number"
               min="0.01"
               step="0.01"
-              placeholder="如 0.1"
+              placeholder={t('admin.users.trial.amountPlaceholder')}
             />
           </Field>
 
-          <Field label="有效时长（小时）" required help="1 到 720 小时（上限 30 天）；到期后由后台自动收回余额">
+          <Field label={t('admin.users.trial.hours')} required help={t('admin.users.trial.hoursHelp')}>
             <Input
               value={hours}
               onChange={(e) => setHours(e.target.value)}
@@ -467,31 +475,36 @@ function TrialGrantModal({ open, onClose }: { open: boolean; onClose: () => void
             />
           </Field>
 
-          <Field label="批次标识" required help="同一批次只会发放一次；重复提交同名批次会被拒绝（防误发双份）">
-            <Input value={batch} onChange={(e) => setBatch(e.target.value)} placeholder="如 trial-20261002-1430" />
+          <Field label={t('admin.users.trial.batch')} required help={t('admin.users.trial.batchHelp')}>
+            <Input value={batch} onChange={(e) => setBatch(e.target.value)} placeholder={t('admin.users.trial.batchPlaceholder')} />
           </Field>
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
-            取消
+            {t('common.action.cancel')}
           </Button>
           <Button variant="primary" onClick={handleSubmit}>
-            下一步，核对摘要
+            {t('admin.users.trial.next')}
           </Button>
         </div>
       </Modal>
 
       <ConfirmDialog
         open={pending !== null}
-        title="确认发放试用额"
+        title={t('admin.users.trial.confirmTitle')}
         danger
-        confirmText="确认发放"
+        confirmText={t('admin.users.trial.confirmText')}
         loading={loading}
         onConfirm={handleConfirm}
         onCancel={() => setPending(null)}
         message={
           pending
-            ? `即将向全站「启用且额度非不限」的用户每人发放 ${formatYuan(pending.amountCents / 100)}${confirmQuotaText}，${pending.hours} 小时后到期收回。批次「${pending.batch}」只能发放一次，确认执行？`
+            ? t('admin.users.trial.confirmMessage', {
+                amount: formatYuan(pending.amountCents / 100),
+                quota: confirmQuotaText,
+                hours: pending.hours,
+                batch: pending.batch,
+              })
             : ''
         }
       />

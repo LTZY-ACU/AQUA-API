@@ -24,6 +24,7 @@ import {
 import { adminLogin, emailLogin, fetchMe, login, logout, register } from '@/api/auth'
 import { ApiError, clearSession, getCachedUser, getSessionToken, setCachedUser, setSessionToken } from '@/api/client'
 import { ROLE_ADMIN, type AuthResult, type AuthUser, type LoginPayload, type RegisterPayload } from '@/api/types'
+import { useI18n } from '@/i18n'
 
 interface AuthContextValue {
   /** 当前登录用户；null = 未登录 */
@@ -48,13 +49,14 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { t } = useI18n()
   const [user, setUser] = useState<AuthUser | null>(() => getCachedUser<AuthUser>())
   const [token, setToken] = useState<string>(() => getSessionToken())
   const [ready, setReady] = useState(false)
 
   const isLoggedIn = Boolean(token)
   const isAdmin = user?.role === ROLE_ADMIN
-  const displayName = user?.username || '未登录'
+  const displayName = user?.username || t('components.authContext.notLoggedIn')
 
   function applySession(result: AuthResult): void {
     setToken(result.session_token)
@@ -153,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshUser,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, token, ready],
+    [user, token, ready, displayName],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

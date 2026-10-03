@@ -30,10 +30,23 @@ export default {
     view: 'عرض',
     open: 'فتح',
     more: 'المزيد',
+    enable: 'تفعيل',
+    disable: 'تعطيل',
+    restore: 'استعادة',
+    addRow: 'إضافة صف',
+    stop: 'إيقاف',
   },
   state: {
     loading: 'جارٍ التحميل…',
     empty: 'لا توجد بيانات',
+    enabled: 'مُفعّل',
+    disabled: 'مُعطّل',
+    removed: 'مُزال',
+    notSet: 'غير مُدخل',
+    available: 'متاح',
+    unavailable: 'غير متاح',
+    success: 'نجح',
+    failed: 'فشل',
   },
   unit: {
     items: 'عناصر',
@@ -41,6 +54,8 @@ export default {
   },
   toast: {
     operationFailed: 'حدث خطأ. يرجى المحاولة مرة أخرى لاحقًا.',
+    loadFailed: 'فشل التحميل',
+    saveFailed: 'فشل الحفظ',
   },
   language: {
     label: 'اللغة',

@@ -18,7 +18,7 @@
 import { type ReactNode } from 'react'
 
 import { AppIcon } from '@/components/AppIcon'
-import { DEFAULT_COMPLIANCE_MESSAGE, DEFAULT_COMPLIANCE_TITLE } from '@/lib/site/compliance'
+import { useI18n } from '@/i18n'
 
 export type ComplianceNoticeVariant = 'inline' | 'banner' | 'card'
 
@@ -41,7 +41,8 @@ export function ComplianceNotice({
   extra,
   className,
 }: ComplianceNoticeProps) {
-  const text = message ?? DEFAULT_COMPLIANCE_MESSAGE
+  const { t } = useI18n()
+  const text = message ?? t('components.compliance.defaultMessage')
   const root = className ?? ''
 
   if (variant === 'inline') {
@@ -59,7 +60,7 @@ export function ComplianceNotice({
       <div className={`rounded-lg border border-warn/30 bg-warn/8 p-5 ${root}`}>
         <div className="flex items-center gap-2 text-sm font-semibold text-ink">
           <AppIcon name="shield" size={16} className="text-warn" />
-          <span>{title ?? DEFAULT_COMPLIANCE_TITLE}</span>
+          <span>{title ?? t('components.compliance.defaultTitle')}</span>
         </div>
         <div className="mt-2 text-[13px] leading-relaxed text-ink-2">{text}</div>
         {extra && <div className="mt-3">{extra}</div>}

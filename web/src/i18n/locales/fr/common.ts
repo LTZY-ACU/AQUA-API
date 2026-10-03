@@ -30,10 +30,23 @@ export default {
     view: 'Voir',
     open: 'Ouvrir',
     more: 'Plus',
+    enable: 'Activer',
+    disable: 'Désactiver',
+    restore: 'Restaurer',
+    addRow: 'Ajouter une ligne',
+    stop: 'Arrêter',
   },
   state: {
     loading: 'Chargement…',
     empty: 'Aucune donnée',
+    enabled: 'Activé',
+    disabled: 'Désactivé',
+    removed: 'Retiré',
+    notSet: 'Non renseigné',
+    available: 'Disponible',
+    unavailable: 'Indisponible',
+    success: 'Réussi',
+    failed: 'Échec',
   },
   unit: {
     items: 'éléments',
@@ -41,6 +54,8 @@ export default {
   },
   toast: {
     operationFailed: 'Une erreur est survenue. Veuillez réessayer plus tard.',
+    loadFailed: 'Échec du chargement',
+    saveFailed: 'Échec de l’enregistrement',
   },
   language: {
     label: 'Langue',

@@ -30,6 +30,7 @@ import { Badge, SkeletonRows } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Form'
 import { Modal } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import { useSite } from '@/lib/site/site-context'
 import { formatYuanFromQuota, quotaToYuanInput, yuanToQuota } from '@/utils/money'
@@ -61,6 +62,7 @@ function emptyRow(model = ''): CostRow {
 export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalProps) {
   const { toast, toastError } = useToast()
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   const [rows, setRows] = useState<CostRow[]>([])
   const [declaredModels, setDeclaredModels] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
@@ -86,7 +88,7 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
       )
       setDeclaredModels(data.declared_models ?? [])
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '进价加载失败')
+      toastError(err instanceof Error ? err.message : t('components.costModal.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -155,7 +157,7 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
       const completion = parseYuan(row.completion)
       const perCall = parseYuan(row.perCall)
       if (prompt === null || cache === null || completion === null || perCall === null) {
-        toastError(`「${model}」的价格必须是 ≥0 的数字`)
+        toastError(t('components.costModal.invalidPrice', { model }))
         return
       }
       items.push({
@@ -169,18 +171,18 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
     }
     // 同一模型录两行会让「取哪条」变成未定义行为，保存前拦下（后端也会拒绝，但前端报错更快）
     if (items.length !== new Set(items.map((i) => i.model)).size) {
-      toastError('存在重复的模型名，请合并后再保存')
+      toastError(t('components.costModal.duplicate'))
       return
     }
     setSaving(true)
     try {
       const result = await saveChannelCosts(channel.id, items)
-      toast(`进价已保存：新增 ${result.created} 条、更新 ${result.updated} 条`)
+      toast(t('components.costModal.saved', { created: result.created, updated: result.updated }))
       await loadCosts()
       // 进价变了，估算消耗随之变化：重拉一次让站长立刻看到新口径下的剩余
       await loadUsage()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : t('common.toast.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -194,23 +196,20 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
   const unpricedModels = Array.from(new Set((usage ?? []).flatMap((k) => k.unpriced_models)))
 
   return (
-    <Modal open={open} onClose={onClose} title={`上游进价 · ${channel?.name ?? ''}`} width={980}>
+    <Modal open={open} onClose={onClose} title={t('components.costModal.title', { name: channel?.name ?? '' })} width={980}>
       <div className="space-y-4">
-        <p className="text-[13px] text-ink-3">
-          录入上游对每个模型的收费（口径与站内售价一致：每 100 万 token 的价格，按次计费的模型只填按次价）。
-          保存为整组替换——删除行后保存即真实删除。四个价格全为 0 表示「上游免费」。
-        </p>
+        <p className="text-[13px] text-ink-3">{t('components.costModal.desc')}</p>
 
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" size="sm" onClick={() => setRows((prev) => [...prev, emptyRow()])}>
-            新增一行
+            {t('common.action.addRow')}
           </Button>
           {missingDeclared > 0 && (
             <Button variant="secondary" size="sm" onClick={fillDeclaredModels}>
-              补全缺失模型（{missingDeclared} 个）
+              {t('components.costModal.fillMissing', { count: missingDeclared })}
             </Button>
           )}
-          {rows.length > 0 && <span className="text-xs text-ink-3">共 {rows.length} 条</span>}
+          {rows.length > 0 && <span className="text-xs text-ink-3">{t('components.costModal.rowCount', { count: rows.length })}</span>}
         </div>
 
         {loading ? (
@@ -221,13 +220,13 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
               <table className="w-full border-collapse text-[13px]">
                 <thead>
                   <tr className="border-b border-line bg-surface/70 text-ink-3">
-                    <th className="px-2 py-2 text-left font-medium">模型</th>
-                    <th className="px-2 py-2 text-left font-medium">输入价（¥/M）</th>
-                    <th className="px-2 py-2 text-left font-medium">缓存价（¥/M）</th>
-                    <th className="px-2 py-2 text-left font-medium">输出价（¥/M）</th>
-                    <th className="px-2 py-2 text-left font-medium">按次价（¥/次）</th>
-                    <th className="px-2 py-2 text-left font-medium">备注</th>
-                    <th className="px-2 py-2 text-right font-medium">操作</th>
+                    <th className="px-2 py-2 text-left font-medium">{t('components.costModal.col.model')}</th>
+                    <th className="px-2 py-2 text-left font-medium">{t('components.costModal.col.prompt')}</th>
+                    <th className="px-2 py-2 text-left font-medium">{t('components.costModal.col.cache')}</th>
+                    <th className="px-2 py-2 text-left font-medium">{t('components.costModal.col.completion')}</th>
+                    <th className="px-2 py-2 text-left font-medium">{t('components.costModal.col.perCall')}</th>
+                    <th className="px-2 py-2 text-left font-medium">{t('components.costModal.col.remark')}</th>
+                    <th className="px-2 py-2 text-right font-medium">{t('components.costModal.col.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -238,7 +237,7 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
                           value={row.model}
                           onChange={(e) => updateRow(row.key, { model: e.target.value })}
                           className="min-w-44"
-                          placeholder="模型名"
+                          placeholder={t('components.costModal.phModel')}
                         />
                       </td>
                       <td className="px-2 py-1.5">
@@ -290,7 +289,7 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
                           value={row.remark}
                           onChange={(e) => updateRow(row.key, { remark: e.target.value })}
                           className="min-w-32"
-                          placeholder="可选"
+                          placeholder={t('components.costModal.phOptional')}
                         />
                       </td>
                       <td className="px-2 py-1.5 text-right">
@@ -299,7 +298,7 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
                           onClick={() => removeRow(row.key)}
                           className="text-[13px] text-ink-3 hover:text-err"
                         >
-                          删除
+                          {t('common.action.delete')}
                         </button>
                       </td>
                     </tr>
@@ -307,7 +306,7 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
                   {rows.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-3 py-6 text-center text-ink-3">
-                        尚无进价记录；未录进价的模型在对账页按 0 成本计算
+                        {t('components.costModal.empty')}
                       </td>
                     </tr>
                   )}
@@ -319,15 +318,14 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
 
         {/* ── 按密钥用量估算：帮助站长定进价与更新余额快照 ── */}
         <div className="border-t border-line pt-4">
-          <h4 className="text-[13px] font-semibold text-ink">按密钥用量估算</h4>
+          <h4 className="text-[13px] font-semibold text-ink">{t('components.costModal.usageTitle')}</h4>
           <p className="mt-0.5 text-xs text-ink-3">
-            估算 = 累计用量 × 上表进价（未录进价的模型不计入）。「剩余」= 人工录入的余额快照 − 估算消耗，
-            为负表示按当前进价已用超；余额不会自动更新，需站长据此手动修订。
+            {t('components.costModal.usageDesc')}
           </p>
 
           {unpricedModels.length > 0 && (
             <div className="mt-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[13px] text-warn">
-              以下 {unpricedModels.length} 个模型已产生用量但未录进价，其成本正按 0 计算：
+              {t('components.costModal.unpricedWarning', { count: unpricedModels.length })}
               <span className="break-all">{unpricedModels.join('、')}</span>
             </div>
           )}
@@ -337,7 +335,7 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
               <SkeletonRows rows={2} />
             ) : !usage || usage.length === 0 ? (
               <div className="rounded-md border border-line px-3 py-4 text-center text-[13px] text-ink-3">
-                该渠道暂无密钥用量数据
+                {t('components.costModal.usageEmpty')}
               </div>
             ) : (
               <div className="overflow-hidden rounded-md border border-line">
@@ -345,12 +343,12 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
                   <table className="w-full border-collapse text-[13px]">
                     <thead>
                       <tr className="border-b border-line bg-surface/70 text-ink-3">
-                        <th className="px-3 py-2 text-left font-medium">密钥</th>
-                        <th className="px-3 py-2 text-left font-medium">状态</th>
-                        <th className="px-3 py-2 text-right font-medium">录入余额</th>
-                        <th className="px-3 py-2 text-right font-medium">估算消耗</th>
-                        <th className="px-3 py-2 text-right font-medium">估算剩余</th>
-                        <th className="px-3 py-2 text-right font-medium">未录进价</th>
+                        <th className="px-3 py-2 text-left font-medium">{t('components.costModal.usageCol.key')}</th>
+                        <th className="px-3 py-2 text-left font-medium">{t('components.costModal.usageCol.status')}</th>
+                        <th className="px-3 py-2 text-right font-medium">{t('components.costModal.usageCol.balance')}</th>
+                        <th className="px-3 py-2 text-right font-medium">{t('components.costModal.usageCol.cost')}</th>
+                        <th className="px-3 py-2 text-right font-medium">{t('components.costModal.usageCol.remaining')}</th>
+                        <th className="px-3 py-2 text-right font-medium">{t('components.costModal.usageCol.unpriced')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -358,23 +356,23 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
                         <tr key={k.channel_key_id} className="border-b border-line/70 last:border-0">
                           <td className="max-w-56 px-3 py-2">
                             <span className="block truncate text-ink-2" title={k.label || k.account_hint}>
-                              {k.label || k.account_hint || `密钥 #${k.channel_key_id}`}
+                              {k.label || k.account_hint || t('components.costModal.keyFallback', { id: k.channel_key_id })}
                             </span>
                           </td>
                           <td className="px-3 py-2">
                             {k.status === KEY_STATUS_ENABLED ? (
-                              <Badge tone="ok">启用</Badge>
+                              <Badge tone="ok">{t('common.state.enabled')}</Badge>
                             ) : k.status === KEY_STATUS_AUTO_REMOVED ? (
-                              <Badge tone="err">已摘除</Badge>
+                              <Badge tone="err">{t('common.state.removed')}</Badge>
                             ) : (
-                              <Badge tone="off">禁用</Badge>
+                              <Badge tone="off">{t('common.state.disabled')}</Badge>
                             )}
                           </td>
                           <td className="px-3 py-2 text-right align-top tabular-nums">
                             {k.balance_known ? (
                               formatYuanFromQuota(k.balance, quotaPerYuan)
                             ) : (
-                              <span className="text-ink-3">未录入</span>
+                              <span className="text-ink-3">{t('common.state.notSet')}</span>
                             )}
                           </td>
                           <td className="px-3 py-2 text-right align-top tabular-nums text-ink-2">
@@ -397,7 +395,7 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
                             title={k.unpriced_models.join('、')}
                           >
                             {k.unpriced_models.length > 0 ? (
-                              <span className="text-warn">{k.unpriced_models.length} 个模型</span>
+                              <span className="text-warn">{t('components.costModal.modelCount', { count: k.unpriced_models.length })}</span>
                             ) : (
                               <span className="text-ink-3">—</span>
                             )}
@@ -414,10 +412,10 @@ export function ChannelCostModal({ open, channel, onClose }: ChannelCostModalPro
 
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
-            关闭
+            {t('common.action.close')}
           </Button>
           <Button variant="primary" loading={saving} onClick={handleSave}>
-            保存进价（整组替换）
+            {t('components.costModal.save')}
           </Button>
         </div>
       </div>

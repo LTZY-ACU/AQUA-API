@@ -28,6 +28,7 @@ import type { ChannelModelMappingItem } from '@/api/types'
 import { SkeletonRows } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
 import { Input, Switch } from '@/components/ui/Form'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 
 interface ChannelModelMappingsProps {
@@ -55,6 +56,7 @@ function emptyMappingRow(): MappingRow {
 
 export function ChannelModelMappings({ channelId }: ChannelModelMappingsProps) {
   const { toast, toastError } = useToast()
+  const { t } = useI18n()
   const [rows, setRows] = useState<MappingRow[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -74,7 +76,7 @@ export function ChannelModelMappings({ channelId }: ChannelModelMappingsProps) {
         })),
       )
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '模型映射加载失败')
+      toastError(err instanceof Error ? err.message : t('components.modelMap.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -101,7 +103,7 @@ export function ChannelModelMappings({ channelId }: ChannelModelMappingsProps) {
       if (!publicModel && !upstreamModel) continue
       // 只填一侧的映射既无法匹配请求也无法改写，保存只会得到一条永远不生效的规则
       if (!publicModel || !upstreamModel) {
-        toastError('存在只填了一侧的映射行，请补全两侧或删除该行')
+        toastError(t('components.modelMap.partial'))
         return
       }
       items.push({
@@ -126,9 +128,9 @@ export function ChannelModelMappings({ channelId }: ChannelModelMappingsProps) {
           remark: m.remark,
         })),
       )
-      toast(`映射已保存（${data.total} 条）`)
+      toast(t('components.modelMap.saved', { total: data.total }))
     } catch (err) {
-      toastError(err instanceof Error ? err.message : '保存失败')
+      toastError(err instanceof Error ? err.message : t('common.toast.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -138,18 +140,17 @@ export function ChannelModelMappings({ channelId }: ChannelModelMappingsProps) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-[13px] font-semibold text-ink">模型映射</h3>
+          <h3 className="text-[13px] font-semibold text-ink">{t('components.modelMap.title')}</h3>
           <p className="mt-0.5 text-xs text-ink-3">
-            平台模型 ID（用户调用）↔ 上游模型 ID（实际转发）；不配置则原样透传，两侧都支持尾部通配符 *。
-            此处保存独立于上方渠道表单。
+            {t('components.modelMap.desc')}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" onClick={() => setRows((prev) => [...prev, emptyMappingRow()])}>
-            新增一行
+            {t('common.action.addRow')}
           </Button>
           <Button variant="primary" size="sm" loading={saving} onClick={handleSave}>
-            保存映射
+            {t('components.modelMap.save')}
           </Button>
         </div>
       </div>
@@ -162,10 +163,10 @@ export function ChannelModelMappings({ channelId }: ChannelModelMappingsProps) {
             <table className="w-full border-collapse text-[13px]">
               <thead>
                 <tr className="border-b border-line bg-surface/70 text-ink-3">
-                  <th className="px-2 py-2 text-left font-medium">平台模型 ID</th>
-                  <th className="px-2 py-2 text-left font-medium">上游模型 ID</th>
-                  <th className="px-2 py-2 text-center font-medium">启用</th>
-                  <th className="px-2 py-2 text-right font-medium">操作</th>
+                  <th className="px-2 py-2 text-left font-medium">{t('components.modelMap.col.public')}</th>
+                  <th className="px-2 py-2 text-left font-medium">{t('components.modelMap.col.upstream')}</th>
+                  <th className="px-2 py-2 text-center font-medium">{t('components.modelMap.col.enabled')}</th>
+                  <th className="px-2 py-2 text-right font-medium">{t('components.modelMap.col.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -175,21 +176,21 @@ export function ChannelModelMappings({ channelId }: ChannelModelMappingsProps) {
                       <Input
                         value={row.publicModel}
                         onChange={(e) => updateRow(row.key, { publicModel: e.target.value })}
-                        placeholder="如 gpt-4o 或 gpt-4*"
+                        placeholder={t('components.modelMap.phPublic')}
                       />
                     </td>
                     <td className="px-2 py-1.5">
                       <Input
                         value={row.upstreamModel}
                         onChange={(e) => updateRow(row.key, { upstreamModel: e.target.value })}
-                        placeholder="实际发给上游的名字"
+                        placeholder={t('components.modelMap.phUpstream')}
                       />
                     </td>
                     <td className="px-2 py-1.5 text-center">
                       <Switch
                         checked={row.enabled}
                         onChange={(v) => updateRow(row.key, { enabled: v })}
-                        label="启用该映射"
+                        label={t('components.modelMap.enableLabel')}
                       />
                     </td>
                     <td className="px-2 py-1.5 text-right">
@@ -198,7 +199,7 @@ export function ChannelModelMappings({ channelId }: ChannelModelMappingsProps) {
                         onClick={() => removeRow(row.key)}
                         className="text-[13px] text-ink-3 hover:text-err"
                       >
-                        删除
+                        {t('common.action.delete')}
                       </button>
                     </td>
                   </tr>
@@ -206,7 +207,7 @@ export function ChannelModelMappings({ channelId }: ChannelModelMappingsProps) {
                 {rows.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-3 py-5 text-center text-ink-3">
-                      未配置映射：该渠道的模型名将原样透传给上游
+                      {t('components.modelMap.empty')}
                     </td>
                   </tr>
                 )}

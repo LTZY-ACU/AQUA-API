@@ -30,6 +30,7 @@ import { AppIcon } from '@/components/AppIcon'
 import { Badge } from '@/components/ui/Display'
 import { Field, Input, Select } from '@/components/ui/Form'
 import { formatYuanFromQuota, formatYuanPerCall } from '@/utils/money'
+import { translate, useI18n } from '@/i18n'
 
 import {
   QUOTE_MAX_COUNT,
@@ -61,6 +62,7 @@ function toNum(text: string): number {
 const QUOTE_DEBOUNCE_MS = 350
 
 export function ModelPriceCalculator({ prices, viewer, quotaPerYuan, modelName }: Props) {
+  const { t } = useI18n()
   const [group, setGroup] = useState(prices[0]?.group ?? '')
   const [prompt, setPrompt] = useState('1000')
   const [completion, setCompletion] = useState('1000')
@@ -126,7 +128,7 @@ export function ModelPriceCalculator({ prices, viewer, quotaPerYuan, modelName }
   if (prices.length === 0) {
     return (
       <div className="rounded-lg border border-line bg-surface/50 p-4 text-[13px] text-ink-3">
-        该模型暂未配置价格规则，无法试算。
+        {t('components.priceCalc.noPriceRule')}
       </div>
     )
   }
@@ -135,16 +137,16 @@ export function ModelPriceCalculator({ prices, viewer, quotaPerYuan, modelName }
     <div className="rounded-lg border border-line bg-surface/50 p-4">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <AppIcon name="bolt" size={15} className="text-brand" />
-        <h4 className="text-[13px] font-semibold text-ink">费用试算</h4>
+        <h4 className="text-[13px] font-semibold text-ink">{t('components.priceCalc.title')}</h4>
         <span className="text-[12px] text-ink-3">
-          {usingServer ? '由服务端试算接口实时估算，结果仅供参考' : '按下方价格本地估算，结果仅供参考'}
+          {usingServer ? t('components.priceCalc.serverHint') : t('components.priceCalc.localHint')}
         </span>
       </div>
 
       {/* 分组选择：多分组时让用户切换，代理视图只有一档无需选择 */}
       {prices.length > 1 ? (
         <div className="mt-3">
-          <Field label="计费分组">
+          <Field label={t('components.priceCalc.groupLabel')}>
             <Select value={group} onChange={(e) => setGroup(e.target.value)}>
               {prices.map((p) => (
                 <option key={p.group} value={p.group}>
@@ -165,11 +167,16 @@ export function ModelPriceCalculator({ prices, viewer, quotaPerYuan, modelName }
 
       {kind === 'free' ? (
         <div className="mt-3 rounded-md border border-line bg-card px-3.5 py-3 text-[13px] text-ink-2">
-          该分组的模型标记为免费，调用不计费。
+          {t('components.priceCalc.freeNotice')}
         </div>
       ) : kind === 'per_call' ? (
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="调用次数" help={`本次调用按次计费，单次 ${formatYuanPerCall(price?.per_call_price ?? 0, quotaPerYuan)}`}>
+          <Field
+            label={t('components.priceCalc.callCount')}
+            help={t('components.priceCalc.callCountHelp', {
+              price: formatYuanPerCall(price?.per_call_price ?? 0, quotaPerYuan),
+            })}
+          >
             <Input
               type="number"
               inputMode="numeric"
@@ -183,7 +190,7 @@ export function ModelPriceCalculator({ prices, viewer, quotaPerYuan, modelName }
         </div>
       ) : (
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="输入 token 数" help="prompt 部分的 token 数量">
+          <Field label={t('components.priceCalc.inputTokens')} help={t('components.priceCalc.inputTokensHelp')}>
             <Input
               type="number"
               inputMode="numeric"
@@ -194,7 +201,7 @@ export function ModelPriceCalculator({ prices, viewer, quotaPerYuan, modelName }
               onChange={(e) => setPrompt(e.target.value)}
             />
           </Field>
-          <Field label="输出 token 数" help="completion 部分的 token 数量">
+          <Field label={t('components.priceCalc.outputTokens')} help={t('components.priceCalc.outputTokensHelp')}>
             <Input
               type="number"
               inputMode="numeric"
@@ -208,7 +215,10 @@ export function ModelPriceCalculator({ prices, viewer, quotaPerYuan, modelName }
           {/* 仅在配置了缓存价时才提供该输入：未配置时命中部分本就直接按输入价计，
               给了输入框反而让人误以为能省缓存钱 */}
           {cacheLabel && (
-            <Field label="其中命中缓存 token 数" help={`命中缓存单价 ${cacheLabel}，留空/0 表示未命中`}>
+            <Field
+              label={t('components.priceCalc.cachedTokens')}
+              help={t('components.priceCalc.cachedTokensHelp', { price: cacheLabel })}
+            >
               <Input
                 type="number"
                 inputMode="numeric"
@@ -225,18 +235,18 @@ export function ModelPriceCalculator({ prices, viewer, quotaPerYuan, modelName }
 
       <div className="mt-3 flex flex-wrap items-end justify-between gap-3 rounded-md border border-line bg-card px-3.5 py-3">
         <div>
-          <div className="text-[12px] text-ink-3">预估花费</div>
+          <div className="text-[12px] text-ink-3">{t('components.priceCalc.estimatedCost')}</div>
           <div className="mt-0.5 font-mono text-xl font-semibold tabular-nums text-ink">
             {quota !== null ? formatYuanFromQuota(quota, quotaPerYuan) : '—'}
           </div>
           {quota !== null && !isFree && (
-            <div className="mt-0.5 font-mono text-[11px] text-ink-3">= {quota} 额度</div>
+            <div className="mt-0.5 font-mono text-[11px] text-ink-3">{t('components.priceCalc.quotaLine', { quota })}</div>
           )}
         </div>
         <div className="flex flex-col items-end gap-1">
           {result || serverQuote ? (
             isFree ? (
-              <Badge tone="info">免费</Badge>
+              <Badge tone="info">{t('components.modelPrice.billingFree')}</Badge>
             ) : (
               <Badge tone="brand">{billingKindLabel(kind)}</Badge>
             )

@@ -11,6 +11,7 @@ import { fetchDashboard } from '@/api/admin'
 import type { DashboardStats } from '@/api/types'
 import { Card, Skeleton, StatCard } from '@/components/ui/Display'
 import { EChart } from '@/components/ui/EChart'
+import { useI18n } from '@/i18n'
 import { useTheme, isDarkScheme } from '@/lib/theme/theme-context'
 import { chartStyles } from '@/utils/chart'
 import { formatNumber } from '@/utils/format'
@@ -18,6 +19,7 @@ import { formatNumber } from '@/utils/format'
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const { resolved } = useTheme()
+  const { t } = useI18n()
 
   useEffect(() => {
     void fetchDashboard().then(setStats).catch(() => setStats(null))
@@ -36,11 +38,11 @@ export default function AdminDashboardPage() {
       xAxis: { type: 'category', data: days.map((d) => d.date), axisLabel: cs.axisLabel },
       yAxis: { type: 'value', axisLabel: cs.axisLabel, splitLine: cs.splitLine },
       series: [
-        { name: '请求数', type: 'bar', data: days.map((d) => d.requests), itemStyle: { color: cs.palette[0] }, barWidth: '50%' },
-        { name: 'Token', type: 'bar', data: days.map((d) => d.tokens), itemStyle: { color: cs.palette[1] }, barWidth: '50%' },
+        { name: t('admin.dashboard.requestsSeries'), type: 'bar', data: days.map((d) => d.requests), itemStyle: { color: cs.palette[0] }, barWidth: '50%' },
+        { name: t('admin.dashboard.tokensSeries'), type: 'bar', data: days.map((d) => d.tokens), itemStyle: { color: cs.palette[1] }, barWidth: '50%' },
       ],
     }
-  }, [stats, cs])
+  }, [stats, cs, t])
 
   const topModelOption = useMemo(() => {
     const items = stats?.top_models?.slice(0, 8) ?? []
@@ -66,30 +68,33 @@ export default function AdminDashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-ink">仪表盘</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">全站运行概览</p>
+        <h1 className="text-xl font-bold text-ink">{t('admin.dashboard.title')}</h1>
+        <p className="mt-0.5 text-[13px] text-ink-3">{t('admin.dashboard.subtitle')}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="渠道"
+          label={t('admin.dashboard.channels')}
           value={stats ? String(stats.channels.total) : '—'}
-          hint={`${stats?.channels.enabled ?? 0} 启用 · ${stats?.channels.auto_disabled ?? 0} 自动停用`}
+          hint={t('admin.dashboard.channelsHint', {
+            enabled: stats?.channels.enabled ?? 0,
+            disabled: stats?.channels.auto_disabled ?? 0,
+          })}
         />
-        <StatCard label="用户" value={stats ? String(stats.users.total) : '—'} hint={`${stats?.users.active ?? 0} 活跃`} />
-        <StatCard label="令牌" value={stats ? String(stats.tokens.total) : '—'} hint={`${stats?.tokens.enabled ?? 0} 启用`} />
+        <StatCard label={t('admin.dashboard.users')} value={stats ? String(stats.users.total) : '—'} hint={t('admin.dashboard.usersHint', { active: stats?.users.active ?? 0 })} />
+        <StatCard label={t('admin.dashboard.tokens')} value={stats ? String(stats.tokens.total) : '—'} hint={t('admin.dashboard.tokensHint', { enabled: stats?.tokens.enabled ?? 0 })} />
         <StatCard
-          label="今日请求"
+          label={t('admin.dashboard.todayRequests')}
           value={stats ? formatNumber(today?.requests ?? 0) : '—'}
-          hint={today ? `成功率 ${(today.success_rate * 100).toFixed(1)}%` : undefined}
+          hint={today ? t('admin.dashboard.successRate', { rate: (today.success_rate * 100).toFixed(1) }) : undefined}
         />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="今日 Token" value={stats ? formatNumber(today?.tokens ?? 0) : '—'} />
-        <StatCard label="平均耗时" value={today && today.avg_latency_ms ? `${today.avg_latency_ms}ms` : '—'} />
-        <StatCard label="首包延迟" value={today && today.avg_first_token_ms ? `${today.avg_first_token_ms}ms` : '—'} />
-        <StatCard label="输出速率" value={today && today.avg_tokens_per_second ? `${today.avg_tokens_per_second.toFixed(1)} t/s` : '—'} />
+        <StatCard label={t('admin.dashboard.todayTokens')} value={stats ? formatNumber(today?.tokens ?? 0) : '—'} />
+        <StatCard label={t('admin.dashboard.avgLatency')} value={today && today.avg_latency_ms ? `${today.avg_latency_ms}ms` : '—'} />
+        <StatCard label={t('admin.dashboard.firstToken')} value={today && today.avg_first_token_ms ? `${today.avg_first_token_ms}ms` : '—'} />
+        <StatCard label={t('admin.dashboard.tps')} value={today && today.avg_tokens_per_second ? `${today.avg_tokens_per_second.toFixed(1)} t/s` : '—'} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">

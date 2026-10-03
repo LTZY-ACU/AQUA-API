@@ -16,6 +16,7 @@ import type { UsageStats } from '@/api/types'
 import { UsageLeaderboard } from '@/components/UsageLeaderboard'
 import { Card, Skeleton, StatCard } from '@/components/ui/Display'
 import { EChart } from '@/components/ui/EChart'
+import { useI18n } from '@/i18n'
 import { useAuth } from '@/lib/auth/auth-context'
 import { useSite } from '@/lib/site/site-context'
 import { useTheme, isDarkScheme } from '@/lib/theme/theme-context'
@@ -25,6 +26,7 @@ import { formatYuanFromQuota } from '@/utils/money'
 export default function ConsoleOverviewPage() {
   const { refreshUser } = useAuth()
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   const { resolved } = useTheme()
   const [finance, setFinance] = useState<FinanceSummary | null>(null)
   const [usage, setUsage] = useState<UsageStats | null>(null)
@@ -63,7 +65,7 @@ export default function ConsoleOverviewPage() {
       yAxis: { type: 'value', axisLabel: cs.axisLabel, splitLine: cs.splitLine },
       series: [
         {
-          name: '请求数',
+          name: t('portal.overview.requests'),
           type: 'line',
           smooth: true,
           data: series.map((item) => item.requests),
@@ -72,7 +74,7 @@ export default function ConsoleOverviewPage() {
         },
       ],
     }
-  }, [usage, cs])
+  }, [usage, cs, t])
 
   const modelOption = useMemo(() => {
     const items = (usage?.by_model ?? []).slice(0, 8)
@@ -101,23 +103,23 @@ export default function ConsoleOverviewPage() {
       <TrialBanner />
 
       <div>
-        <h1 className="text-xl font-bold text-ink">概览</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">当前账户用量与余额</p>
+        <h1 className="text-xl font-bold text-ink">{t('portal.overview.title')}</h1>
+        <p className="mt-0.5 text-[13px] text-ink-3">{t('portal.overview.subtitle')}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="当前余额"
-          value={finance ? (unlimited ? '不限' : formatYuanFromQuota(finance.balance_quota, quotaPerYuan)) : '—'}
-          hint={unlimited ? '余额不限制' : '可用于调用与充值抵扣'}
+          label={t('portal.overview.balance')}
+          value={finance ? (unlimited ? t('portal.overview.unlimited') : formatYuanFromQuota(finance.balance_quota, quotaPerYuan)) : '—'}
+          hint={unlimited ? t('portal.overview.balanceUnlimitedHint') : t('portal.overview.balanceHint')}
         />
-        <StatCard label="累计消费" value={finance ? formatYuanFromQuota(finance.used_quota, quotaPerYuan) : '—'} hint="全部历史" />
-        <StatCard label="累计充值" value={finance ? formatYuanFromQuota(finance.recharged_quota, quotaPerYuan) : '—'} hint={`${finance?.recharge_count ?? 0} 笔订单`} />
-        <StatCard label="邀请返利" value={finance ? formatYuanFromQuota(finance.reward_quota, quotaPerYuan) : '—'} hint="注册奖 + 充值返利" />
+        <StatCard label={t('portal.overview.totalSpent')} value={finance ? formatYuanFromQuota(finance.used_quota, quotaPerYuan) : '—'} hint={t('portal.overview.allTime')} />
+        <StatCard label={t('portal.overview.totalRecharged')} value={finance ? formatYuanFromQuota(finance.recharged_quota, quotaPerYuan) : '—'} hint={t('portal.overview.orderCount', { n: finance?.recharge_count ?? 0 })} />
+        <StatCard label={t('portal.overview.referralReward')} value={finance ? formatYuanFromQuota(finance.reward_quota, quotaPerYuan) : '—'} hint={t('portal.overview.referralHint')} />
       </div>
 
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-ink-2">近 {days} 日用量</div>
+        <div className="text-sm font-semibold text-ink-2">{t('portal.overview.usageTitle', { days })}</div>
         <div className="flex gap-1 rounded-lg border border-line bg-surface p-1">
           {[7, 30].map((d) => (
             <button
@@ -126,7 +128,7 @@ export default function ConsoleOverviewPage() {
               onClick={() => setDays(d)}
               className={`rounded px-2.5 py-1 text-xs transition ${days === d ? 'bg-card text-ink shadow-sm' : 'text-ink-3 hover:text-ink-2'}`}
             >
-              {d} 天
+              {t('portal.overview.days', { d })}
             </button>
           ))}
         </div>
@@ -150,6 +152,7 @@ export default function ConsoleOverviewPage() {
 function TrialBanner() {
   const [trial, setTrial] = useState<{ active: boolean; remaining: number } | null>(null)
   const { quotaPerYuan } = useSite()
+  const { t } = useI18n()
   useEffect(() => {
     void fetchMyTrial().then(setTrial).catch(() => setTrial(null))
   }, [])
@@ -157,7 +160,7 @@ function TrialBanner() {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-brand/20 bg-brand/5 px-4 py-2.5 text-[13px] text-ink-2">
       <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-      限时试用余额剩余 {formatYuanFromQuota(trial.remaining, quotaPerYuan)}，到期自动失效。
+      {t('portal.overview.trialRemaining', { amount: formatYuanFromQuota(trial.remaining, quotaPerYuan) })}
     </div>
   )
 }

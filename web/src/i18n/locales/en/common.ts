@@ -30,10 +30,23 @@ export default {
     view: 'View',
     open: 'Open',
     more: 'More',
+    enable: 'Enable',
+    disable: 'Disable',
+    restore: 'Restore',
+    addRow: 'Add row',
+    stop: 'Stop',
   },
   state: {
     loading: 'Loading…',
     empty: 'No data',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    removed: 'Removed',
+    notSet: 'Not set',
+    available: 'Available',
+    unavailable: 'Unavailable',
+    success: 'Success',
+    failed: 'Failed',
   },
   unit: {
     items: 'items',
@@ -41,6 +54,8 @@ export default {
   },
   toast: {
     operationFailed: 'Something went wrong. Please try again later.',
+    loadFailed: 'Failed to load',
+    saveFailed: 'Failed to save',
   },
   language: {
     label: 'Language',

@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Display'
 import { Field, Input, Select } from '@/components/ui/Form'
 import { fetchModelPlaza } from '@/api/site'
+import { useI18n } from '@/i18n'
 import { useToast } from '@/lib/toast/toast-context'
 import Link from 'next/link'
 

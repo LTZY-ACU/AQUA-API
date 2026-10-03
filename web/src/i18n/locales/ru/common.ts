@@ -30,10 +30,23 @@ export default {
     view: 'Просмотр',
     open: 'Открыть',
     more: 'Ещё',
+    enable: 'Включить',
+    disable: 'Отключить',
+    restore: 'Восстановить',
+    addRow: 'Добавить строку',
+    stop: 'Остановить',
   },
   state: {
     loading: 'Загрузка…',
     empty: 'Нет данных',
+    enabled: 'Включён',
+    disabled: 'Отключён',
+    removed: 'Удалён',
+    notSet: 'Не задано',
+    available: 'Доступна',
+    unavailable: 'Недоступна',
+    success: 'Успешно',
+    failed: 'Ошибка',
   },
   unit: {
     items: 'шт.',
@@ -41,6 +54,8 @@ export default {
   },
   toast: {
     operationFailed: 'Произошла ошибка. Повторите попытку позже.',
+    loadFailed: 'Не удалось загрузить',
+    saveFailed: 'Не удалось сохранить',
   },
   language: {
     label: 'Язык',
