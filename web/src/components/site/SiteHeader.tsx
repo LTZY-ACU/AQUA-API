@@ -9,6 +9,7 @@
  *
  * 流转（Flow）：
  *   各公共页 → <SiteHeader /> → 导航锚点回到首页分区，模型走独立路由。
+ *   文案一律走 t('site.*')（词条见 locales/<lang>/site.ts），随语言切换实时更新。
  */
 'use client'
 
@@ -16,6 +17,7 @@ import Link from 'next/link'
 
 import { AppIcon } from '@/components/AppIcon'
 import { BrandLogo } from '@/components/BrandMark'
+import { useI18n } from '@/i18n'
 import { useAuth } from '@/lib/auth/auth-context'
 import { useSite } from '@/lib/site/site-context'
 
@@ -24,27 +26,28 @@ import { ThemeToggle } from './ThemeToggle'
 
 /** 顶栏分区导航：锚点回到首页小节，模型量级足够大故单列路由 */
 const NAV = [
-  { href: '/#features', label: '能力' },
-  { href: '/#quickstart', label: '接入' },
-  { href: '/models', label: '模型与价格' },
-  { href: '/#faq', label: '常见问题' },
+  { href: '/#features', key: 'site.nav.features' },
+  { href: '/#quickstart', key: 'site.nav.quickstart' },
+  { href: '/models', key: 'site.nav.models' },
+  { href: '/#faq', key: 'site.nav.faq' },
 ]
 
 export function SiteHeader({ transparent: _transparent = false }: { transparent?: boolean }) {
   const { isLoggedIn, displayName } = useAuth()
   const { status, siteName } = useSite()
+  const { t } = useI18n()
 
   return (
     <header className="border-b border-line bg-card">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-6">
-        <Link href="/" className="shrink-0" aria-label="返回首页">
+        <Link href="/" className="shrink-0" aria-label={t('site.header.backHome')}>
           <BrandLogo name={siteName} />
         </Link>
 
         {/* 运行标签：等宽 + 状态点，给技术站一个「在线」的信号 */}
         <span className="hidden shrink-0 items-center gap-1.5 rounded border border-line bg-surface px-2 py-0.5 font-mono text-[11px] text-ink-3 lg:inline-flex">
           <span className="h-1.5 w-1.5 rounded-full bg-ok" />
-          v{status?.version || '2'} · OpenAI 兼容
+          v{status?.version || '2'} · {t('site.header.openaiCompatible')}
         </span>
 
         <nav className="ml-auto hidden items-center gap-0.5 md:flex">
@@ -54,7 +57,7 @@ export function SiteHeader({ transparent: _transparent = false }: { transparent?
               href={item.href}
               className="rounded-md px-2.5 py-1.5 font-mono text-[13px] text-ink-2 transition hover:bg-ink/5 hover:text-ink"
             >
-              {item.label}
+              {t(item.key)}
             </Link>
           ))}
         </nav>
@@ -76,13 +79,13 @@ export function SiteHeader({ transparent: _transparent = false }: { transparent?
                 href="/login"
                 className="rounded-md px-2.5 py-1.5 font-mono text-[13px] text-ink-2 transition hover:text-ink"
               >
-                登录
+                {t('site.header.login')}
               </Link>
               <Link
                 href="/register"
                 className="rounded-md bg-brand px-3 py-1.5 font-mono text-[13px] font-medium text-on-brand transition hover:bg-brand/90"
               >
-                注册
+                {t('site.header.register')}
               </Link>
             </>
           )}

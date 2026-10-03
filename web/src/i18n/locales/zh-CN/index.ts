@@ -15,5 +15,6 @@ import admin from './admin'
 import common from './common'
 import components from './components'
 import portal from './portal'
+import site from './site'
 
-export default { common, components, portal, admin }
+export default { common, components, portal, admin, site }
