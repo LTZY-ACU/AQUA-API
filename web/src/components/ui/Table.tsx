@@ -9,6 +9,7 @@
 import type { ReactNode } from 'react'
 
 import { AppIcon } from '@/components/AppIcon'
+import { useI18n } from '@/i18n'
 import { Button } from './Button'
 import { EmptyState, SkeletonRows } from './Display'
 
@@ -41,10 +42,11 @@ export function DataTable<T>({
   rows,
   rowKey,
   loading,
-  emptyTitle = '暂无数据',
+  emptyTitle,
   emptyDescription,
   onRowClick,
 }: DataTableProps<T>) {
+  const { t } = useI18n()
   const loadingState = loading || rows === null
 
   return (
@@ -96,7 +98,10 @@ export function DataTable<T>({
             ) : (
               <tr>
                 <td colSpan={columns.length}>
-                  <EmptyState title={emptyTitle} description={emptyDescription} />
+                  <EmptyState
+                    title={emptyTitle ?? t('components.dataState.empty')}
+                    description={emptyDescription}
+                  />
                 </td>
               </tr>
             )}
@@ -117,6 +122,7 @@ interface PaginationProps {
 }
 
 export function Pagination({ page, pageSize, total, onChange }: PaginationProps) {
+  const { t } = useI18n()
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const pages: number[] = []
   const start = Math.max(1, page - 2)
@@ -125,8 +131,16 @@ export function Pagination({ page, pageSize, total, onChange }: PaginationProps)
 
   return (
     <div className="flex items-center justify-between gap-3 pt-3">
+      {/* 刻意用词条里的 range + page 两句拼接，而不是把整句塞进一个键：
+            后两种语言的语序（总数在前还是页码在前）不同，强行按中文语序拼会别扭。 */}
       <div className="text-xs text-ink-3">
-        共 {total} 条 · 第 {page}/{totalPages} 页
+        {t('components.pagination.range', {
+          start: total === 0 ? 0 : (page - 1) * pageSize + 1,
+          end: Math.min(page * pageSize, total),
+          total,
+        })}
+        {' · '}
+        {t('components.pagination.page', { page, pages: totalPages })}
       </div>
       <div className="flex items-center gap-1">
         <Button
@@ -134,7 +148,7 @@ export function Pagination({ page, pageSize, total, onChange }: PaginationProps)
           size="sm"
           disabled={page <= 1}
           onClick={() => onChange(page - 1)}
-          aria-label="上一页"
+          aria-label={t('components.pagination.prev')}
         >
           <AppIcon name="chevron-left" size={16} />
         </Button>
@@ -155,7 +169,7 @@ export function Pagination({ page, pageSize, total, onChange }: PaginationProps)
           size="sm"
           disabled={page >= totalPages}
           onClick={() => onChange(page + 1)}
-          aria-label="下一页"
+          aria-label={t('components.pagination.next')}
         >
           <AppIcon name="chevron-right" size={16} />
         </Button>

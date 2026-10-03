@@ -248,6 +248,8 @@ export default {
       logs: 'سجلات الاستخدام',
       audit: 'سجل عمليات الإدارة',
       announcements: 'الإعلانات',
+      channelHealth: 'صحة القنوات',
+      alertChannels: 'قنوات التنبيه',
       sensitiveWords: 'أمان المحتوى',
       maintenanceMonitor: 'المراقبة والنسخ الاحتياطي',
       settings: 'الإعدادات',
@@ -266,6 +268,7 @@ export default {
       recharge: 'شحن الرصيد',
       logs: 'سجلات الاستخدام',
       referral: 'الدعوات والتحقق اليومي',
+      externalAccounts: 'الحسابات المرتبطة',
     },
   },
 }

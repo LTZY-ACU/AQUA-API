@@ -257,6 +257,8 @@ export default {
       logs: 'Журнал вызовов',
       audit: 'Журнал действий администратора',
       announcements: 'Объявления',
+      channelHealth: 'Состояние каналов',
+      alertChannels: 'Каналы оповещений',
       sensitiveWords: 'Безопасность контента',
       maintenanceMonitor: 'Мониторинг и резервные копии',
       settings: 'Настройки',
@@ -275,6 +277,7 @@ export default {
       recharge: 'Пополнение',
       logs: 'Журнал вызовов',
       referral: 'Приглашения и отметки',
+      externalAccounts: 'Привязанные аккаунты',
     },
   },
 }

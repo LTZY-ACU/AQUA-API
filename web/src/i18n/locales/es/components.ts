@@ -255,6 +255,8 @@ export default {
       logs: 'Registros de uso',
       audit: 'Auditoría de administración',
       announcements: 'Anuncios',
+      channelHealth: 'Estado de canales',
+      alertChannels: 'Canales de alerta',
       sensitiveWords: 'Seguridad del contenido',
       maintenanceMonitor: 'Mantenimiento y copias',
       settings: 'Ajustes',
@@ -273,6 +275,7 @@ export default {
       recharge: 'Recargar',
       logs: 'Registros de uso',
       referral: 'Referidos y registro diario',
+      externalAccounts: 'Cuentas vinculadas',
     },
   },
 }

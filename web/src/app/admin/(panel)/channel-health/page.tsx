@@ -37,7 +37,7 @@ import {
   type ChannelHealthResult,
   type ChannelProbeTimeline,
 } from '@/api/channelHealth'
-import { Badge, EmptyState, Skeleton, StatCard } from '@/components/ui/Display'
+import { Badge, Card, EmptyState, Skeleton, StatCard } from '@/components/ui/Display'
 import { EChart } from '@/components/ui/EChart'
 import { DataTable, type Column } from '@/components/ui/Table'
 import { useToast } from '@/lib/toast/toast-context'

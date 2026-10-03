@@ -243,6 +243,7 @@ export default {
       models: 'Place du marché',
       resources: 'Ressources',
       channels: 'Canaux',
+      channelHealth: 'Santé des canaux',
       modelMappings: 'Mappage des modèles',
       groups: 'Groupes de modèles',
       prices: 'Tarification',
@@ -257,6 +258,7 @@ export default {
       logs: 'Journaux d’appels',
       audit: 'Journal d’administration',
       announcements: 'Annonces',
+      alertChannels: 'Canaux d’alerte',
       sensitiveWords: 'Sécurité du contenu',
       maintenanceMonitor: 'Supervision',
       settings: 'Paramètres',
@@ -275,6 +277,7 @@ export default {
       recharge: 'Recharger',
       logs: 'Journaux d’appels',
       referral: 'Parrainage et pointage',
+      externalAccounts: 'Comptes liés',
     },
   },
 }

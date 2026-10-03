@@ -238,6 +238,7 @@ export default {
       models: '模型广场',
       resources: '资源',
       channels: '渠道管理',
+      channelHealth: '渠道健康',
       modelMappings: '模型映射',
       groups: '模型分组',
       prices: '计价规则',
@@ -252,6 +253,7 @@ export default {
       logs: '调用日志',
       audit: '操作审计',
       announcements: '站点公告',
+      alertChannels: '告警通道',
       sensitiveWords: '内容安全',
       maintenanceMonitor: '运维监控',
       settings: '系统设置',
@@ -270,6 +272,7 @@ export default {
       recharge: '账户充值',
       logs: '调用日志',
       referral: '邀请奖励',
+      externalAccounts: '第三方账号',
     },
   },
 }

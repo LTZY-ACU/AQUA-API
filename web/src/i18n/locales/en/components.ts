@@ -236,6 +236,7 @@ export default {
       models: 'Model Plaza',
       resources: 'Resources',
       channels: 'Channels',
+      channelHealth: 'Channel Health',
       modelMappings: 'Model Mapping',
       groups: 'Model Groups',
       prices: 'Pricing',
@@ -250,6 +251,7 @@ export default {
       logs: 'Usage Logs',
       audit: 'Admin Audit',
       announcements: 'Announcements',
+      alertChannels: 'Alert Channels',
       sensitiveWords: 'Content Safety',
       maintenanceMonitor: 'Maintenance',
       settings: 'Settings',
@@ -268,6 +270,7 @@ export default {
       recharge: 'Top Up',
       logs: 'Usage Logs',
       referral: 'Referrals & Check-in',
+      externalAccounts: 'Linked Accounts',
     },
   },
 }

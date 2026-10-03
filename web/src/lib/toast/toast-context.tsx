@@ -8,6 +8,8 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 
+import { useI18n } from '@/i18n'
+
 type ToastKind = 'success' | 'error' | 'info'
 
 interface ToastItem {
@@ -29,6 +31,9 @@ const DEDUP_MS = 800
 const AUTO_DISMISS_MS = 3500
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  // 关闭按钮的无障碍标签：此前只有一个「×」符号，读屏软件只能念出「乘号」，
+  // 用户完全不知道按下会发生什么。图标按钮必须带 aria-label，这不是可选项。
+  const { t } = useI18n()
   const [items, setItems] = useState<ToastItem[]>([])
   const seq = useRef(0)
   const lastKey = useRef<string>('')
@@ -69,6 +74,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={item.id}
             type="button"
             onClick={() => dismiss(item.id)}
+            aria-label={t('components.toast.dismiss')}
             className={`flex items-start gap-2 rounded-md border px-3 py-2.5 text-left text-sm shadow-pop backdrop-blur transition ${
               item.kind === 'success'
                 ? 'border-ok/30 bg-card text-ink'
