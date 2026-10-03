@@ -356,6 +356,25 @@ func (c *LLMClient) pickChannel(ctx context.Context, modelName string) (*model.C
 			return fallback, k.Key, nil
 		}
 	}
+
+	// 【池内没有可用凭据时回退到渠道自带的单密钥】
+	//
+	// 为什么必须有这个兜底：单密钥渠道（本部署的 agnes 就是）只在
+	// channels.api_key 上存一把密钥，channel_keys 表里【一条记录都没有】。
+	// 而 ListUsable 对空池会返回空切片——于是"池空"和"这个渠道没配密钥"
+	// 在这里成了同一件事，本该好用的渠道被判为不可用。
+	//
+	// 这正是本站 relay 主链路早已处理好的情况：openai.go 的
+	// resolveCredential 在池内选不出凭据时会退回 ch.APIKey（见该函数末尾）。
+	// agent 必须与之保持一致，否则会出现一个很费解的现象：
+	// 「同一个渠道，模型接口能正常调用，助手却说没有可用密钥」。
+	//
+	// 注意只在【池为空】时兜底，不在"池非空但恰好没有 api_key 类型"时兜底：
+	// 后者说明站长确实建了池、池里装的是 oauth 凭据，那是"配置还没到位"，
+	// 此时悄悄用渠道自带密钥会让新上的密钥池形同虚设。
+	if len(keys) == 0 && fallback.APIKey != "" {
+		return fallback, fallback.APIKey, nil
+	}
 	return nil, "", fmt.Errorf("%w：渠道「%s」里没有可用的 API 密钥", ErrNoUsableKey, fallback.Name)
 }
 

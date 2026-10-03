@@ -7,7 +7,9 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -284,6 +286,138 @@ func TestChatOnce_无可用渠道(t *testing.T) {
 	// 错误必须指向"渠道"而不是"网络"——站长该去配渠道，不是去查网线。
 	if !strings.Contains(err.Error(), "渠道") {
 		t.Errorf("错误信息应指向渠道配置，实际：%v", err)
+	}
+}
+
+// ── 密钥池为空的兜底（本批线上故障的回归测试）────────────────────
+
+// fakeKeyRepo 是最小可用的密钥池仓储。
+type fakeKeyRepo struct {
+	model.ChannelKeyRepository // 嵌入未实现的方法，调用到才会 panic
+	usable                     []*model.ChannelKey
+}
+
+func (f *fakeKeyRepo) ListUsable(_ context.Context, _ uint64) ([]*model.ChannelKey, error) {
+	return f.usable, nil
+}
+
+// TestChatOnce_密钥池为空时回退渠道自带密钥 是本批线上故障的回归测试。
+//
+// 故障现象：本部署只有一个单密钥渠道（密钥存在 channels.api_key 上，
+// channel_keys 表里一条记录都没有），助手报"渠道内没有可用密钥"，
+// 而同一个渠道的模型接口能正常调用。
+//
+// 根因：pickChannel 在注入密钥池仓储后，只在池内找 api_key 类型，
+// 池空就直接报错——没有像 relay 主链路那样回退到渠道自带的密钥。
+// 单密钥渠道于是被判为不可用，这是本站绝大多数自建站点的常态。
+func TestChatOnce_密钥池为空时回退渠道自带密钥(t *testing.T) {
+	var authHeader string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"好"},"finish_reason":"stop"}]}`))
+	}))
+	defer upstream.Close()
+
+	ch := &fakeChannelRepo{channels: []*model.Channel{{
+		ID: 1, Name: "单密钥渠道", BaseURL: upstream.URL,
+		APIKey: "sk-from-channel", TypeKey: "openai",
+		Status: model.ChannelStatusEnabled,
+	}}}
+
+	// 密钥池仓储非 nil（这就是线上装配的形态），但池子是空的。
+	client := NewLLMClient(ch, &fakeKeyRepo{usable: nil}, nil)
+
+	if _, err := client.ChatOnce(t.Context(), "gpt-4o",
+		[]ChatMessage{{Role: RoleUser, Content: "hi"}}, nil); err != nil {
+		t.Fatalf("池为空时应回退到渠道自带密钥，而不是报错: %v", err)
+	}
+	if authHeader != "Bearer sk-from-channel" {
+		t.Errorf("Authorization = %q，应使用渠道自带的密钥", authHeader)
+	}
+}
+
+// TestChatOnce_池非空时优先用池内密钥 确保兜底没有反过来盖过密钥池。
+//
+// 兜底只该在【池为空】时生效。若在池内有可用密钥时也用渠道自带密钥，
+// 那新建的密钥池（含 RPM 限速、余额、故障冷却）就完全失效了。
+func TestChatOnce_池非空时优先用池内密钥(t *testing.T) {
+	var authHeader string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"好"},"finish_reason":"stop"}]}`))
+	}))
+	defer upstream.Close()
+
+	ch := &fakeChannelRepo{channels: []*model.Channel{{
+		ID: 1, Name: "多密钥渠道", BaseURL: upstream.URL,
+		APIKey: "sk-from-channel", TypeKey: "openai",
+		Status: model.ChannelStatusEnabled,
+	}}}
+	keys := &fakeKeyRepo{usable: []*model.ChannelKey{{
+		ID: 7, Kind: model.CredentialKindAPIKey, Key: "sk-from-pool",
+	}}}
+
+	client := NewLLMClient(ch, keys, nil)
+	if _, err := client.ChatOnce(t.Context(), "gpt-4o",
+		[]ChatMessage{{Role: RoleUser, Content: "hi"}}, nil); err != nil {
+		t.Fatalf("ChatOnce 失败: %v", err)
+	}
+	if authHeader != "Bearer sk-from-pool" {
+		t.Errorf("Authorization = %q，池内可用时应优先用池内密钥", authHeader)
+	}
+}
+
+// TestChatOnce_池内全是oauth且渠道无自带密钥 守住"配置没到位"与"池为空"的区别。
+//
+// 池非空但装的全是 oauth 凭据 = 站长确实建了池、只是还没录 api_key。
+// 此时【不能】静默回退（那会让新上的密钥池形同虚设），必须明确报错。
+func TestChatOnce_池内全是oauth且渠道无自带密钥(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("不应发出请求")
+	}))
+	defer upstream.Close()
+
+	ch := &fakeChannelRepo{channels: []*model.Channel{{
+		ID: 1, Name: "只有oauth的渠道", BaseURL: upstream.URL,
+		APIKey: "", TypeKey: "openai", Status: model.ChannelStatusEnabled,
+	}}}
+	keys := &fakeKeyRepo{usable: []*model.ChannelKey{{
+		ID: 7, Kind: model.CredentialKindOAuth, Key: "",
+	}}}
+
+	client := NewLLMClient(ch, keys, nil)
+	_, err := client.ChatOnce(t.Context(), "gpt-4o",
+		[]ChatMessage{{Role: RoleUser, Content: "hi"}}, nil)
+	if err == nil {
+		t.Fatal("池非空且无可用 api_key 时应报错，不应静默回退")
+	}
+	if !strings.Contains(err.Error(), "密钥") {
+		t.Errorf("错误信息应指向密钥配置，实际：%v", err)
+	}
+}
+
+// TestChatOnce_池空且渠道无自带密钥 确认兜底不会掩盖"真的没配密钥"。
+func TestChatOnce_池空且渠道无自带密钥(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("不应发出请求")
+	}))
+	defer upstream.Close()
+
+	ch := &fakeChannelRepo{channels: []*model.Channel{{
+		ID: 1, Name: "没配密钥的渠道", BaseURL: upstream.URL,
+		APIKey: "", TypeKey: "openai", Status: model.ChannelStatusEnabled,
+	}}}
+
+	client := NewLLMClient(ch, &fakeKeyRepo{usable: nil}, nil)
+	_, err := client.ChatOnce(t.Context(), "gpt-4o",
+		[]ChatMessage{{Role: RoleUser, Content: "hi"}}, nil)
+	if err == nil {
+		t.Fatal("池空且渠道也没密钥时必须报错")
+	}
+	if !errors.Is(err, ErrNoUsableKey) {
+		t.Errorf("应返回 ErrNoUsableKey 以便上层分类，实际：%v", err)
 	}
 }
 

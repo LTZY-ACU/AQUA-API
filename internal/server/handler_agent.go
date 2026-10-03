@@ -44,6 +44,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -299,7 +300,7 @@ func (s *Server) streamAgentAnswer(
 		slog.Warn("agent 对话失败", "error", err, "role", string(role))
 		writer.send(sseEvent{
 			Type:    "error",
-			Message: "助手暂时无法回答这个问题，请稍后重试。",
+			Message: agentErrorMessage(err, role),
 		})
 		writer.close()
 		return
@@ -464,6 +465,46 @@ func (s *Server) handlePublicAgentChat(c *gin.Context) {
 		return
 	}
 	s.handleAgentChat(key.Role)(c)
+}
+
+// agentErrorMessage 把对话失败翻译成给当前用户看的话。
+//
+// 【为什么按角色分两种说法】
+//
+// 运维入口的观众是站长本人——他就是唯一能改配置的人。
+// 对他回一句"请稍后重试"是把他的诊断能力废掉：他既不知道是渠道没密钥、
+// 还是模型名错了，只能反复点重试。所以这一侧必须说出真实原因。
+//
+// 客服入口的观众是外部使用者。那里有两个约束：
+//   - 不能泄漏站内细节（渠道名、密钥状态、模型配置都属于内部信息）；
+//   - 错误多半是站长的配置问题，外部用户既不能修，也不该被要求配合。
+//
+// 因此客服侧一律回到通用文案 + 引导联系人工。
+//
+// 未知错误不分类：直接透传 err.Error() 有可能带出上游 URL 或内部标识，
+// 那正是客服侧要避免的。所以只有 errors.Is 命中的已知类型才给具体说法。
+func agentErrorMessage(err error, role model.AgentRole) string {
+	// 配置类问题：只对运维讲，且明确指出下一步该去哪里改。
+	// 这几条是站长最常遇到、也最容易自己修好的（实测最常见的就是第一条）。
+	if role == model.AgentRoleOps {
+		switch {
+		case errors.Is(err, agent.ErrNoUsableKey):
+			return "助手用不了：没有任何一个启用中的渠道配有可用密钥。" +
+				"请到「渠道管理」确认渠道的 API 密钥已填写（密钥池为空时也会走渠道自带的密钥）。"
+		case errors.Is(err, agent.ErrNoUsableChannel):
+			return "助手用不了：没有启用中的渠道支持这个模型。" +
+				"请到「渠道管理」确认渠道处于启用状态、且模型列表里包含所用的模型。"
+		case errors.Is(err, agent.ErrModelRequired):
+			return "助手还没配置模型。请到本页的「运行配置」填至少一个模型名。"
+		}
+		// 上游返回的 4xx/5xx：这类错误里有渠道名和状态码，对站长有用。
+		// 但也可能含上游 URL，因此只在运维侧透出，且截断避免刷屏。
+		if len(err.Error()) > 200 {
+			return "助手没能连上模型上游：" + err.Error()[:200] + "…"
+		}
+		return "助手没能连上模型上游：" + err.Error()
+	}
+	return "助手暂时无法回答这个问题，请稍后重试，或联系站点管理员。"
 }
 
 // ── SSE 输出 ──────────────────────────────────────────────────────

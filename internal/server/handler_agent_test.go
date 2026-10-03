@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -734,6 +735,83 @@ func createAgentPortalSession(t *testing.T, sessions model.SessionRepository, us
 		t.Fatalf("创建测试会话失败: %v", err)
 	}
 	return token
+}
+
+// ── 错误文案：按角色区分 ────────────────────────────────────────
+
+// TestAgentErrorMessage_运维看到真实原因 是本批第二个修复的核心。
+//
+// 故障现象：站长在助手里问一句，只得到"助手暂时无法回答这个问题，请稍后重试"。
+// 而服务端日志里写的是"渠道内没有可用密钥"——
+// 站长既是唯一能改配置的人，却被告知再等等。
+// 对他回"稍后重试"等于废掉他的诊断能力。
+func TestAgentErrorMessage_运维看到真实原因(t *testing.T) {
+	cases := []struct {
+		name   string
+		err    error
+		mustIn []string
+	}{
+		{
+			name:   "没有可用密钥",
+			err:    agent.ErrNoUsableKey,
+			mustIn: []string{"渠道", "密钥"},
+		},
+		{
+			name:   "没有支持该模型的渠道",
+			err:    agent.ErrNoUsableChannel,
+			mustIn: []string{"渠道", "模型"},
+		},
+		{
+			name:   "未指定模型",
+			err:    agent.ErrModelRequired,
+			mustIn: []string{"模型"},
+		},
+	}
+	for _, tc := range cases {
+		msg := agentErrorMessage(tc.err, model.AgentRoleOps)
+		for _, want := range tc.mustIn {
+			if !strings.Contains(msg, want) {
+				t.Errorf("%s：运维侧文案应提到 %q，实际：%s", tc.name, want, msg)
+			}
+		}
+		// 绝不能出现"请稍后重试"：那正是这次要消灭的无效文案。
+		if strings.Contains(msg, "稍后重试") {
+			t.Errorf("%s：不该让运维去'稍后重试'，实际：%s", tc.name, msg)
+		}
+	}
+}
+
+// TestAgentErrorMessage_客服不泄漏站内细节 守住信息边界。
+//
+// 客服入口面向外部人：渠道名、密钥状态、模型配置都是内部信息，
+// 一律回到通用文案 + 引导联系管理员。
+func TestAgentErrorMessage_客服不泄漏站内细节(t *testing.T) {
+	msg := agentErrorMessage(agent.ErrNoUsableKey, model.AgentRoleSupport)
+	if !strings.Contains(msg, "稍后重试") && !strings.Contains(msg, "管理员") {
+		t.Errorf("客服侧应回到通用文案 + 引导联系管理员，实际：%s", msg)
+	}
+	// 逐条确认三个已知类型都不泄漏运维细节。
+	for _, err := range []error{agent.ErrNoUsableKey, agent.ErrNoUsableChannel, agent.ErrModelRequired} {
+		msg := agentErrorMessage(err, model.AgentRoleSupport)
+		for _, leak := range []string{"渠道管理", "渠道", "API 密钥", "运行配置"} {
+			if strings.Contains(msg, leak) {
+				t.Errorf("客服侧文案泄漏了 %q：%s", leak, msg)
+			}
+		}
+	}
+}
+
+// TestAgentErrorMessage_未知错误截断 防止超长错误刷屏。
+func TestAgentErrorMessage_未知错误截断(t *testing.T) {
+	long := strings.Repeat("上游地址 https://internal.example.com 返回了很长的说明 ", 20)
+	msg := agentErrorMessage(errors.New(long), model.AgentRoleOps)
+	if len([]rune(msg)) > 300 {
+		t.Errorf("运维侧未知错误应被截断，实际长度 %d 字", len([]rune(msg)))
+	}
+	// 但不能什么都不说：站长需要知道是上游的问题。
+	if !strings.Contains(msg, "上游") {
+		t.Errorf("应说明是上游问题，实际：%s", msg)
+	}
 }
 
 // ── SSE 输出格式 ─────────────────────────────────────────────────
