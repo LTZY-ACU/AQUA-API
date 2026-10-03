@@ -494,15 +494,21 @@ func (r *Relay) recordUsage(ctx context.Context, entry usageEntry) {
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 	defer cancel()
 
-	// 记录用的 request_id：优先复用鉴权阶段生成的（做了预留时非空）。
+	// 记录用的 request_id：优先用【追踪 ID】——它就是回给客户端的那个值，
+	// 用户报障时报过来的 ID 与这里的记录逐字相同，一次检索即可定位。
 	//
-	// 未做预留的调用（免费模型 / 福利账户 / 信任额度旁路）在鉴权阶段不会生成它，
-	// 但调用日志与语料样本仍需要一个能互相关联的标识，否则"这次花了多少"与
-	// "这次说了什么"就对不上账。因此这里补生成一个。
+	// 为什么排在额度幂等键之前：两者用途不同（追踪 vs 计费幂等），
+	// 幂等键在部分路径上为空（免费模型/信任额度旁路），拿它当记录标识会有缺口；
+	// 而追踪 ID 由 HTTP 层保证每个请求都有。
 	//
-	// 【重要】补出来的这个只用于记录，绝不参与结算：结算读的是
-	// identityFromRequest(ctx).RequestID（为空即表示没做过预留，走反响扣费路径）。
-	recordRequestID := identityFromRequest(ctx).RequestID
+	// 【重要】这里改的只是"记录用的标识"，结算读的是
+	// identityFromRequest(ctx).RequestID（为空即表示没做过预留，走反响扣费路径），
+	// 两者不互相影响——尤其不能把追踪 ID 拿去当幂等键：它由客户端可控，
+	// 重复使用会让"第二笔请求被当成同一笔"而漏扣费。
+	recordRequestID := reqctx.RequestID(ctx)
+	if recordRequestID == "" {
+		recordRequestID = identityFromRequest(ctx).RequestID
+	}
 	if recordRequestID == "" {
 		recordRequestID = model.NewRequestID()
 	}

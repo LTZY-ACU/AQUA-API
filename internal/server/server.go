@@ -37,6 +37,7 @@ import (
 	"github.com/LTZY-ACU/aqua-api/internal/config"
 	"github.com/LTZY-ACU/aqua-api/internal/corpus"
 	"github.com/LTZY-ACU/aqua-api/internal/mailer"
+	"github.com/LTZY-ACU/aqua-api/internal/metrics"
 	"github.com/LTZY-ACU/aqua-api/internal/model"
 	"github.com/LTZY-ACU/aqua-api/internal/payment"
 	"github.com/LTZY-ACU/aqua-api/internal/relay"
@@ -197,6 +198,12 @@ type Server struct {
 	// sitemap.xml 是"读多写少"的端点，用互斥锁而非原子指针，保持实现直观。
 	sitemapMu sync.Mutex
 	sitemap   sitemapCache
+
+	// metrics 是进程内指标注册表，挂在 /metrics 上对外暴露。
+	//
+	// 放在 Server 而非包级全局：注册表随实例创建，测试里两个 Server 互不干扰
+	//（包级单例会让并行测试的指标互相污染，表现为"断言时好时坏"）。
+	metrics *metrics.Registry
 }
 
 // New 创建并装配 HTTP 服务（不启动监听，便于测试直接取用 Handler）。
@@ -207,10 +214,19 @@ func New(deps Deps) *Server {
 	// 使用 gin.New() 而非 gin.Default()：
 	// Default 会自带 Logger + Recovery，但我们希望显式控制中间件及其顺序。
 	engine := gin.New()
+
+	// 指标注册表必须【先于引擎创建】：采集中间件与 /metrics 端点要共用同一个实例，
+	// 否则端点渲染的是一个空表（最典型的"接了监控但看不到数据"）。
+	reg := metrics.New()
 	// Recovery 必须最先装配：保证后续任何 panic 都不会导致进程退出
 	engine.Use(gin.Recovery())
-	// 访问日志（M1 先用 gin 默认实现；结构化日志与请求 ID 将在后续里程碑替换）
-	engine.Use(gin.Logger())
+	// 追踪 ID 必须早于一切会写日志/写指标的中间件：
+	// 否则鉴权、限流、敏感词这些"在业务之前就拒绝请求"的路径，
+	// 报错时日志里没有可对照的标识——而这些恰恰最需要被追查。
+	engine.Use(middleware.Trace())
+	// 结构化访问日志（替代 gin 默认 Logger）：每行带 trace_id，
+	// 用户报障时给出的 ID 可以直接在这里 grep 命中。
+	engine.Use(middleware.AccessLog())
 	// 解析 Accept-Language 并把语言偏好写入请求 context。
 	// 放在业务处理器之前：让所有错误响应都能按用户语言返回（未携带时回退中文）。
 	engine.Use(middleware.Locale())
@@ -220,6 +236,11 @@ func New(deps Deps) *Server {
 	// 浏览器侧安全响应头：装配在一切处理器与静态伺服之前，
 	// 让新增路由自动带上（见 security_headers.go）。位置与 bodyLimit 同级、互不依赖先后。
 	engine.Use(securityHeaders())
+
+	// 指标采集：放在最后是因为它要测量"整条链路"的耗时，
+	// 必须包在所有会提前拒绝请求的中间件【之外】——
+	// 否则被限流/被鉴权拒绝的请求根本不会计入，错误率会被系统性低估。
+	engine.Use(middleware.Metrics(reg))
 
 	s := &Server{
 		deps:      deps,
@@ -239,7 +260,10 @@ func New(deps Deps) *Server {
 		qiuPollLimiter:      middleware.NewRateLimiter(qiuPollLimit, 5*time.Minute),
 		// 内容合规过滤器：词表编译结果在组件内缓存，改词后由后台主动失效。
 		sensitiveFilter: middleware.NewSensitiveFilter(deps.SensitiveWords, deps.Settings),
+		metrics:         reg,
 	}
+	// 进程级指标：只能在拿到 s 之后注册（运行时长要以 startedAt 为基准）。
+	s.registerProcessMetrics()
 	s.registerRoutes()
 
 	// 注册前端静态资源与 SPA 回退。

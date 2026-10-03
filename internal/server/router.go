@@ -97,6 +97,14 @@ func (s *Server) registerRoutes() {
 	// 仅保留健康检查：站点首页由前端页面承载（见 static.go 的 SPA 回退）。
 	r.GET("/healthz", s.handleHealthz)
 
+	// ── Prometheus 指标（默认无需鉴权，令牌由配置决定）────────────
+	//
+	// 为什么与 /healthz 一样挂在鉴权之外：采集器（Prometheus / 云监控）不应
+	// 持有用户会话，令牌方案正是为这种"机器对机器"准备的。
+	if s.deps.Config.Metrics.Enabled {
+		r.GET("/metrics", s.handleMetrics)
+	}
+
 	// ── SEO：站点地图与爬虫规则（无需鉴权）────────────────────────
 	// 必须显式注册，否则会被 SPA 回退拦截成 index.html（爬虫将拿不到 XML/纯文本）。
 	// 它们不是 API 路径，走独立处理器，不受 isAPIPath 影响。

@@ -167,6 +167,9 @@ type Config struct {
 	// 与 Health 的分工：ChannelHealth 按调用成功率做【停用】的业务处分，
 	// Health 只是周期性【量一次延迟】并记下来，不做任何处分。
 	ChannelHealth ChannelHealthConfig `json:"channel_health"`
+
+	// Metrics 控制 Prometheus 指标端点（/metrics）的开关与令牌。
+	Metrics MetricsConfig `json:"metrics"`
 }
 
 // RetentionConfig 描述各只写表的保留天数（0 = 永不清理）。
@@ -374,6 +377,23 @@ type ChannelHealthConfig struct {
 	WindowMinutes int `json:"auto_disable_window_minutes"`
 }
 
+// MetricsConfig 描述 Prometheus 指标端点的开关与鉴权方式。
+//
+// 默认值取舍：Enabled 默认 true。理由是"监控没配"不会造成业务损害，
+// 而"默认不开"会让绝大多数站长在第一次需要它时根本不知道它存在。
+// Token 默认空 = 不鉴权，见下方安全说明。
+type MetricsConfig struct {
+	// Enabled 为 false 时不注册 /metrics 路由（返回 404）。
+	Enabled bool `json:"metrics_enabled"`
+	// Token 非空时，/metrics 需要携带 `Authorization: Bearer <token>`。
+	//
+	// 为什么提供这个开关：/metrics 会暴露流量规模、错误率与路由清单——
+	// 不含密钥与用户数据，但这些仍是运营信息。公网部署的站长若不希望任何人
+	// 探到，可以设置一个令牌（Prometheus 侧配 bearer_token_file 即可）。
+	// 留空则不鉴权，方便内网与 localhost 采集。
+	Token string `json:"metrics_token"`
+}
+
 // Default 返回一份带完整默认值的配置。
 //
 // 设计意图：所有字段都有合理默认，保证「零配置可启动」。
@@ -433,6 +453,10 @@ func Default() *Config {
 			MinRequests:   0,
 			SuccessRate:   DefaultChannelAutoDisableSuccessRate,
 			WindowMinutes: DefaultChannelAutoDisableWindowMinutes,
+		},
+		Metrics: MetricsConfig{
+			Enabled: true,
+			Token:   "",
 		},
 	}
 }
@@ -516,6 +540,9 @@ func applyEnv(cfg *Config) {
 	setIfNotEmptyInt(&cfg.ChannelHealth.MinRequests, EnvPrefix+"CHANNEL_AUTO_DISABLE_MIN_REQUESTS")
 	setIfNotEmptyFloat(&cfg.ChannelHealth.SuccessRate, EnvPrefix+"CHANNEL_AUTO_DISABLE_SUCCESS_RATE")
 	setIfNotEmptyInt(&cfg.ChannelHealth.WindowMinutes, EnvPrefix+"CHANNEL_AUTO_DISABLE_WINDOW_MINUTES")
+	// 指标端点：默认开启；令牌留空表示不鉴权（便于内网采集）。
+	setIfNotEmptyBool(&cfg.Metrics.Enabled, EnvPrefix+"METRICS_ENABLED")
+	setIfNotEmpty(&cfg.Metrics.Token, EnvPrefix+"METRICS_TOKEN")
 	setIfNotEmpty(&cfg.SMTP.Host, EnvPrefix+"SMTP_HOST")
 	setIfNotEmptyInt(&cfg.SMTP.Port, EnvPrefix+"SMTP_PORT")
 	setIfNotEmpty(&cfg.SMTP.Username, EnvPrefix+"SMTP_USERNAME")
