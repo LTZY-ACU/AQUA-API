@@ -207,6 +207,23 @@ func (r *agentKeyRepository) SetStatus(ctx context.Context, id uint64, status in
 	return nil
 }
 
+// UpdateName 修改密钥的备注名。
+//
+// 刻意【只写 name 一列】：若顺手把整行读出来再写回，
+// 一次"改备注"的请求就会连带把 status、role 一起写回，
+// 于是它有了改权限的能力。SQL UPDATE 只列出真正要改的列是这里的安全边界。
+func (r *agentKeyRepository) UpdateName(ctx context.Context, id uint64, name string) error {
+	res, err := r.db.ExecContext(ctx,
+		"UPDATE agent_keys SET name = ? WHERE id = ?", strings.TrimSpace(name), id)
+	if err != nil {
+		return fmt.Errorf("store: 更新 agent 密钥备注失败: %w", err)
+	}
+	if n, nErr := res.RowsAffected(); nErr == nil && n == 0 {
+		return model.ErrAgentKeyNotFound
+	}
+	return nil
+}
+
 // Delete 永久删除一把密钥。
 func (r *agentKeyRepository) Delete(ctx context.Context, id uint64) error {
 	res, err := r.db.ExecContext(ctx, "DELETE FROM agent_keys WHERE id = ?", id)

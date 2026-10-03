@@ -240,6 +240,28 @@ func (s *Server) registerRoutes() {
 	// 异步任务（用户只能看自己的）
 	portal.GET("/tasks", s.handleMyListTasks)
 
+	// ── 在线客服（agent key 鉴权，面向外部人）───────────────────
+	//
+	// 【与运维入口严格分离，勿合并】
+	//
+	// 这一组接口暴露在公网，密钥由站长生成并发给外部使用者。
+	// 它只能走 support 角色（不带任何工具）；运维入口在 /admin 之下，
+	// 走管理员会话、带工具。两条路由【互不通用】：
+	//
+	//   - 运维密钥访问本组 → 403（见 handlePublicAgentChat 的角色判定）
+	//   - 客服密钥访问 /admin → 根本到不了（要先过 RequireAdmin）
+	//
+	// 合并成一个接口再按角色分支是【看起来更简单、实际更危险】的写法：
+	// 一旦某次改动把角色判定漏掉，或前端为了省事把一把 key 用在两边，
+	// 运维助手就会被暴露给所有访客。路由级隔离让这类错误在装配期就能看出来。
+	//
+	// AgentKeyAuth 为 nil 仓储时一律 503（fail-closed），见中间件说明。
+	agentPublic := api.Group("/agent")
+	agentPublic.Use(middleware.AgentKeyAuth(s.deps.AgentKeys))
+	// 启用开关的判定放在处理器里而非路由上：它需要读设置（一次 DB 往返），
+	// 而路由注册发生在启动时，那时读不到运行期可改的配置。
+	agentPublic.POST("/chat", s.handlePublicAgentChat)
+
 	// ── 充值（用户自己的订单）────────────────────────────────────
 	portal.POST("/orders", s.handleCreateOrder)
 	portal.GET("/orders", s.handleMyListOrders)
@@ -289,6 +311,28 @@ func (s *Server) registerRoutes() {
 	admin.Use(middleware.AdminAudit(s.deps.Audit))
 
 	admin.GET("/dashboard", s.handleDashboard)
+
+	// ── AI 运维助手（后台对话）────────────────────────────────────
+	//
+	// 挂在 /admin 之下即自动继承 RequireAdmin + AdminAudit：
+	// 站长本人已在后台登录，不需要额外配一把 agent key 才能用助手。
+	// 角色固定 ops（带工具，能查站内数据、能改配置）。
+	//
+	// 注意它【不需要 AgentKeyAuth】：那条链路是给外部人的密钥用的，
+	// 在这里叠加会让站长在后台也得先配密钥才能问助手，
+	// 表现为"功能装了但用不了"。
+	admin.POST("/agent/chat", s.handleAdminAgentChat)
+
+	// ── AI Agent 配置与密钥管理 ───────────────────────────────────
+	//
+	// 写/删操作自动进审计表（AdminAudit），因为"谁在什么时候给外部人发了一把客服密钥"
+	// 属于必须可追溯的操作——密钥泄露后的排查完全依赖这条记录。
+	admin.GET("/agent/settings", s.handleGetAgentSettings)
+	admin.PUT("/agent/settings", s.handleUpdateAgentSettings)
+	admin.GET("/agent/keys", s.handleListAgentKeys)
+	admin.POST("/agent/keys", s.handleCreateAgentKey)
+	admin.PUT("/agent/keys/:id", s.handleUpdateAgentKey)
+	admin.DELETE("/agent/keys/:id", s.handleDeleteAgentKey)
 
 	// 上游渠道类型目录：后台新建/编辑渠道时据此做「选类型 → 展开该类型必填项」
 	// 的触发式渲染，因此新增上游类型不需要改前端代码。

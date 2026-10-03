@@ -348,3 +348,75 @@ func TestAgentKeyRepo_备注为空也能读回(t *testing.T) {
 		t.Errorf("备注应为空字符串，实际 %q", got.Name)
 	}
 }
+
+// TestAgentKeyRepo_UpdateName只改备注 验证改名不会顺带改掉状态与角色。
+//
+// 这条守的是安全边界：若 UpdateName 走"读出整行再写回"，
+// 一次改备注的请求就有了改角色/状态的能力——
+// 而角色决定工具授权，那等于让改备注变成了提权。
+func TestAgentKeyRepo_UpdateName只改备注(t *testing.T) {
+	repo := newAgentKeyRepo(t)
+	ctx := context.Background()
+
+	created := &model.AgentKey{
+		Role:    model.AgentRoleOps,
+		Name:    "旧备注",
+		KeyHash: testKeyHash,
+		Status:  model.AgentKeyStatusDisabled,
+	}
+	if err := repo.Create(ctx, created); err != nil {
+		t.Fatalf("创建失败: %v", err)
+	}
+
+	if err := repo.UpdateName(ctx, created.ID, "新备注"); err != nil {
+		t.Fatalf("改名失败: %v", err)
+	}
+
+	got, err := repo.GetByHash(ctx, testKeyHash)
+	if err != nil {
+		t.Fatalf("查询失败: %v", err)
+	}
+	if got.Name != "新备注" {
+		t.Errorf("备注 = %q，期望新备注", got.Name)
+	}
+	if got.Role != model.AgentRoleOps {
+		t.Errorf("角色被改动了 = %q，期望保持 ops", got.Role)
+	}
+	if got.Status != model.AgentKeyStatusDisabled {
+		t.Errorf("状态被改动了 = %d，期望保持禁用（%d）",
+			got.Status, model.AgentKeyStatusDisabled)
+	}
+}
+
+// TestAgentKeyRepo_UpdateName不存在时报错 避免"删了又改名成功"的假象。
+func TestAgentKeyRepo_UpdateName不存在时报错(t *testing.T) {
+	repo := newAgentKeyRepo(t)
+
+	err := repo.UpdateName(context.Background(), 99999, "改谁呢")
+	if !errors.Is(err, model.ErrAgentKeyNotFound) {
+		t.Errorf("改不存在的密钥应返回 ErrAgentKeyNotFound，实际 %v", err)
+	}
+}
+
+// TestAgentKeyRepo_UpdateName裁剪空白 保证脏输入不会原样入库。
+func TestAgentKeyRepo_UpdateName裁剪空白(t *testing.T) {
+	repo := newAgentKeyRepo(t)
+	ctx := context.Background()
+
+	created := &model.AgentKey{
+		Role: model.AgentRoleSupport, Name: "原名", KeyHash: testKeyHash,
+	}
+	if err := repo.Create(ctx, created); err != nil {
+		t.Fatalf("创建失败: %v", err)
+	}
+	if err := repo.UpdateName(ctx, created.ID, "  带空格的  "); err != nil {
+		t.Fatalf("改名失败: %v", err)
+	}
+	got, err := repo.GetByHash(ctx, testKeyHash)
+	if err != nil {
+		t.Fatalf("查询失败: %v", err)
+	}
+	if got.Name != "带空格的" {
+		t.Errorf("备注应裁剪首尾空白，实际 %q", got.Name)
+	}
+}

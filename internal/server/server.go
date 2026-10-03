@@ -33,6 +33,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/LTZY-ACU/ltzy-api/internal/agent"
 	"github.com/LTZY-ACU/ltzy-api/internal/broadcast"
 	"github.com/LTZY-ACU/ltzy-api/internal/config"
 	"github.com/LTZY-ACU/ltzy-api/internal/corpus"
@@ -251,6 +252,15 @@ type Server struct {
 	// 名称变化频率远低于查询频率，短 TTL（30s）足够；管理员改名的改动
 	// 至多滞后 30 秒出现在列表上，展示性数据可接受。
 	nameCache *ttlCache
+
+	// agent 是 AI Agent 对话引擎（惰性构建，见 agent_wiring.go）。
+	//
+	// 放 Server 而非包级全局：测试里两个 Server 必须各自持有独立的引擎，
+	// 包级单例会让并行测试共享同一个 LLMClient（连带共享连接池），
+	// 表现为"单跑通过、全量跑偶发失败"。
+	agent     *agent.Engine
+	agentErr  error
+	agentOnce sync.Once
 }
 
 // New 创建并装配 HTTP 服务（不启动监听，便于测试直接取用 Handler）。
