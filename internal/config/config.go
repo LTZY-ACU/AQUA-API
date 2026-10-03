@@ -96,12 +96,16 @@ const (
 	//   - audit_log：合规留痕一般要求至少一年，取 365 天；
 	//   - quota_reservation：在途预留最长十几分钟，结算/释放后台账留 7 天足够对账；
 	//   - corpus_sample：语料样本体积最大且含原始请求体，尽快回收，取 30 天；
-	//   - broadcast：群发回执只用于排查投递失败，90 天足够。
+	//   - broadcast：群发回执只用于排查投递失败，90 天足够；
+	//   - probe_log：探针历史每轮巡检每渠道一行，是本组里写入频率最高的一张
+	//     （1 渠道 × 96 轮/天 ≈ 3.5 万行/月），但它的唯一用途是回答
+	//     "最近有没有变慢"，30 天足够覆盖所有劣化复盘窗口，故取最短。
 	DefaultRetentionUsageLogDays         = 180
 	DefaultRetentionAuditLogDays         = 365
 	DefaultRetentionQuotaReservationDays = 7
 	DefaultRetentionCorpusSampleDays     = 30
 	DefaultRetentionBroadcastDays        = 90
+	DefaultRetentionProbeLogDays         = 30
 )
 
 // 渠道健康巡检（自动延迟刷新）的默认参数。
@@ -188,6 +192,8 @@ type RetentionConfig struct {
 	CorpusSampleDays int `json:"corpus_sample_days"`
 	// BroadcastDays 是群发回执（email_broadcast_recipients）的保留天数。
 	BroadcastDays int `json:"broadcast_days"`
+	// ProbeLogDays 是渠道探针历史（channel_probe_logs）的保留天数。
+	ProbeLogDays int `json:"probe_log_days"`
 }
 
 // HealthConfig 描述渠道健康巡检（自动延迟刷新）的运行方式。
@@ -429,6 +435,7 @@ func Default() *Config {
 			QuotaReservationDays: DefaultRetentionQuotaReservationDays,
 			CorpusSampleDays:     DefaultRetentionCorpusSampleDays,
 			BroadcastDays:        DefaultRetentionBroadcastDays,
+			ProbeLogDays:         DefaultRetentionProbeLogDays,
 		},
 		// 健康巡检默认开启：零配置部署就应当能拿到渠道延迟，
 		// 否则"自动刷新延迟"这项能力对新站点等于不存在。
@@ -572,6 +579,7 @@ func applyEnv(cfg *Config) {
 	setIfNotEmptyInt(&cfg.Retention.QuotaReservationDays, EnvPrefix+"RETENTION_QUOTA_RESERVATION_DAYS")
 	setIfNotEmptyInt(&cfg.Retention.CorpusSampleDays, EnvPrefix+"RETENTION_CORPUS_SAMPLE_DAYS")
 	setIfNotEmptyInt(&cfg.Retention.BroadcastDays, EnvPrefix+"RETENTION_BROADCAST_DAYS")
+	setIfNotEmptyInt(&cfg.Retention.ProbeLogDays, EnvPrefix+"RETENTION_PROBE_LOG_DAYS")
 	// 渠道健康巡检：允许 AQUA_HEALTH_ENABLED=false 完全关掉（例如上游按量计费且希望零取样）。
 	setIfNotEmptyBool(&cfg.Health.Enabled, EnvPrefix+"HEALTH_ENABLED")
 	setIfNotEmptyInt(&cfg.Health.IntervalMinutes, EnvPrefix+"HEALTH_INTERVAL_MINUTES")
@@ -785,6 +793,7 @@ func (c *Config) Validate() error {
 		{"retention.quota_reservation_days", c.Retention.QuotaReservationDays},
 		{"retention.corpus_sample_days", c.Retention.CorpusSampleDays},
 		{"retention.broadcast_days", c.Retention.BroadcastDays},
+		{"retention.probe_log_days", c.Retention.ProbeLogDays},
 	} {
 		if d.val < 0 {
 			return fmt.Errorf("配置错误：%s=%d 非法，必须 ≥ 0（0 表示不清理）", d.name, d.val)

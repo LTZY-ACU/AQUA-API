@@ -29,6 +29,7 @@ const GROUPS: ShellNavGroup[] = [
     title: '资源',
     items: [
       { label: '渠道管理', href: '/admin/channels', icon: 'server' },
+      { label: '渠道健康', href: '/admin/channel-health', icon: 'chart' },
       { label: '模型映射', href: '/admin/model-mappings', icon: 'layers' },
       { label: '模型分组', href: '/admin/groups', icon: 'tag' },
       { label: '计价规则', href: '/admin/prices', icon: 'quota' },

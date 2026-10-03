@@ -292,6 +292,10 @@ func (s *Server) registerRoutes() {
 	admin.PUT("/channels/:id", s.handleUpdateChannel)
 	admin.DELETE("/channels/:id", s.handleDeleteChannel)
 	admin.POST("/channels/:id/test", s.handleTestChannel)
+	// 渠道健康看板：成功率快照（真实流量）+ 探针成功率，供后台一页看全。
+	admin.GET("/channels/health", s.handleChannelHealth)
+	// 单渠道探针历史时间线（延迟曲线数据源）。
+	admin.GET("/channels/:id/probes", s.handleChannelProbeTimeline)
 	// 密钥池明细与单把密钥的状态/调度参数管理
 	admin.GET("/channels/:id/keys", s.handleListChannelKeys)
 	admin.PUT("/keys/:keyId", s.handleUpdateChannelKeyStatus)

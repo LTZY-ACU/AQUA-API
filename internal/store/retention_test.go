@@ -77,6 +77,12 @@ func seedRetentionRows(t *testing.T, db *sql.DB, now time.Time) {
 	execSQL(t, db, "INSERT INTO email_broadcast_recipients (broadcast_id, user_id, email, created_at) VALUES (1, 1, 'old@example.com', ?)", old)
 	execSQL(t, db, "INSERT INTO email_broadcasts (created_at, updated_at) VALUES (?, ?)", fresh, fresh)
 	execSQL(t, db, "INSERT INTO email_broadcast_recipients (broadcast_id, user_id, email, created_at) VALUES (2, 2, 'new@example.com', ?)", fresh)
+
+	// 渠道探针历史：一条超期 + 一条未到期。
+	// 探针历史是本组里写入最频繁的一张（每渠道每轮一行），
+	// 若不接进保留期，它是唯一会随运行时间压垮统计查询的表。
+	execSQL(t, db, "INSERT INTO channel_probe_logs (channel_id, at, ok, latency_ms) VALUES (1, ?, 1, 120)", old)
+	execSQL(t, db, "INSERT INTO channel_probe_logs (channel_id, at, ok, latency_ms) VALUES (1, ?, 1, 130)", fresh)
 }
 
 // TestRetention_Purge 按保留期删除各表中过期数据，未到期的与在途记录原样保留。
@@ -94,17 +100,19 @@ func TestRetention_Purge(t *testing.T) {
 		QuotaReservationDays: 7,
 		CorpusSampleDays:     30,
 		BroadcastDays:        90,
+		ProbeLogDays:         30,
 	}, now)
 	if err != nil {
 		t.Fatalf("Purge 返回错误: %v", err)
 	}
 
 	if counts.UsageLogs != 1 || counts.AuditLogs != 1 ||
-		counts.QuotaReservations != 3 || counts.CorpusSamples != 1 || counts.Broadcasts != 1 {
-		t.Errorf("删除条数不符：%+v，期望 usage=1 audit=1 reservation=3 corpus=1 broadcast=1", counts)
+		counts.QuotaReservations != 3 || counts.CorpusSamples != 1 || counts.Broadcasts != 1 ||
+		counts.ChannelProbeLogs != 1 {
+		t.Errorf("删除条数不符：%+v，期望 usage=1 audit=1 reservation=3 corpus=1 broadcast=1 probe=1", counts)
 	}
-	if counts.Total() != 7 {
-		t.Errorf("Total() = %d，期望 7", counts.Total())
+	if counts.Total() != 8 {
+		t.Errorf("Total() = %d，期望 8", counts.Total())
 	}
 
 	// 剩余行：每表各留一条未到期的
@@ -134,6 +142,12 @@ func TestRetention_Purge(t *testing.T) {
 		"SELECT COUNT(*) FROM email_broadcast_recipients WHERE broadcast_id = 2"); n != 1 {
 		t.Error("未到期批次的回执被误删")
 	}
+	if n := countRows(t, db, "SELECT COUNT(*) FROM channel_probe_logs"); n != 1 {
+		t.Errorf("channel_probe_logs 剩余 %d 行，期望 1", n)
+	}
+	if n := countRows(t, db, "SELECT COUNT(*) FROM channel_probe_logs WHERE latency_ms = 130"); n != 1 {
+		t.Error("未到期的探针历史被误删，趋势曲线会被截短")
+	}
 }
 
 // TestRetention_ZeroPolicySkips 验证保留天数为 0 的表整表跳过（永久留痕的开关）。
@@ -157,6 +171,9 @@ func TestRetention_ZeroPolicySkips(t *testing.T) {
 	}
 	if n := countRows(t, db, "SELECT COUNT(*) FROM quota_reservations"); n != 5 {
 		t.Errorf("quota_reservations 剩余 %d 行，期望 5（0 天 = 不清理）", n)
+	}
+	if n := countRows(t, db, "SELECT COUNT(*) FROM channel_probe_logs"); n != 2 {
+		t.Errorf("channel_probe_logs 剩余 %d 行，期望 2（0 天 = 不清理）", n)
 	}
 }
 
@@ -182,6 +199,9 @@ func TestRetention_PartialPolicy(t *testing.T) {
 	if n := countRows(t, db, "SELECT COUNT(*) FROM corpus_samples"); n != 2 {
 		t.Errorf("corpus_samples 剩余 %d 行，期望 2（未配置 = 不清理）", n)
 	}
+	if n := countRows(t, db, "SELECT COUNT(*) FROM channel_probe_logs"); n != 2 {
+		t.Errorf("channel_probe_logs 剩余 %d 行，期望 2（未配置 = 不清理）", n)
+	}
 }
 
 // TestRetention_FailureReported 验证数据库故障必须以 error 上报，不能被吞掉。
@@ -204,6 +224,7 @@ func TestRetention_FailureReported(t *testing.T) {
 		QuotaReservationDays: 7,
 		CorpusSampleDays:     30,
 		BroadcastDays:        90,
+		ProbeLogDays:         30,
 	}, time.Now())
 	if err == nil {
 		t.Fatal("数据库已关闭时期望 Purge 返回错误，实际被吞掉")

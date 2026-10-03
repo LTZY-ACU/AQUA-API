@@ -237,6 +237,8 @@ func run() error {
 	// 第三方账号绑定：本站账号 ↔ QIU 科技账号的对应关系（第三方登录的依据）。
 	externalAccounts := store.NewExternalAccountRepository(st.DB())
 	alertChannels := store.NewAlertChannelRepository(st.DB())
+	// 渠道探针历史：巡检每轮的结论按时间追加，看板据此画延迟曲线与成功率趋势。
+	channelProbeLogs := store.NewChannelProbeLogRepository(st.DB())
 	// SMTP 配置仓储：口令以密文落库（加密器与渠道密钥同一个）。
 	smtpSettings := store.NewSMTPRepository(st.DB(), cipher)
 	// 额度预留台账：鉴权时预扣、响应后结算/退还，堵住并发超支漏洞。
@@ -529,6 +531,8 @@ func run() error {
 		// 告警通知：通道仓储 + 派发器（渠道熔断、账号锁定等事件外发）
 		AlertChannels: alertChannels,
 		Notifier:      notifier,
+		// 渠道探针历史：巡检留痕 + 后台看板数据源
+		ChannelProbeLogs: channelProbeLogs,
 		// 指标注册表：与告警派发器共用同一份，保证 /metrics 展示完整
 		Metrics: appMetrics,
 		// 敏感词表：/v1 入口的内容合规过滤
@@ -681,6 +685,7 @@ func retentionPolicyFrom(rc config.RetentionConfig) store.RetentionPolicy {
 		QuotaReservationDays: rc.QuotaReservationDays,
 		CorpusSampleDays:     rc.CorpusSampleDays,
 		BroadcastDays:        rc.BroadcastDays,
+		ProbeLogDays:         rc.ProbeLogDays,
 	}
 }
 

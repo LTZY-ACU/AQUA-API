@@ -17,18 +17,20 @@
 //   - 并发默认 2：既不把巡检变成一次针对上游的并发压测，也不让 30 个渠道串行跑几分钟；
 //   - 写只用 RecordProbeResult（部分列更新）：巡检读到的渠道副本正在被读写竞争，
 //     整行写回会用陈旧副本覆盖管理员刚保存的配置。
+//   - 历史单独追加、失败只记日志：渠道行的当前值与时间线是两件事，
+//     前者写失败会让卡片显示旧值（必须报错），后者写失败只影响趋势图（不能拖累前者）。
 //
 // 流转（Flow）：
 //
 //	cmd/aqua/main.go → go srv.StartHealthProbe(ctx, logger)
 //	  → 每 interval 一轮 ProbeAllChannels
-//	      → 列出启用渠道 → 并发 N → probeChannel（复用人工测活同一条探测链路）
-//	      → Channels.RecordProbeResult → 只在健康状态翻转时告警
+//	      → 列出启用渠道 → 并发 N → probeOneChannel（复用人工测活同一条探测链路）
+//	      → Channels.RecordProbeResult（当前值）→ ChannelProbeLogs.Append（历史一行）
+//	      → 只在健康状态翻转时告警
 //
 // 扩展（Extend）：
 //
 //	想让路由按延迟挑渠道：在 relay 的候选排序里读 ch.LatencyMS（已有），本文件无需改动；
-//	想接历史曲线：另建一张明细表，在 recordProbe 里同时追加一行即可；
 //	想加"连续 N 次失败自动禁用"：在 probeChannel 之后根据 LastTestOK 的连续计数决定即可。
 package server
 
@@ -202,6 +204,29 @@ func (s *Server) probeOneChannel(ctx context.Context, ch *model.Channel) {
 	if err := s.deps.Channels.RecordProbeResult(ctx, record); err != nil {
 		slog.Error("记录渠道巡检结果失败", "error", err, "channel_id", ch.ID, "channel", ch.Name)
 		return
+	}
+
+	// 历史留痕：与上面的"当前值"是两次独立写入，且刻意不因失败而 return。
+	//
+	// 为什么不共用一次事务：渠道行的当前值是巡检的产出（丢了会显示旧延迟），
+	// 历史行只是趋势分析的原料（丢了只是曲线上少一个点）。
+	// 把它们绑在一个事务里，等于让"趋势数据暂不可写"也能拖垮"当前延迟不更新"——
+	// 用一条本可丢失的数据换一个必然丢失的展示，是明确的坏交易。
+	if s.deps.ChannelProbeLogs != nil {
+		histErr := s.deps.ChannelProbeLogs.Append(ctx, &model.ChannelProbeLog{
+			ChannelID:  ch.ID,
+			At:         record.At,
+			OK:         result.OK,
+			LatencyMS:  result.LatencyMS,
+			StatusCode: result.StatusCode,
+			Model:      result.Model,
+			Message:    result.Message,
+		})
+		if histErr != nil {
+			// 记 Warn 而不 Error：它不影响本轮探测的结论，只影响趋势完整度。
+			slog.Warn("追加渠道探针历史失败（本轮延迟已记录，趋势图将缺一个点）",
+				"error", histErr, "channel_id", ch.ID, "channel", ch.Name)
+		}
 	}
 
 	switch {

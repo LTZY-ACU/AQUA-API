@@ -74,6 +74,15 @@ type Deps struct {
 	// AlertChannels 是告警通知通道仓储（渠道熔断、账号锁定等事件的投递目标）。
 	AlertChannels model.AlertChannelRepository
 
+	// ChannelProbeLogs 是渠道探针历史仓储（巡检每轮结论的时间线）。
+	//
+	// 与 Channels 分开的原因：前者是只写的历史事实，后者是可改的配置行，
+	// 生命周期与一致性要求完全不同（见 model/channel_probe_log.go）。
+	//
+	// 为 nil 时巡检与看板自动退化为"只有当前值、没有历史"：
+	// 探针历史是可选的观察能力，它缺失不该让渠道巡检失败。
+	ChannelProbeLogs model.ChannelProbeLogRepository
+
 	// Metrics 是进程内指标注册表。
 	//
 	// 为什么由外部传入而不是服务内部创建：告警派发器也要往同一张表里写

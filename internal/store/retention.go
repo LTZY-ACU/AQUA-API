@@ -3,9 +3,9 @@
 // 意图（Why）：
 //
 //	usage_logs / audit_logs / quota_reservations / corpus_samples /
-//	email_broadcast_recipients 这五张表只写不删，站点跑得越久库越大，
-//	最终撑爆磁盘并拖慢统计查询。它们又各有留痕价值，不能一删了之，
-//	因此把"留多久"交給配置（config.Retention），这里只负责执行删除。
+//	email_broadcast_recipients / channel_probe_logs 这六张表只写不删，
+//	站点跑得越久库越大，最终撑爆磁盘并拖慢统计查询。它们又各有留痕价值，
+//	不能一删了之，因此把"留多久"交給配置（config.Retention），这里只负责执行删除。
 //
 //	为什么放在 store 而不是新增 model 仓储方法：清理是数据库维护动作，
 //	不是领域行为；为它改 3 个仓储接口会连带改动所有测试替身，收益为零。
@@ -51,6 +51,8 @@ type RetentionPolicy struct {
 	CorpusSampleDays int
 	// BroadcastDays 是群发回执的保留天数（按所属批次的创建时间判断）。
 	BroadcastDays int
+	// ProbeLogDays 是渠道探针历史的保留天数。
+	ProbeLogDays int
 }
 
 // RetentionCounts 是一轮清理里各表实际删除的行数（0 = 无可删数据）。
@@ -60,11 +62,13 @@ type RetentionCounts struct {
 	QuotaReservations int64
 	CorpusSamples     int64
 	Broadcasts        int64 // 群发回执行数
+	ChannelProbeLogs  int64 // 渠道探针历史行数
 }
 
 // Total 返回本轮删除的总行数，便于一行日志判断"有没有动静"。
 func (c RetentionCounts) Total() int64 {
-	return c.UsageLogs + c.AuditLogs + c.QuotaReservations + c.CorpusSamples + c.Broadcasts
+	return c.UsageLogs + c.AuditLogs + c.QuotaReservations + c.CorpusSamples +
+		c.Broadcasts + c.ChannelProbeLogs
 }
 
 // Retention 执行保留期清理。
@@ -126,6 +130,15 @@ func (r *Retention) Purge(ctx context.Context, p RetentionPolicy, now time.Time)
 			`DELETE FROM email_broadcast_recipients
 			  WHERE broadcast_id IN (SELECT id FROM email_broadcasts WHERE created_at < ?)`,
 			cutoff.Unix())
+	})
+
+	counts.ChannelProbeLogs, errs = purgeWith(ctx, p.ProbeLogDays, now, errs, func(ctx context.Context, cutoff time.Time) (int64, error) {
+		// 探针历史是本组里写入最频繁的一张（每渠道每轮一行），
+		// 不清理的话它是唯一会随站点运行时间线性压垮统计查询的表。
+		// 走 at 索引（0053 建了 idx_channel_probe_logs_at），
+		// 因此这里不按渠道逐个删——那会把一次全站清理变成 N 次索引扫描。
+		return execDelete(ctx, r.db,
+			"DELETE FROM channel_probe_logs WHERE at < ?", cutoff.Unix())
 	})
 
 	if len(errs) > 0 {
