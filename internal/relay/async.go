@@ -47,7 +47,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // 任务链路的错误定义。
@@ -428,7 +428,7 @@ func (s *TaskService) Cancel(ctx context.Context, task *model.Task) error {
 // 若只依赖"客户端查询时顺带推进"，这些任务会永远停在"进行中"，
 // 用户永远拿不到结果，额度也永远处于"已扣但未定"的状态。
 //
-// 启动方式：由 main 以 goroutine 方式调用（见 cmd/aqua）。
+// 启动方式：由 main 以 goroutine 方式调用（见 cmd/ltzy）。
 func (s *TaskService) RunPoller(ctx context.Context, interval time.Duration) {
 	if interval <= 0 {
 		interval = defaultPollInterval

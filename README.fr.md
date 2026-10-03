@@ -1,12 +1,14 @@
 <div align="center">
 
-<img src="favicon.ico" width="88" alt="AQUA-API" />
+<img src="favicon.ico" width="88" alt="LTZY-API" />
 
-# AQUA-API
+# LTZY-API
 
 **Réunir tous vos fournisseurs d'IA en amont derrière un seul point d'entrée.**
 
 Passerelle LLM API auto-hébergée · Système de gestion de l'usage de l'IA
+
+Self-hosted LLM Gateway · OpenAI-compatible API
 
 ![License](assets/badges/license.svg)
 ![Go](assets/badges/go.svg)
@@ -19,6 +21,8 @@ Passerelle LLM API auto-hébergée · Système de gestion de l'usage de l'IA
 
 [简体中文](README.md) · [English](README.en.md) · [Français](README.fr.md) · [Русский](README.ru.md) · [Español](README.es.md) · [العربية](README.ar.md)
 
+> Anciennement **AQUA-API** — renommé **LTZY-API** en octobre 2026. Les anciens liens redirigent automatiquement.
+
 </div>
 
 ---
@@ -27,9 +31,9 @@ Passerelle LLM API auto-hébergée · Système de gestion de l'usage de l'IA
 
 | Canal | Adresse |
 | --- | --- |
-| Site officiel (démonstration en ligne) | https://aqua.is3.cc |
-| Dépôt de code | https://github.com/LTZY-ACU/AQUA-API |
-| Signaler un problème (Issues) | https://github.com/LTZY-ACU/AQUA-API/issues |
+| Site officiel (démonstration en ligne) | https://ltzy.top |
+| Dépôt de code | https://github.com/LTZY-ACU/LTZY-API |
+| Signaler un problème (Issues) | https://github.com/LTZY-ACU/LTZY-API/issues |
 
 > **Ce dépôt est la seule source faisant autorité pour les adresses officielles.** En cas de changement de domaine, la mise à jour se fait d'abord ici, avant d'être propagée partout ailleurs.
 > Il est donc plus fiable de mettre ce dépôt en favori que de mettre un nom de domaine en favori.
@@ -61,7 +65,7 @@ Il est courant que ce type de site soit bloqué à tort par les messageries (QQ 
 - [Adresses officielles](#adresses-officielles)
 - [Clause de non-responsabilité](#clause-de-non-responsabilité)
 - [De quoi s'agit-il](#de-quoi-sagit-il)
-- [Pourquoi choisir AQUA-API](#pourquoi-choisir-aqua-api)
+- [Pourquoi choisir LTZY-API](#pourquoi-choisir-ltzy-api)
 - [Vue d'ensemble des fonctionnalités](#vue-densemble-des-fonctionnalités)
 - [Fonctionnalités clés](#fonctionnalités-clés)
 - [Architecture du système](#architecture-du-système)
@@ -100,13 +104,13 @@ Pour les limites de la marque et des droits, voir la [Déclaration de marque et 
 
 ## De quoi s'agit-il
 
-AQUA-API est une **passerelle LLM API auto-hébergée**, doublée d'un **système de gestion de l'usage de l'IA**.
+LTZY-API est une **passerelle LLM API auto-hébergée**, doublée d'un **système de gestion de l'usage de l'IA**.
 
 Vos fournisseurs en amont forment généralement un ensemble d'éléments incompatibles entre eux : clés officielles OpenAI, Azure, Claude, Gemini, divers fournisseurs cloud,
 divers services compatibles OpenAI, comptes issus d'abonnements (Claude / Codex / Gemini), ainsi que des instances locales Ollama / vLLM.
 En aval, vous avez toutes sortes d'applications : Claude Code, Codex CLI, Cursor, applications maison, scripts, plugins.
 
-AQUA-API se place au milieu et transforme cet ensemble en **un point d'entrée unique, un protocole unique et une comptabilité limpide**.
+LTZY-API se place au milieu et transforme cet ensemble en **un point d'entrée unique, un protocole unique et une comptabilité limpide**.
 
 ```mermaid
 flowchart LR
@@ -117,7 +121,7 @@ flowchart LR
         C4["Applications maison / scripts / plugins"]
     end
 
-    AQUA["AQUA-API<br/>Protocole unifié · ordonnancement intelligent · facturation précise<br/>Groupes · pool de clés · console d'exploitation"]
+    LTZY["LTZY-API<br/>Protocole unifié · ordonnancement intelligent · facturation précise<br/>Groupes · pool de clés · console d'exploitation"]
 
     subgraph U["Services en amont"]
         U1["OpenAI / Azure"]
@@ -127,26 +131,26 @@ flowchart LR
         U5["Ollama / vLLM locaux"]
     end
 
-    C1 --> AQUA
-    C2 --> AQUA
-    C3 --> AQUA
-    C4 --> AQUA
-    AQUA --> U1
-    AQUA --> U2
-    AQUA --> U3
-    AQUA --> U4
-    AQUA --> U5
+    C1 --> LTZY
+    C2 --> LTZY
+    C3 --> LTZY
+    C4 --> LTZY
+    LTZY --> U1
+    LTZY --> U2
+    LTZY --> U3
+    LTZY --> U4
+    LTZY --> U5
 ```
 
-Les problèmes résolus par AQUA-API se résument à trois mots : **unification** (protocole et point d'entrée), **fiabilité** (évitement automatique des pannes) et **traçabilité comptable** (chaque centime justifiable).
+Les problèmes résolus par LTZY-API se résument à trois mots : **unification** (protocole et point d'entrée), **fiabilité** (évitement automatique des pannes) et **traçabilité comptable** (chaque centime justifiable).
 
 ---
 
-## Pourquoi choisir AQUA-API
+## Pourquoi choisir LTZY-API
 
 Les passerelles comparables ne manquent pas ; ce qui manque, c'est celle à laquelle on peut **confier ses comptes en toute sérénité**. Chaque ligne ci-dessous découle d'un enseignement tiré du terrain.
 
-| Point d'attention | Pratique courante | AQUA-API |
+| Point d'attention | Pratique courante | LTZY-API |
 | --- | --- | --- |
 | Clés amont | Stockées en clair dans la base, la console peut les réafficher en clair | Chiffrées en AES-256-GCM avant stockage, la clé maître provient uniquement de variables d'environnement ; même en cas de compromission de la console, aucun clair n'est exfiltrable |
 | Clé maître de chiffrement | Écrite dans le fichier de configuration | Le champ homonyme du fichier de configuration est purement et simplement ignoré ; elle ne peut provenir que d'une variable d'environnement et ne fuit pas avec le dépôt |
@@ -566,14 +570,16 @@ faute de quoi cette part de coût serait comptée à 0 et le rapport serait trop
 
 ## Démarrage rapide
 
+> Cette section ne couvre que le chemin le plus court. **Le guide de déploiement complet** (installation systemd en production, reverse proxy Nginx/Caddy avec HTTPS, mise à niveau et retour arrière, référence CLI et variables d'environnement, FAQ) est disponible dans [DEPLOYMENT.md](DEPLOYMENT.md) (en chinois).
+
 ### Méthode 1 : Docker Compose (recommandée)
 
 ```bash
-git clone https://github.com/LTZY-ACU/AQUA-API.git && cd AQUA-API
+git clone https://github.com/LTZY-ACU/LTZY-API.git && cd LTZY-API
 cp .env.example .env
 
-docker build -t aqua-api:local .          # première construction (frontend + backend + image d'exécution)
-docker run --rm aqua-api:local -gen-key   # affiche une clé maître, à reporter dans AQUA_APP_KEY du fichier .env
+docker build -t ltzy-api:local .          # première construction (frontend + backend + image d'exécution)
+docker run --rm ltzy-api:local -gen-key   # affiche une clé maître, à reporter dans AQUA_APP_KEY du fichier .env
 
 docker compose up -d
 ```
@@ -583,21 +589,21 @@ Ouvrez `http://127.0.0.1:8787` dans le navigateur. Les données se trouvent dans
 ### Méthode 2 : docker run (sans compose)
 
 ```bash
-docker build -t aqua-api:local .
+docker build -t ltzy-api:local .
 
-docker run -d --name aqua-api \
+docker run -d --name ltzy-api \
   -p 8787:8787 \
   -e AQUA_APP_KEY="<你的主密钥>" \
   -e AQUA_SERVER_LISTEN=0.0.0.0:8787 \
   -v "$PWD/data:/data" \
   --restart unless-stopped \
-  aqua-api:local
+  ltzy-api:local
 ```
 
 ### Méthode 3 : binaire unique (serveur Linux / systemd)
 
 ```bash
-go build -o aqua ./cmd/aqua           # pur Go, zéro CGO, aucun besoin de gcc
+go build -o aqua ./cmd/ltzy           # pur Go, zéro CGO, aucun besoin de gcc
 
 ./aqua -gen-key                        # génère la clé maître de chiffrement (génération seule, sans écriture sur disque)
 
@@ -624,7 +630,7 @@ sudo systemctl status aqua-api
 # Frontend (facultatif : web/dist du dépôt n'est qu'un espace réservé, l'interface définitive doit être construite pour être intégrée)
 cd web && npm ci && npm run build && cd ..
 
-go build -o bin/aqua ./cmd/aqua
+go build -o bin/aqua ./cmd/ltzy
 export AQUA_APP_KEY="<你的主密钥>"      # Windows : $env:AQUA_APP_KEY="..."
 ./bin/aqua -config ./aqua.json          # sans -config, les valeurs par défaut et les variables d'environnement sont utilisées
 curl http://127.0.0.1:8787/healthz
@@ -690,7 +696,7 @@ Priorité : **valeurs par défaut < fichier de configuration < variables d'envir
 | `AQUA_SMTP_USERNAME` | Non | Nom d'utilisateur SMTP |
 | `AQUA_SMTP_PASSWORD` | Non | Mot de passe SMTP, uniquement par variable d'environnement |
 | `AQUA_SMTP_FROM` | Non | Adresse de l'expéditeur |
-| `AQUA_SMTP_FROM_NAME` | Non | Nom affiché de l'expéditeur, par défaut `AQUA-API` |
+| `AQUA_SMTP_FROM_NAME` | Non | Nom affiché de l'expéditeur, par défaut `LTZY-API` |
 | `AQUA_EPAY_KEY` | Non | Clé marchand Yi Pay (signature MD5) |
 | `AQUA_STRIPE_SECRET_KEY` | Non | Stripe Secret Key |
 | `AQUA_STRIPE_WEBHOOK_SECRET` | Non | Clé de signature Stripe Webhook |
@@ -725,7 +731,7 @@ Un exemple complet figure dans [`.env.example`](.env.example).
 
 ## Exemples d'intégration
 
-Tout client compatible OpenAI : il suffit de pointer l'URL de base vers ce service et de remplacer la clé par un jeton AQUA-API.
+Tout client compatible OpenAI : il suffit de pointer l'URL de base vers ce service et de remplacer la clé par un jeton LTZY-API.
 
 ### curl
 
@@ -758,7 +764,7 @@ print(resp.choices[0].message.content)
 
 ### Claude Code / clients Anthropic
 
-AQUA-API prend nativement en charge le protocole Anthropic et peut directement prendre en charge le trafic de Claude Code :
+LTZY-API prend nativement en charge le protocole Anthropic et peut directement prendre en charge le trafic de Claude Code :
 
 ```bash
 export ANTHROPIC_BASE_URL=https://你的域名
@@ -960,7 +966,7 @@ cd web && npm ci && npm run type-check && npm run build   # frontend
 Structure des répertoires (la racine de ce dépôt est le répertoire de code) :
 
 ```
-cmd/aqua/              point d'entrée du programme (assemblage seul, sans logique métier)
+cmd/ltzy/              point d'entrée du programme (assemblage seul, sans logique métier)
 internal/config/       chargement et validation de la configuration
 internal/model/        modèle de domaine et interfaces de dépôt (sans SQL)
 internal/store/        implémentation de la persistance (SQL + migrations versionnées, par dialecte)
@@ -1023,6 +1029,6 @@ Documents annexes :
 
 **Si ce projet vous a fait gagner du temps sur la tenue de vos comptes, n'hésitez pas à lui donner une Star ⭐**
 
-[Démonstration en ligne](https://aqua.is3.cc) · [Ouvrir une Issue](https://github.com/LTZY-ACU/AQUA-API/issues) · [GitHub](https://github.com/LTZY-ACU/AQUA-API) · [English](README.en.md)
+[Démonstration en ligne](https://ltzy.top) · [Ouvrir une Issue](https://github.com/LTZY-ACU/LTZY-API/issues) · [GitHub](https://github.com/LTZY-ACU/LTZY-API) · [English](README.en.md)
 
 </div>

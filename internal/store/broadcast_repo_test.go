@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // newTestBroadcastRepo 构造基于临时数据库的群发仓储。
@@ -27,7 +27,7 @@ func newTestBroadcastRepo(t *testing.T) model.EmailBroadcastRepository {
 func newTestBroadcast() *model.EmailBroadcast {
 	return &model.EmailBroadcast{
 		Template: "billing_line",
-		Subject:  "【AQUA-API】测试通知",
+		Subject:  "【LTZY-API】测试通知",
 		BodyHTML: "<p>正文</p>",
 		Status:   model.BroadcastStatusPending,
 	}

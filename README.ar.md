@@ -1,12 +1,14 @@
 <div align="center" dir="rtl">
 
-<img src="favicon.ico" width="88" alt="AQUA-API" />
+<img src="favicon.ico" width="88" alt="LTZY-API" />
 
-# AQUA-API
+# LTZY-API
 
 **اجمع كل مزوّدي الذكاء الاصطناعي (AI) لديك في مدخل واحد.**
 
 بوابة LLM API ذاتية الاستضافة · نظام إدارة استهلاك الذكاء الاصطناعي
+
+Self-hosted LLM Gateway · OpenAI-compatible API
 
 ![License](assets/badges/license.svg)
 ![Go](assets/badges/go.svg)
@@ -19,6 +21,8 @@
 
 [简体中文](README.md) · [English](README.en.md) · [Français](README.fr.md) · [Русский](README.ru.md) · [Español](README.es.md) · [العربية](README.ar.md)
 
+> كان يُعرف سابقًا باسم **AQUA-API** — أُعيدت تسميته إلى **LTZY-API** في أكتوبر 2026. الروابط القديمة تُعيد التوجيه تلقائيًا.
+
 </div>
 
 ---
@@ -27,9 +31,9 @@
 
 | القناة | العنوان |
 | --- | --- |
-| الموقع الرسمي (عرض حيّ) | https://aqua.is3.cc |
-| مستودع الكود | https://github.com/LTZY-ACU/AQUA-API |
-| الإبلاغ عن مشكلة (Issues) | https://github.com/LTZY-ACU/AQUA-API/issues |
+| الموقع الرسمي (عرض حيّ) | https://ltzy.top |
+| مستودع الكود | https://github.com/LTZY-ACU/LTZY-API |
+| الإبلاغ عن مشكلة (Issues) | https://github.com/LTZY-ACU/LTZY-API/issues |
 
 > **هذا المستودع هو المصدر الموثوق الوحيد للعنوان الرسمي.** إذا تغيّر النطاق، فسيُحدَّث هنا أولًا ثم يُنقل إلى أي مكان آخر.
 > لذلك، حفظ هذا المستودع أكثر موثوقية من حفظ نطاق.
@@ -100,13 +104,13 @@
 
 ## ما هذا المشروع
 
-AQUA-API هو **بوابة LLM API ذاتية الاستضافة**، وهو في الوقت نفسه **نظام لإدارة استهلاك الذكاء الاصطناعي**.
+LTZY-API هو **بوابة LLM API ذاتية الاستضافة**، وهو في الوقت نفسه **نظام لإدارة استهلاك الذكاء الاصطناعي**.
 
 عادةً ما تكون مصادرك مزيجًا من عناصر غير متوافقة: مفاتيح OpenAI الرسمية، وAzure، وClaude، وGemini، ومزوّدو السحابة المتنوّعون،
 والخدمات المتوافقة مع OpenAI، والحسابات المشترك بها (Claude / Codex / Gemini)، وكذلك Ollama / vLLM المُشغّلة محليًا.
 أما الطرف المستهلك لديك فهو تطبيقات متنوّعة: Claude Code، وCodex CLI، وCursor، وتطبيقات مخصّصة، وسكربتات، وإضافات.
 
-يقف AQUA-API في الوسط، منظّمًا هذه الفوضى في **مدخل واحد، وبروتوكول واحد، ودفتر حساب واضح**.
+يقف LTZY-API في الوسط، منظّمًا هذه الفوضى في **مدخل واحد، وبروتوكول واحد، ودفتر حساب واضح**.
 
 ```mermaid
 flowchart LR
@@ -117,7 +121,7 @@ flowchart LR
         C4["تطبيقات مخصّصة / سكربتات / إضافات"]
     end
 
-    AQUA["AQUA-API<br/>بروتوكول موحّد · جدولة ذكية · فوترة دقيقة<br/>المجموعات · مجموعة الاعتمادات · لوحة التشغيل"]
+    LTZY["LTZY-API<br/>بروتوكول موحّد · جدولة ذكية · فوترة دقيقة<br/>المجموعات · مجموعة الاعتمادات · لوحة التشغيل"]
 
     subgraph U["خدمات المصدر"]
         U1["OpenAI / Azure"]
@@ -127,15 +131,15 @@ flowchart LR
         U5["Ollama / vLLM المحلي"]
     end
 
-    C1 --> AQUA
-    C2 --> AQUA
-    C3 --> AQUA
-    C4 --> AQUA
-    AQUA --> U1
-    AQUA --> U2
-    AQUA --> U3
-    AQUA --> U4
-    AQUA --> U5
+    C1 --> LTZY
+    C2 --> LTZY
+    C3 --> LTZY
+    C4 --> LTZY
+    LTZY --> U1
+    LTZY --> U2
+    LTZY --> U3
+    LTZY --> U4
+    LTZY --> U5
 ```
 
 المشكلات الجوهرية التي يحلّها ثلاث كلمات: **التوحيد** (البروتوكول والمدخل)، و**الموثوقية** (تجنّب الأعطال تلقائيًا)، و**قابلية المحاسبة** (كل قرش له مستند).
@@ -146,7 +150,7 @@ flowchart LR
 
 البوابات المماثلة كثيرة، والناقص هو تلك التي **يمكن ائتمانها على الحسابات**. وكل بند أدناه تصميم وُلد بعد تجاوز عقبات حقيقية.
 
-| المحور | الممارسة الشائعة | AQUA-API |
+| المحور | الممارسة الشائعة | LTZY-API |
 | --- | --- | --- |
 | مفاتيح المصدر | تُخزَّن نصًا صريحًا ويمكن رؤيتها من اللوحة | تشفير AES-256-GCM قبل التخزين، والمفتاح الرئيسي يُحقن من متغيّر البيئة فقط؛ وحتى لو اختُرق الخادم لا يمكن تصدير النص الصريح |
 | المفتاح الرئيسي للتشفير | يُكتب معًا في ملف الإعدادات | يُتجاهل الحقل المطابق في ملف الإعدادات تمامًا، ولا يُقبل إلا عبر متغيّر البيئة، فلا يتسرّب مع المستودع |
@@ -566,14 +570,16 @@ sequenceDiagram
 
 ## البدء السريع
 
+> يغطي هذا القسم أقصر مسار فقط. **دليل النشر الكامل** (التثبيت الإنتاجي عبر systemd، وكيل عكسي Nginx/Caddy مع HTTPS، الترقية والتراجع، مرجع أوامر CLI ومتغيرات البيئة، الأسئلة الشائعة) متاح في [DEPLOYMENT.md](DEPLOYMENT.md) (بالصينية).
+
 ### الطريقة 1: Docker Compose (موصى بها)
 
 ```bash
-git clone https://github.com/LTZY-ACU/AQUA-API.git && cd AQUA-API
+git clone https://github.com/LTZY-ACU/LTZY-API.git && cd LTZY-API
 cp .env.example .env
 
-docker build -t aqua-api:local .          # البناء الأول (الواجهة + الخلفية + صورة التشغيل)
-docker run --rm aqua-api:local -gen-key   # طباعة مفتاح رئيسي ووضعه في AQUA_APP_KEY داخل .env
+docker build -t ltzy-api:local .          # البناء الأول (الواجهة + الخلفية + صورة التشغيل)
+docker run --rm ltzy-api:local -gen-key   # طباعة مفتاح رئيسي ووضعه في AQUA_APP_KEY داخل .env
 
 docker compose up -d
 ```
@@ -583,21 +589,21 @@ docker compose up -d
 ### الطريقة 2: docker run (بدون compose)
 
 ```bash
-docker build -t aqua-api:local .
+docker build -t ltzy-api:local .
 
-docker run -d --name aqua-api \
+docker run -d --name ltzy-api \
   -p 8787:8787 \
   -e AQUA_APP_KEY="<你的主密钥>" \
   -e AQUA_SERVER_LISTEN=0.0.0.0:8787 \
   -v "$PWD/data:/data" \
   --restart unless-stopped \
-  aqua-api:local
+  ltzy-api:local
 ```
 
 ### الطريقة 3: ملف تنفيذي واحد (خادم Linux / systemd)
 
 ```bash
-go build -o aqua ./cmd/aqua           # Go خالص، بدون CGO، ولا حاجة إلى gcc
+go build -o aqua ./cmd/ltzy           # Go خالص، بدون CGO، ولا حاجة إلى gcc
 
 ./aqua -gen-key                        # توليد المفتاح الرئيسي للتشفير (توليد فقط، دون كتابة على القرص)
 
@@ -624,7 +630,7 @@ sudo systemctl status aqua-api
 # الواجهة (اختياري: مجلّد web/dist في المستودع مؤقّت، والواجهة الرسمية تُضمَّن بعد البناء فقط)
 cd web && npm ci && npm run build && cd ..
 
-go build -o bin/aqua ./cmd/aqua
+go build -o bin/aqua ./cmd/ltzy
 export AQUA_APP_KEY="<你的主密钥>"      # Windows: $env:AQUA_APP_KEY="..."
 ./bin/aqua -config ./aqua.json          # بدون -config تُستخدم القيم الافتراضية ومتغيّرات البيئة
 curl http://127.0.0.1:8787/healthz
@@ -690,7 +696,7 @@ location / {
 | `AQUA_SMTP_USERNAME` | لا | اسم مستخدم SMTP |
 | `AQUA_SMTP_PASSWORD` | لا | كلمة مرور SMTP، ولا تُمرَّر إلا عبر متغيّر البيئة |
 | `AQUA_SMTP_FROM` | لا | عنوان المُرسِل |
-| `AQUA_SMTP_FROM_NAME` | لا | الاسم المعروض للمُرسِل، الافتراضي `AQUA-API` |
+| `AQUA_SMTP_FROM_NAME` | لا | الاسم المعروض للمُرسِل، الافتراضي `LTZY-API` |
 | `AQUA_EPAY_KEY` | لا | مفتاح تاجر YiPay（易支付） (توقيع MD5) |
 | `AQUA_STRIPE_SECRET_KEY` | لا | Stripe Secret Key |
 | `AQUA_STRIPE_WEBHOOK_SECRET` | لا | مفتاح توقيع Stripe Webhook |
@@ -725,7 +731,7 @@ location / {
 
 ## أمثلة الربط
 
-أي عميل متوافق مع OpenAI: وجّه Base URL إلى هنا واستبدل المفتاح برمز AQUA-API.
+أي عميل متوافق مع OpenAI: وجّه Base URL إلى هنا واستبدل المفتاح برمز LTZY-API.
 
 ### curl
 
@@ -758,7 +764,7 @@ print(resp.choices[0].message.content)
 
 ### عميل Claude Code / Anthropic
 
-يدعم AQUA-API بروتوكول Anthropic أصالةً، ويمكنه تولّي حركة Claude Code مباشرة:
+يدعم LTZY-API بروتوكول Anthropic أصالةً، ويمكنه تولّي حركة Claude Code مباشرة:
 
 ```bash
 export ANTHROPIC_BASE_URL=https://你的域名
@@ -960,7 +966,7 @@ cd web && npm ci && npm run type-check && npm run build   # الواجهة ال�
 بنية المجلّدات (جذر هذا المستودع هو مجلّد الكود):
 
 ```
-cmd/aqua/              مدخل البرنامج (تجميع فقط، بلا منطق أعمال)
+cmd/ltzy/              مدخل البرنامج (تجميع فقط، بلا منطق أعمال)
 internal/config/       تحميل الإعدادات والتحقق منها
 internal/model/        نموذج النطاق وواجهات المستودع (بلا SQL)
 internal/store/        تنفيذ الاستمرارية (SQL + ترحيلات مُنسَّخة، مجلّدات حسب اللهجة)
@@ -1023,6 +1029,6 @@ aqua-api.service       وحدة systemd (نشر على خادم فعلي)
 
 **إن كان هذا المشروع قد وفّر عليك وقت المطابقة، فمرحبًا بمنحه Star ⭐**
 
-[عرض حيّ](https://aqua.is3.cc) · [إرسال Issue](https://github.com/LTZY-ACU/AQUA-API/issues) · [GitHub](https://github.com/LTZY-ACU/AQUA-API) · [English](README.en.md)
+[عرض حيّ](https://ltzy.top) · [إرسال Issue](https://github.com/LTZY-ACU/LTZY-API/issues) · [GitHub](https://github.com/LTZY-ACU/LTZY-API) · [English](README.en.md)
 
 </div>

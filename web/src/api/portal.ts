@@ -19,11 +19,14 @@ import type {
   CreateTokenPayload,
   CreateTokenResult,
   FinanceSummary,
+  LeaderboardStats,
   LogQuery,
+  ModelStats,
   MyGroupsResponse,
   OrderQuery,
   Paged,
   PaymentOrder,
+  RedeemResult,
   Task,
   TaskQuery,
   TrialGrant,
@@ -80,6 +83,28 @@ export function fetchMyUsage(days: number): Promise<UsageStats> {
   return api.get<UsageStats>('/user/usage', { days })
 }
 
+/**
+ * GET /api/user/leaderboard?days=30：用量排行榜（付费榜 + 免费榜）。
+ *
+ * days：统计窗口天数（默认 30）；管理员传 all=1 可查看完整榜单（不限前 20）。
+ */
+export function fetchLeaderboard(days = 30, all = false): Promise<LeaderboardStats> {
+  return api.get<LeaderboardStats>('/user/leaderboard', all ? { days, all: '1' } : { days })
+}
+
+/**
+ * GET /api/user/models/stats?model=...：模型实时指标（tokens/s、平均耗时、TTFB）。
+ *
+ * 供模型详情页的「实时 tokens/s」展示：5 秒轮询一次，
+ * 窗口默认近 15 分钟，可传 minutes 调整。
+ *
+ * 模型名走查询参数而不是路径段：本项目对外模型名普遍带斜杠
+ * （如 LTZY-CALL/deepseek-v4.1-flash），放进路径会被后端路由拆成多段而 404。
+ */
+export function fetchModelStats(model: string, minutes = 15): Promise<ModelStats> {
+  return api.get<ModelStats>('/user/models/stats', { model, minutes })
+}
+
 /** GET /api/user/logs：我的调用日志（分页 + 筛选） */
 export function listMyLogs(query: LogQuery): Promise<Paged<UsageLog>> {
   return api.get<Paged<UsageLog>>('/user/logs', { ...query })
@@ -107,6 +132,16 @@ export function listMyOrders(query: OrderQuery = {}): Promise<Paged<PaymentOrder
 /** POST /api/user/orders：下单（只传金额与通道，额度由服务端计算） */
 export function createOrder(payload: CreateOrderPayload): Promise<PaymentOrder> {
   return api.post<PaymentOrder>('/user/orders', payload)
+}
+
+/**
+ * POST /api/user/redeem：兑换码兑换额度。
+ *
+ * 失败原因（不存在 / 已使用 / 已过期 / 已作废）由后端按界面语言返回精确文案，
+ * 调用方 catch 后直接展示 err.message 即可，无需本地映射。
+ */
+export function redeemMyCode(code: string): Promise<RedeemResult> {
+  return api.post<RedeemResult>('/user/redeem', { code })
 }
 
 /* ── 财务记录 ───────────────────────────────────────────── */

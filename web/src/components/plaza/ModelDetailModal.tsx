@@ -29,6 +29,7 @@ import { useSite } from '@/lib/site/site-context'
 
 import { ModelPriceCalculator } from './ModelPriceCalculator'
 import { billingKindLabel, billingKindOf, cachePriceLabel, ratioLabel } from './pricing'
+import { ModelLivePanel } from './ModelLivePanel'
 
 interface Props {
   model: PlazaModel | null
@@ -95,6 +96,9 @@ export function ModelDetailModal({ model, viewer, onClose }: Props) {
           modelName={model.model}
         />
       </div>
+
+      {/* 模型实时指标 + 连通性测试（key=模型名：切换模型自动重拉并停止旧轮询） */}
+      <ModelLivePanel key={model.model} modelName={model.model} />
     </Modal>
   )
 }

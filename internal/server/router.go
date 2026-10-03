@@ -32,9 +32,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/config"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/server/middleware"
 )
 
 // loginUsernameKey 是登录接口的账号维度限流键（安全审计 P2-4）。
@@ -229,6 +229,14 @@ func (s *Server) registerRoutes() {
 	portal.GET("/groups", s.handleMyGroups)
 	portal.GET("/usage", s.handleMyUsage)
 	portal.GET("/logs", s.handleMyLogs)
+	// 用量排行榜（付费榜 / 免费榜）：登录可见；管理员带 ?all=1 可看完整榜
+	portal.GET("/leaderboard", s.handleLeaderboard)
+	// 模型实时指标（tokens/s / 平均耗时 / TTFB）：模型详情页使用。
+	//
+	// 模型名走查询参数而不是路径段：本项目对外模型名普遍带斜杠
+	// （如 LTZY-CALL/deepseek-v4.1-flash），放进路径会被 gin 拆成多段而 404
+	// （与 /admin/corpus/models/delete 等接口同一处理，见上方 corpus 段注释）。
+	portal.GET("/models/stats", s.handleModelStats)
 	// 异步任务（用户只能看自己的）
 	portal.GET("/tasks", s.handleMyListTasks)
 
@@ -296,6 +304,10 @@ func (s *Server) registerRoutes() {
 	admin.GET("/channels/health", s.handleChannelHealth)
 	// 单渠道探针历史时间线（延迟曲线数据源）。
 	admin.GET("/channels/:id/probes", s.handleChannelProbeTimeline)
+
+	// 模型测速：逐模型测首字延迟（TTFB），结果落库并供广场展示。
+	// 与 /test（测活）的分工：测活回答"渠道通不通"，测速回答"每个模型各有多快"。
+	admin.POST("/channels/:id/speedtest", s.handleSpeedTestChannel)
 	// 密钥池明细与单把密钥的状态/调度参数管理
 	admin.GET("/channels/:id/keys", s.handleListChannelKeys)
 	admin.PUT("/keys/:keyId", s.handleUpdateChannelKeyStatus)
@@ -375,14 +387,14 @@ func (s *Server) registerRoutes() {
 	admin.POST("/broadcasts/:id/cancel", s.handleCancelBroadcast)
 
 	// 限时试用额：给全站用户发一笔会过期的额度（需显式 confirm + 唯一批次）。
-	// 到期回收由后台协程负责，不占用接口（见 cmd/aqua 的 runTrialGrantReclaimer）。
+	// 到期回收由后台协程负责，不占用接口（见 cmd/ltzy 的 runTrialGrantReclaimer）。
 	admin.POST("/trial-grants", s.handleGrantTrial)
 
 	// 语料共建计划：模型清单 / 特别福利账户 / 样本查看与导出。
 	//
 	// 注意两处刻意的路径设计：
 	//   - 删除类操作用 POST + 请求体而不是 DELETE /:name —— 模型名里带斜杠
-	//     （AQUA-CALL/deepseek-v4.1-flash），放进路径会被路由拆成多段；
+	//     （LTZY-CALL/deepseek-v4.1-flash），放进路径会被路由拆成多段；
 	//   - 样本列表只回预览，看全文走 /samples/:id，两条访问路径都会写审计。
 	admin.GET("/corpus/models", s.handleListCorpusModels)
 	admin.POST("/corpus/models", s.handleUpsertCorpusModel)

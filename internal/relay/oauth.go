@@ -39,8 +39,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/netguard"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/netguard"
 )
 
 // oauthRefreshTimeout 是刷新请求的超时时间。

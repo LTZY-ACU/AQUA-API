@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // newFinanceTestSite 准备一个已登录的用户，并返回其会话令牌与用户 id。

@@ -25,7 +25,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // mustWrite 向嗅探器写入内容，写入失败即终止测试。

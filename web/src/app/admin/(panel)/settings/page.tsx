@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { fetchSettings, fetchSMTP, testSMTP, updateSettings, updateSMTP } from '@/api/admin'
-import type { PaymentChannel, PaymentSettings, SeoSettings, SiteSettings, SMTPSettings, UpdateSiteSettingsPayload } from '@/api/types'
+import type { PaymentChannel, PaymentSettings, SeoSettings, SiteSettings, SMTPSettings, SpeedTestSettings, UpdateSiteSettingsPayload } from '@/api/types'
 import { Badge, Card, SkeletonRows, Tabs } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Switch, Textarea } from '@/components/ui/Form'
@@ -27,12 +27,13 @@ import { useToast } from '@/lib/toast/toast-context'
 import { useSite } from '@/lib/site/site-context'
 import { quotaToYuanInput, yuanToQuota } from '@/utils/money'
 
-type TabKey = 'site' | 'seo' | 'payment' | 'compliance'
+type TabKey = 'site' | 'seo' | 'payment' | 'speedtest' | 'compliance'
 
 const TABS: { value: TabKey; label: string }[] = [
   { value: 'site', label: '站点' },
   { value: 'seo', label: 'SEO' },
   { value: 'payment', label: '支付' },
+  { value: 'speedtest', label: '测速' },
   { value: 'compliance', label: '合规' },
 ]
 
@@ -100,6 +101,9 @@ export default function AdminSettingsPage() {
   const [policeLicense, setPoliceLicense] = useState('')
   const [contactEmail, setContactEmail] = useState('')
 
+  /* ── 模型测速分区 ── */
+  const [speedtest, setSpeedtest] = useState<SpeedTestSettings | null>(null)
+
   /* ── SMTP（独立卡片） ── */
   const [smtp, setSmtp] = useState<SMTPSettings | null>(null)
   const [smtpHost, setSmtpHost] = useState('')
@@ -149,6 +153,8 @@ export default function AdminSettingsPage() {
         setIcpLicense(s.compliance?.icp_license ?? '')
         setPoliceLicense(s.compliance?.police_license ?? '')
         setContactEmail(s.compliance?.contact_email ?? '')
+
+        setSpeedtest(s.speedtest ?? null)
       })
       .catch((err) => toastError(err instanceof Error ? err.message : '设置加载失败'))
       .finally(() => setLoading(false))
@@ -228,6 +234,16 @@ export default function AdminSettingsPage() {
           police_license: policeLicense.trim(),
           contact_email: contactEmail.trim(),
         },
+        // 测速分区整体提交：数值字段在输入框层已限制为数字，这里再兜底一次
+        speedtest: speedtest
+          ? {
+              enabled: speedtest.enabled,
+              public: speedtest.public,
+              auto_block: speedtest.auto_block,
+              timeout_seconds: Number(speedtest.timeout_seconds) || 20,
+              max_models: Number(speedtest.max_models) || 50,
+            }
+          : undefined,
       }
       await updateSettings(payload)
       toast('设置已保存')
@@ -289,7 +305,7 @@ export default function AdminSettingsPage() {
       <div className="space-y-5">
         <div>
           <h1 className="text-xl font-bold text-ink">系统设置</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">站点 · SEO · 支付 · 合规 · 邮件通道</p>
+          <p className="mt-0.5 text-[13px] text-ink-3">站点 · SEO · 支付 · 测速 · 合规 · 邮件通道</p>
         </div>
         <Card>
           <SkeletonRows rows={8} />
@@ -303,7 +319,7 @@ export default function AdminSettingsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-ink">系统设置</h1>
-          <p className="mt-0.5 text-[13px] text-ink-3">站点 · SEO · 支付 · 合规 · 邮件通道</p>
+          <p className="mt-0.5 text-[13px] text-ink-3">站点 · SEO · 支付 · 测速 · 合规 · 邮件通道</p>
         </div>
         <Button variant="primary" loading={saving} onClick={handleSave}>保存设置</Button>
       </div>
@@ -447,6 +463,57 @@ export default function AdminSettingsPage() {
             </div>
           </Card>
         </>
+      )}
+
+      {/* ── 模型测速 ── */}
+      {tab === 'speedtest' && speedtest && (
+        <Card className="space-y-4">
+          <label className="flex items-center justify-between text-[13px] text-ink-2">
+            <span>
+              启用模型测速
+              <span className="ml-1 text-xs text-ink-3">（关闭后管理端测速入口拒绝、广场不再下发延迟）</span>
+            </span>
+            <Switch checked={speedtest.enabled} onChange={(v) => setSpeedtest({ ...speedtest, enabled: v })} label="启用模型测速" />
+          </label>
+          <label className="flex items-center justify-between text-[13px] text-ink-2">
+            <span>
+              在模型广场展示延迟
+              <span className="ml-1 text-xs text-ink-3">（关闭后仅管理员可见，用户侧不展示）</span>
+            </span>
+            <Switch checked={speedtest.public} onChange={(v) => setSpeedtest({ ...speedtest, public: v })} label="在模型广场展示延迟" />
+          </label>
+          <label className="flex items-center justify-between text-[13px] text-ink-2">
+            <span>
+              自动屏蔽无权限模型
+              <span className="ml-1 text-xs text-ink-3">（测速时上游明确回 403/404 的模型自动从渠道移除）</span>
+            </span>
+            <Switch checked={speedtest.auto_block} onChange={(v) => setSpeedtest({ ...speedtest, auto_block: v })} label="自动屏蔽无权限模型" />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="单模型超时（秒）" help="范围 5~120；部分平台排队久可调大">
+              <Input
+                value={speedtest.timeout_seconds}
+                onChange={(e) => setSpeedtest({ ...speedtest, timeout_seconds: Number(e.target.value) || 0 })}
+                type="number"
+                placeholder="20"
+              />
+            </Field>
+            <Field label="单次测速模型数上限" help="范围 1~500；超过将拒绝并提示分批">
+              <Input
+                value={speedtest.max_models}
+                onChange={(e) => setSpeedtest({ ...speedtest, max_models: Number(e.target.value) || 0 })}
+                type="number"
+                placeholder="50"
+              />
+            </Field>
+          </div>
+          <div className="rounded-md border border-line bg-surface p-3 text-xs text-ink-3">
+            测速说明：逐模型发送最小请求（提示词 ping + max_tokens=1，约消耗 2~3 token），
+            测量首字延迟（TTFB）并在拿到首字后立即断开。串行探测，数字不受并发干扰。
+            开启自动屏蔽时，上游明确拒绝（403/404）的模型会自动从渠道清单移除；
+            超时与 5xx 属暂时性故障，不会被移除。
+          </div>
+        </Card>
       )}
 
       {/* ── 合规 ── */}

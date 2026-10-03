@@ -1,23 +1,38 @@
-/** 用户门户：游乐场（/console/playground）—— 在线试聊。
+/** 用户门户：游乐场（/console/playground）—— 在线使用界面。
  *
  * 意图（Why）：
  *   用访问令牌直接调用 /v1/chat/completions，让用户在浏览器确认「令牌通不通、上游答不答得上」。
  *   令牌只粘贴一次、只存内存（不落 localStorage），避免明文泄漏风险。
+ *
+ * 增强（本轮）：
+ *   1) 模型列表实时更新：除加载公开广场外，每 30 秒轮询 /v1/models（OpenAI 兼容端点），
+ *      自动反映「当前可用模型」——渠道上线/下线、令牌权限变化都会同步；
+ *   2) 调用状态实时显示：请求中（「正在生成…」+ 停止按钮）→ 流式输出 → 完成后展示
+ *      本轮耗时与 TTFB（首字延迟），让用户直观感知"这次调用发生了什么"。
  */
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
-import { Card, CodeBlock } from '@/components/ui/Display'
+import { Card } from '@/components/ui/Display'
 import { Field, Input, Select } from '@/components/ui/Form'
 import { fetchModelPlaza } from '@/api/site'
 import { useToast } from '@/lib/toast/toast-context'
-import { getSessionToken } from '@/api/client'
+import Link from 'next/link'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
+}
+
+/** 模型列表轮询间隔（毫秒）：实时反映可用模型变化 */
+const MODELS_POLL_MS = 30_000
+
+/** 单轮调用的时序状态（用于"调用状态"展示） */
+interface CallStat {
+  ttfb_ms: number | null // 首字延迟（收到首个数据块的时间）
+  total_ms: number // 本轮总耗时（发起 → 流结束/断开）
 }
 
 export default function ConsolePlaygroundPage() {
@@ -28,19 +43,54 @@ export default function ConsolePlaygroundPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState('')
+  const [stat, setStat] = useState<CallStat | null>(null)
+  const [modelsUpdatedAt, setModelsUpdatedAt] = useState<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const { toastError } = useToast()
 
-  // 预填本机会话令牌（用户可改），并加载模型名
-  useEffect(() => {
-    const session = getSessionToken()
-    if (session) setToken(session)
-    void fetchModelPlaza().then((data) => {
-      const names = data.items.map((item) => item.model)
-      setModels(names)
-      if (names.length > 0) setModel(names[0])
-    }).catch(() => setModels([]))
+  /** 加载模型列表：公开广场（含可用性）为基底，/v1/models 提供实时可用性补充。
+   *
+   * 令牌说明（重要）：/v1 网关认的是「访问令牌」（sk- 开头，存于 tokens 表），
+   * 登录会话令牌走的是另一套鉴权，填进去只会 401。因此这里【不预填】会话令牌，
+   * 且只在用户填入的令牌形如 sk- 时才去探 /v1/models（否则静默退化为广场清单）。
+   */
+  const loadModels = useCallback(async (accessToken: string) => {
+    try {
+      // 1) 公开广场：完整模型清单（含分组/可用性）
+      const plaza = await fetchModelPlaza()
+      const plazaNames = plaza.items.map((item) => item.model)
+      // 2) /v1/models：带访问令牌鉴权的"实时可用"模型（无令牌/非 sk- 令牌时跳过）
+      let liveNames: string[] = []
+      const tok = accessToken.trim()
+      if (tok.startsWith('sk-')) {
+        try {
+          const live = await fetch('/v1/models', {
+            headers: { Authorization: `Bearer ${tok}` },
+          })
+          if (live.ok) {
+            const data = (await live.json()) as { data?: { id: string }[] }
+            liveNames = (data.data ?? []).map((m) => m.id)
+          }
+        } catch {
+          /* 网络错误：忽略，保留广场清单 */
+        }
+      }
+      // 3) 并集：广场模型在前（保证首次就有选择），/v1 模型在后（实时补充）
+      const merged = [...new Set([...plazaNames, ...liveNames])]
+      setModels(merged)
+      setModelsUpdatedAt(Date.now())
+      setModel((prev) => prev || merged[0] || '')
+    } catch {
+      setModels([])
+    }
   }, [])
+
+  // 首次加载 + 每 30 秒轮询（令牌变化时重建轮询，保证 /v1/models 用最新令牌）
+  useEffect(() => {
+    void loadModels(token)
+    const timer = setInterval(() => void loadModels(token), MODELS_POLL_MS)
+    return () => clearInterval(timer)
+  }, [loadModels, token])
 
   async function handleSend() {
     if (!token.trim() || !model.trim() || !prompt.trim()) {
@@ -57,6 +107,7 @@ export default function ConsolePlaygroundPage() {
     setMessages((prev) => [...prev, userMsg])
     setPrompt('')
     setError('')
+    setStat(null)
 
     // 流式读取：SSE 逐块渲染（等价旧版 playLLM 逻辑）
     const controller = new AbortController()
@@ -64,8 +115,14 @@ export default function ConsolePlaygroundPage() {
     setStreaming(true)
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
 
+    const startedAt = Date.now()
+    let ttfb: number | null = null
+
     try {
-      const response = await fetch('/api/v1/chat/completions', {
+      // 直连 /v1 网关（相对路径）：生产环境前端与 API 同源由 go:embed 伺服，
+      // 开发环境由 next.config.ts 的 rewrites 代理到本机后端。
+      // 不能走 /api 前缀——网关路由只注册在 /v1 下，多一层前缀会 404。
+      const response = await fetch('/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token.trim()}` },
         body: JSON.stringify({
@@ -105,6 +162,8 @@ export default function ConsolePlaygroundPage() {
           if (!trimmed.startsWith('data:')) continue
           const payload = trimmed.slice(5).trim()
           if (payload === '[DONE]') continue
+          // 记录首字延迟（首个真实数据块到达）
+          if (ttfb === null) ttfb = Date.now() - startedAt
           try {
             const json = JSON.parse(payload) as { choices?: { delta?: { content?: string } }[] }
             const delta = json.choices?.[0]?.delta?.content
@@ -128,6 +187,7 @@ export default function ConsolePlaygroundPage() {
         setError('请求出错了，请检查令牌是否有效')
       }
     } finally {
+      setStat({ ttfb_ms: ttfb, total_ms: Date.now() - startedAt })
       setStreaming(false)
       abortRef.current = null
     }
@@ -137,7 +197,7 @@ export default function ConsolePlaygroundPage() {
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-ink">游乐场</h1>
-        <p className="mt-0.5 text-[13px] text-ink-3">在线试聊，先确认令牌能通再接入客户端</p>
+        <p className="mt-0.5 text-[13px] text-ink-3">在线使用界面：调用全部可用模型，实时观察调用状态</p>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
@@ -163,7 +223,27 @@ export default function ConsolePlaygroundPage() {
             {error && <div className="rounded-md border border-err/25 bg-err/8 px-3 py-2 text-[13px] text-err">{error}</div>}
           </div>
 
-          <div className="mt-4 flex items-end gap-2 border-t border-line pt-4">
+          {/* 调用状态条：本轮耗时 / 首字延迟 / 模型列表更新时间 */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line pt-3 text-[12px] text-ink-3">
+            {stat && (
+              <span>
+                本轮耗时 <span className="font-mono text-ink-2">{stat.total_ms} ms</span>
+                {stat.ttfb_ms !== null && (
+                  <>
+                    {' · '}首字延迟 <span className="font-mono text-ink-2">{stat.ttfb_ms} ms</span>
+                  </>
+                )}
+              </span>
+            )}
+            {modelsUpdatedAt && (
+              <span className="ml-auto">
+                模型列表更新于 <span className="font-mono">{new Date(modelsUpdatedAt).toLocaleTimeString()}</span>
+                {' · '}共 <span className="font-mono">{models.length}</span> 个
+              </span>
+            )}
+          </div>
+
+          <div className="mt-4 flex items-end gap-2">
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -185,8 +265,13 @@ export default function ConsolePlaygroundPage() {
 
         <Card>
           <div className="space-y-3">
-            <Field label="访问令牌">
-              <Input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="sk-..." />
+            <Field label="访问令牌" help="sk- 开头的 API 访问令牌，不是登录密码">
+              <Input
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="填入 sk- 开头的 API 访问令牌（在令牌页创建）"
+              />
             </Field>
             <Field label="模型">
               <Select value={model} onChange={(e) => setModel(e.target.value)}>
@@ -197,7 +282,13 @@ export default function ConsolePlaygroundPage() {
               </Select>
             </Field>
             <div className="text-xs leading-relaxed text-ink-3">
-              令牌只保存在本页内存，刷新即消失。调用走 <code className="rounded bg-ink/5 px-1">/v1</code> 网关。
+              令牌只保存在本页内存，刷新即消失。调用走 <code className="rounded bg-ink/5 px-1">/v1</code> 网关；
+              模型列表每 30 秒自动刷新，反映当前可用模型。
+              <br />
+              还没有令牌？
+              <Link href="/console/tokens" className="text-brand hover:underline">
+                去令牌页创建
+              </Link>
             </div>
           </div>
         </Card>

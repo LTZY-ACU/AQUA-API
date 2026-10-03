@@ -21,12 +21,15 @@ const nextConfig: NextConfig = {
   trailingSlash: true,
   // 静态导出下 next/image 不经过优化服务：一律输出原图，避免打包期报错
   images: { unoptimized: true },
-  // 开发期把 /api 与 /v1 代理到本机 Go 后端（与旧 Vite 行为一致）
+  // 开发期把 /api、/v1、/v1beta 代理到本机 Go 后端（与旧 Vite 行为一致）。
+  // /v1（OpenAI/Anthropic 网关）与 /v1beta（Gemini 网关）是浏览器直连路径，
+  // 不代理的话 Next dev 会当成页面路由返回 404；生产静态导出不走 rewrites，无影响。
   async rewrites() {
     const target = process.env.AQUA_BACKEND || 'http://127.0.0.1:8787'
     return [
       { source: '/api/:path*', destination: `${target}/api/:path*` },
       { source: '/v1/:path*', destination: `${target}/v1/:path*` },
+      { source: '/v1beta/:path*', destination: `${target}/v1beta/:path*` },
     ]
   },
 }

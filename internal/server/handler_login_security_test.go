@@ -28,9 +28,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/crypto"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/store"
+	"github.com/LTZY-ACU/ltzy-api/internal/crypto"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/store"
 )
 
 // loginSecurityFixture 是登录安全用例的公共固件。

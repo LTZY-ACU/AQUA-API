@@ -30,8 +30,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/config"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // generateRSAKeyPair 现场生成一把 2048 位 RSA 密钥对，

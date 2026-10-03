@@ -12,7 +12,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // newTestTaskRepo 构造基于临时数据库的任务仓储。

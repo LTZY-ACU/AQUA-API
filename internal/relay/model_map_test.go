@@ -33,7 +33,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // fakeMappingRepo 是 model.ChannelModelMappingRepository 的内存实现。

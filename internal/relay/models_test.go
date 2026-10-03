@@ -143,6 +143,28 @@ func TestFetchModels_正常返回并携带鉴权头(t *testing.T) {
 	}
 }
 
+// TestFetchModels_地址自带v1版本段 验证去重：NVIDIA 这类目录默认地址含 /v1，
+// 拉取路径仍应是 /v1/models 而不是 /v1/v1/models。
+func TestFetchModels_地址自带v1版本段(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Errorf("应请求 /v1/models（版本段去重），实际 %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"mock-model"}]}`))
+	}))
+	defer upstream.Close()
+
+	r := New(nil, Options{})
+	models, err := r.FetchModels(context.Background(), upstream.URL+"/v1", "k")
+	if err != nil {
+		t.Fatalf("拉取失败: %v", err)
+	}
+	if len(models) != 1 || models[0] != "mock-model" {
+		t.Fatalf("应返回 mock-model，实际 %v", models)
+	}
+}
+
 func TestFetchModels_上游报错时透传可读信息(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

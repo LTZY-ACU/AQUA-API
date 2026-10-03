@@ -32,8 +32,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/reqctx"
 )
 
 // fakeUsageLogRepo 是内存版调用日志仓储，用于断言"计费落了多少"。
@@ -79,6 +79,12 @@ func (f *fakeUsageLogRepo) SumUsageByChannelKey(context.Context, uint64) ([]*mod
 	return nil, nil
 }
 func (f *fakeUsageLogRepo) ModelFailureStats(context.Context, uint64, time.Time) ([]model.ModelFailureStat, error) {
+	return nil, nil
+}
+
+// Leaderboard 是排行榜聚合的桩：转发链路不关心榜单，实现空即可。
+// 但必须存在——接口新增方法后，缺实现的桩会让整个测试包编译失败。
+func (f *fakeUsageLogRepo) Leaderboard(context.Context, model.UsageLogQuery) ([]model.LeaderboardEntry, error) {
 	return nil, nil
 }
 

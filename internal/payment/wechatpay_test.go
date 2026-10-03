@@ -32,8 +32,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/config"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // wechatTestAPIv3Key 是测试用的 32 字节 APIv3 密钥。

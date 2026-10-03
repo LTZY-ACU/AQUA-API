@@ -43,9 +43,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
-	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/reqctx"
 )
 
 // bearerPrefix 是 Authorization 头中令牌的标准前缀。

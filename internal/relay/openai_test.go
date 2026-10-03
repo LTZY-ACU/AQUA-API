@@ -30,10 +30,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/crypto"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
-	"github.com/LTZY-ACU/aqua-api/internal/store"
+	"github.com/LTZY-ACU/ltzy-api/internal/crypto"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/store"
 )
 
 // testEncryptionKey 是测试用密钥材料（非真实密钥）。

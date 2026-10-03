@@ -44,7 +44,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // trialGrantRepository 是 model.TrialGrantRepository 的 SQL 实现，并发安全。

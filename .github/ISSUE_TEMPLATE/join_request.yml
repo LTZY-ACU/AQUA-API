@@ -14,7 +14,7 @@
 #   本表单无需改动。
 
 name: 申请加入开发组
-description: 申请加入 LTZY-ACU 组织，参与 AQUA-API 的开发协作
+description: 申请加入 LTZY-ACU 组织，参与 LTZY-API 的开发协作
 title: "[加入申请] "
 labels: ["join-request"]
 body:

@@ -23,8 +23,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/store"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/store"
 )
 
 // ---- C1：渠道专用价取值优先级 ----

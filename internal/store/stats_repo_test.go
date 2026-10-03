@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // TestTableRowCounts_ReturnsExistingTables 验证行数统计覆盖核心表且只返回存在的表。

@@ -43,8 +43,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/channeltype"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // 自定义异步适配器的配置键（写在渠道扩展配置 ch.ExtraConfig 里）。

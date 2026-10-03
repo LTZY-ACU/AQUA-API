@@ -34,8 +34,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/netguard"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/netguard"
 )
 
 // 投递相关常量。

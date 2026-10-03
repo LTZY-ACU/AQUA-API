@@ -10,12 +10,15 @@
  *   load() → listGroups() 构建分组筛选 + listChannels() 构建渠道筛选，
  *            再按 group / channel_id 拉列表（未选渠道只看分组默认价）；
  *   新建/编辑走 PriceFormModal → createPrice / updatePrice（含 channel_id）；
- *   删除走 ConfirmDialog → deletePrice（删除后该模型按不计费处理）。
+ *   删除走 ConfirmDialog → deletePrice（删除后该模型按不计费处理）；
+ *   页尾费用试算走 QuoteCard → GET /admin/prices/quote（按分组维度，核对定价）。
  *
  * 扩展（Extend）：
  *   新增计费方式：同步 types.ts 的 BillingMode 与弹层下拉、展示徽标文案。
  *   渠道维度字段未写入共享 types.ts（避免与并行改动冲突），
  *   本页用本地 interface（PriceRow / PricePayloadLocal）声明。
+ *   费用试算用 api.get 直连接口而非 admin.ts 的 quotePrice 封装：
+ *   封装缺 group 参数，带不了「按分组试算」（各分组倍率不同正是试算要点）。
  */
 'use client'
 
@@ -23,7 +26,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '@/api/client'
 import { createPrice, deletePrice, listChannels, listGroups, listPrices, updatePrice } from '@/api/admin'
-import type { BillingMode, ModelPrice, ModelPricePayload } from '@/api/types'
+import type { BillingMode, ModelPrice, ModelPricePayload, QuotePreview } from '@/api/types'
 import { Badge, Card, Tabs } from '@/components/ui/Display'
 import { DataTable, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
@@ -31,7 +34,7 @@ import { Field, Input, Select, Switch, Textarea } from '@/components/ui/Form'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
 import { useToast } from '@/lib/toast/toast-context'
 import { useSite } from '@/lib/site/site-context'
-import { formatYuanPerCall, formatYuanPerMillion, quotaToYuanInput, yuanToQuota } from '@/utils/money'
+import { formatYuanFromQuota, formatYuanPerCall, formatYuanPerMillion, quotaToYuanInput, yuanToQuota } from '@/utils/money'
 
 /** 渠道下拉选项（页面内声明，避免改动共享 types.ts）。 */
 interface ChannelOption {
@@ -58,8 +61,14 @@ interface PricePayloadLocal extends ModelPricePayload {
   channel_id?: number
 }
 
-/** 生效计费方式 → 徽标配色与文案（free 免费 / token 按量 / per_call 按次） */
-function billingTone(mode: ModelPrice['effective_billing_mode']): 'ok' | 'info' | 'brand' {
+/**
+ * 生效计费方式 → 徽标配色与文案（free 免费 / token 按量 / per_call 按次）。
+ *
+ * 参数放宽为 string 而非 ModelPrice['effective_billing_mode']：
+ * 试算响应的 billing_mode 可能是空串（未定价），该分支由调用方先行分流，
+ * 这里只负责非空方式的配色；对既有表格列的调用是纯放宽，行为不变。
+ */
+function billingTone(mode: string): 'ok' | 'info' | 'brand' {
   if (mode === 'free') return 'ok'
   if (mode === 'per_call') return 'brand'
   return 'info'
@@ -230,6 +239,9 @@ export default function AdminPricesPage() {
           emptyDescription="为模型配上售价，未定价的模型默认不计费"
         />
       </Card>
+
+      {/* 费用试算：放在页尾，不打断上方「筛选 → 管理规则」的主流程 */}
+      <QuoteCard groups={groups} />
 
       <PriceFormModal
         open={editing !== null}
@@ -419,4 +431,164 @@ function PriceFormModal({
       </div>
     </Modal>
   )
+}
+
+/* ── 费用试算卡片 ─────────────────────────────────────── */
+
+/**
+ * 管理员费用试算：按「分组 × 模型 × 用量」预估一次调用的应扣额度。
+ *
+ * 为什么调后端接口而不是本地复算（与用户侧广场试算器的差别）：
+ *   广场试算器服务无管理权限的普通用户，只能按下发的价格字段本地复算；
+ *   管理端有权直接调 GET /api/admin/prices/quote —— 它与计费链路用同一份
+ *   规则匹配结果（分组倍率已计入），口径最权威，且能区分「免费」
+ *   （命中显式免费规则）与「未定价」（根本没配规则）这两种同为 0 额度的语义。
+ *
+ * 为什么用 api.get 直连而非 admin.ts 的 quotePrice 封装：
+ *   该封装不带 group 参数，而「按分组试算」正是本接口的核心能力
+ *   （各分组倍率不同，换个分组结果就变）。本页对渠道筛选列表已有
+ *   api.get 直连的先例，此处同法调用同一端点并补上 group 查询参数。
+ */
+function QuoteCard({ groups }: { groups: string[] }) {
+  const { quotaPerYuan } = useSite()
+  const { toastError } = useToast()
+  // 空串 = 计费默认分组：与「令牌未指定分组」的真实计费路径一致
+  const [group, setGroup] = useState('')
+  const [model, setModel] = useState('')
+  // 三个用量输入的初始值与后端 parseInt64Query 的缺省回退值一致，避免「界面默认」与「接口默认」两套数
+  const [prompt, setPrompt] = useState('1000')
+  const [completion, setCompletion] = useState('1000')
+  const [cached, setCached] = useState('0')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<QuotePreview | null>(null)
+
+  /**
+   * 用量输入 → 非负整数；空串/非法/负数回退后端缺省值
+   * （与后端 parseInt64Query 的回退语义对齐，保证「试的是什么就算什么」）。
+   * 取整用 floor 而非 round：token 是天然整数单位，后端整数除法
+   * 也是向下截断（「不足 1 额度不计」），与公开试算器保持同一口径。
+   */
+  function toTokens(raw: string, fallback: number): number {
+    if (raw.trim() === '') return fallback
+    const v = Math.floor(Number(raw))
+    return Number.isFinite(v) && v >= 0 ? v : fallback
+  }
+
+  async function handleQuote() {
+    const name = model.trim()
+    if (!name) {
+      toastError('请填写模型名')
+      return
+    }
+    setLoading(true)
+    try {
+      const data = await api.get<QuotePreview>('/admin/prices/quote', {
+        model: name,
+        // group 为空串时被客户端 cleanParams 剔除，后端据此落到计费默认分组
+        group,
+        prompt_tokens: toTokens(prompt, 1000),
+        completion_tokens: toTokens(completion, 1000),
+        cached_tokens: toTokens(cached, 0),
+      })
+      setResult(data)
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : '试算失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <h2 className="text-[15px] font-semibold text-ink">费用试算</h2>
+        <span className="text-[12px] text-ink-3">
+          按分组核对一次调用的应扣额度——与计费链路同一套规则（分组倍率已计入）
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Field label="分组" help="不选 = 计费默认分组，与令牌未指定分组时的真实计费一致">
+          <Select value={group} onChange={(e) => setGroup(e.target.value)} aria-label="试算分组">
+            <option value="">默认分组</option>
+            {groups.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field label="模型名" required help="可填被通配规则覆盖的模型；也可填未配价模型核对「未定价」状态">
+          <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="如 gpt-4o" />
+        </Field>
+
+        <Field label="输入 token 数" help="prompt 部分用量；留空按后端缺省 1000">
+          <Input type="number" min={0} step={1} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+        </Field>
+
+        <Field label="输出 token 数" help="completion 部分用量；留空按后端缺省 1000">
+          <Input type="number" min={0} step={1} value={completion} onChange={(e) => setCompletion(e.target.value)} />
+        </Field>
+
+        <Field label="其中命中缓存" help="输入中命中上游缓存的部分（后端自动夹到不超过输入量）；留空按 0">
+          <Input type="number" min={0} step={1} value={cached} onChange={(e) => setCached(e.target.value)} />
+        </Field>
+
+        <div className="flex items-end">
+          <Button variant="primary" loading={loading} onClick={handleQuote}>
+            试算
+          </Button>
+        </div>
+      </div>
+
+      {result && (
+        <div className="mt-4 flex flex-wrap items-end justify-between gap-3 rounded-md border border-line bg-surface/50 px-3.5 py-3">
+          <div>
+            <div className="text-[12px] text-ink-3">预估花费</div>
+            <div className="mt-0.5 font-mono text-xl font-semibold tabular-nums text-ink">
+              {formatYuanFromQuota(result.quota, quotaPerYuan)}
+            </div>
+            <div className="mt-0.5 font-mono text-[11px] text-ink-3">
+              = {result.quota.toLocaleString('zh-CN')} 额度
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            {result.priced ? (
+              result.is_free ? (
+                <Badge tone="ok">免费</Badge>
+              ) : (
+                <Badge tone={billingTone(result.billing_mode)}>
+                  {BILLING_LABEL[result.billing_mode] ?? result.billing_mode}
+                </Badge>
+              )
+            ) : (
+              <Badge tone="warn">未定价</Badge>
+            )}
+            <span className="max-w-[28rem] text-right text-[11px] text-ink-3">{quoteHint(result, group)}</span>
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+/**
+ * 组装试算结果的说明文案：未定价与免费各给明确语义（二者额度同为 0
+ * 但性质完全不同，绝不能混为一谈——前者是待办，后者是站长的决定）；
+ * 按量模式回显用量明细，让「这个金额由哪些量算出来的」可核对。
+ */
+function quoteHint(result: QuotePreview, group: string): string {
+  const label = `分组「${group || '默认'}」`
+  if (!result.priced) {
+    return `${label}未命中任何计价规则，调用不计费；若应收费，请先为其新建规则`
+  }
+  if (result.is_free) {
+    return `${label}命中显式免费规则，调用不计费`
+  }
+  if (result.billing_mode === 'per_call') {
+    // 按次模型 token 单价全为 0，改用量数字价格也不会动——提前说明，避免误判试算失灵
+    return `${label} · 按次计费：token 用量不参与计算，按 1 次计`
+  }
+  return `${label} · 输入 ${result.prompt_tokens.toLocaleString('zh-CN')}（其中缓存 ${result.cached_tokens.toLocaleString('zh-CN')}）· 输出 ${result.completion_tokens.toLocaleString('zh-CN')}`
 }

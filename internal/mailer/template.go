@@ -75,7 +75,7 @@ func renderEmailCode(siteName, code string, ttl time.Duration, c emailCodeCopy) 
 	// 避免管理员无意间填入的字符破坏邮件结构（或在客户端触发脚本解析）。
 	name := html.EscapeString(strings.TrimSpace(siteName))
 	if name == "" {
-		name = "AQUA-API"
+		name = "LTZY-API"
 	}
 
 	minutes := int(ttl.Minutes())
@@ -287,8 +287,8 @@ const BroadcastTemplateBillingLine = "billing_line"
 
 // BroadcastTemplateCallLine 是「按次计费专线上线 + 上线优惠」通知的模板键。
 //
-// 与 billing_line 的区别：billing_line 讲的是**按量计费**的 AQUA/ 专线，
-// 本模板讲的是**按次计费**的 AQUA-CALL/ 专线，两者是并列的两条线，不可混用。
+// 与 billing_line 的区别：billing_line 讲的是**按量计费**的 LTZY/ 专线，
+// 本模板讲的是**按次计费**的 LTZY-CALL/ 专线，两者是并列的两条线，不可混用。
 const BroadcastTemplateCallLine = "call_line"
 
 // BroadcastTemplateTrialGrant 是「限时试用额已发放」通知的模板键。
@@ -342,7 +342,7 @@ func RenderBroadcast(templateKey, siteName string) (subject, htmlBody string, ok
 func billingLineEmail(siteName string) (subject, htmlBody string, ok bool) {
 	name := html.EscapeString(strings.TrimSpace(siteName))
 	if name == "" {
-		name = "AQUA-API"
+		name = "LTZY-API"
 	}
 
 	subject = fmt.Sprintf("【%s】计费专线已上线", name)
@@ -361,7 +361,7 @@ func billingLineEmail(siteName string) (subject, htmlBody string, ok bool) {
     </p>
     <ul style="margin:0 0 12px;padding-left:20px;font-size:13px;color:#475569;line-height:1.9;">
       <li>单价低于标准档位，具体以「模型广场」公示的价格为准</li>
-      <li>首期覆盖 7 个主力模型，对外名称统一带 <code style="font-family:Consolas,monospace;">AQUA/</code> 前缀：
+      <li>首期覆盖 7 个主力模型，对外名称统一带 <code style="font-family:Consolas,monospace;">LTZY/</code> 前缀：
         deepseek-v4-flash、deepseek-v4-pro、deepseek-v4.1-flash、doubao-seed-2.1-turbo、
         doubao-seed-evolving、glm-5.3、glm-5.3-flash</li>
       <li>按服务端返回的实际用量结算：输入与输出分别计价，每一笔都能在「调用日志」里
@@ -373,7 +373,7 @@ func billingLineEmail(siteName string) (subject, htmlBody string, ok bool) {
       <ol style="margin:0;padding-left:20px;font-size:13px;color:#0f172a;line-height:1.9;">
         <li>进入「访问令牌」页，新建一个访问令牌</li>
         <li>把新令牌的「所属分组」选为「计费专线」</li>
-        <li>调用时模型名填 <code style="font-family:Consolas,monospace;">AQUA/</code> 开头的名称（例如 <code style="font-family:Consolas,monospace;">AQUA/glm-5.3</code>）</li>
+        <li>调用时模型名填 <code style="font-family:Consolas,monospace;">LTZY/</code> 开头的名称（例如 <code style="font-family:Consolas,monospace;">LTZY/glm-5.3</code>）</li>
       </ol>
     </div>
     <p style="margin:8px 0 22px;font-size:12px;color:#94a3b8;line-height:1.7;">
@@ -386,8 +386,8 @@ func billingLineEmail(siteName string) (subject, htmlBody string, ok bool) {
       站点首页新增了「加入交流群」入口，点进去可以看到两个 QQ 群的群号与入群入口。
     </p>
     <ul style="margin:0 0 10px;padding-left:20px;font-size:13px;color:#475569;line-height:1.9;">
-      <li>主群（AQUA开源项目交流群）：<strong style="font-family:Consolas,monospace;">1103667832</strong></li>
-      <li>备用群（AQUA开源项目交流二群）：<strong style="font-family:Consolas,monospace;">1006740220</strong></li>
+      <li>主群（LTZY开源项目交流群）：<strong style="font-family:Consolas,monospace;">1103667832</strong></li>
+      <li>备用群（LTZY开源项目交流二群）：<strong style="font-family:Consolas,monospace;">1006740220</strong></li>
     </ul>
     <p style="margin:0 0 22px;font-size:13px;color:#475569;line-height:1.8;">
       建议先加主群，主群满员了再加备用群。使用中遇到的问题、想要的模型、对计费的疑问，
@@ -428,7 +428,7 @@ func billingLineEmail(siteName string) (subject, htmlBody string, ok bool) {
 func trialGrantEmail(siteName string) (subject, htmlBody string, ok bool) {
 	name := html.EscapeString(strings.TrimSpace(siteName))
 	if name == "" {
-		name = "AQUA-API"
+		name = "LTZY-API"
 	}
 
 	subject = fmt.Sprintf("【%s】限时试用额已发放", name)
@@ -458,7 +458,7 @@ func trialGrantEmail(siteName string) (subject, htmlBody string, ok bool) {
     <h2 style="margin:0 0 10px;font-size:15px;font-weight:600;color:#0f172a;">二、推荐用来体验按次计费专线</h2>
     <p style="margin:0 0 10px;font-size:13px;color:#475569;line-height:1.8;">
       按次专线<strong>按调用次数计费</strong>：一个请求一个价，提示词再长也不额外加价。
-      首期覆盖 8 个模型，对外名称统一带 <code style="font-family:Consolas,monospace;">AQUA-CALL/</code> 前缀：
+      首期覆盖 8 个模型，对外名称统一带 <code style="font-family:Consolas,monospace;">LTZY-CALL/</code> 前缀：
       deepseek-v4-flash、deepseek-v4.1-flash、deepseek-v4-pro、glm-5.3、glm-5.3-flash、
       kimi-k3、gpt-image-2-w、gpt-image-2.5。
     </p>
@@ -468,7 +468,7 @@ func trialGrantEmail(siteName string) (subject, htmlBody string, ok bool) {
       <ol style="margin:0;padding-left:20px;font-size:13px;color:#0f172a;line-height:1.9;">
         <li>进入「访问令牌」页，新建一个访问令牌</li>
         <li>把新令牌的「所属分组」选为「按次专线」</li>
-        <li>调用时模型名填 <code style="font-family:Consolas,monospace;">AQUA-CALL/</code> 开头的名称（例如 <code style="font-family:Consolas,monospace;">AQUA-CALL/glm-5.3</code>）</li>
+        <li>调用时模型名填 <code style="font-family:Consolas,monospace;">LTZY-CALL/</code> 开头的名称（例如 <code style="font-family:Consolas,monospace;">LTZY-CALL/glm-5.3</code>）</li>
       </ol>
     </div>
     <p style="margin:8px 0 22px;font-size:12px;color:#94a3b8;line-height:1.7;">
@@ -503,7 +503,7 @@ func trialGrantEmail(siteName string) (subject, htmlBody string, ok bool) {
 func callLineEmail(siteName string) (subject, htmlBody string, ok bool) {
 	name := html.EscapeString(strings.TrimSpace(siteName))
 	if name == "" {
-		name = "AQUA-API"
+		name = "LTZY-API"
 	}
 
 	subject = fmt.Sprintf("【%s】按次计费专线已上线", name)
@@ -523,7 +523,7 @@ func callLineEmail(siteName string) (subject, htmlBody string, ok bool) {
       适合长提示词、批量任务，以及调用量比较好预估的场景。
     </p>
     <ul style="margin:0 0 12px;padding-left:20px;font-size:13px;color:#475569;line-height:1.9;">
-      <li>首期覆盖 8 个模型，对外名称统一带 <code style="font-family:Consolas,monospace;">AQUA-CALL/</code> 前缀：
+      <li>首期覆盖 8 个模型，对外名称统一带 <code style="font-family:Consolas,monospace;">LTZY-CALL/</code> 前缀：
         deepseek-v4-flash、deepseek-v4.1-flash、deepseek-v4-pro、glm-5.3、glm-5.3-flash、
         kimi-k3、gpt-image-2-w、gpt-image-2.5</li>
       <li>上线即开放两个分组：
@@ -548,7 +548,7 @@ func callLineEmail(siteName string) (subject, htmlBody string, ok bool) {
       <ol style="margin:0;padding-left:20px;font-size:13px;color:#0f172a;line-height:1.9;">
         <li>进入「访问令牌」页，新建一个访问令牌</li>
         <li>把新令牌的「所属分组」选为「按次专线」（用量较大的用户可选「按次专线（大客户）」）</li>
-        <li>调用时模型名填 <code style="font-family:Consolas,monospace;">AQUA-CALL/</code> 开头的名称（例如 <code style="font-family:Consolas,monospace;">AQUA-CALL/glm-5.3</code>）</li>
+        <li>调用时模型名填 <code style="font-family:Consolas,monospace;">LTZY-CALL/</code> 开头的名称（例如 <code style="font-family:Consolas,monospace;">LTZY-CALL/glm-5.3</code>）</li>
       </ol>
     </div>
     <p style="margin:8px 0 22px;font-size:12px;color:#94a3b8;line-height:1.7;">

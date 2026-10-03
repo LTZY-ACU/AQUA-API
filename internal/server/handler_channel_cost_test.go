@@ -11,7 +11,7 @@ package server
 import (
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 func TestBuildChannelKeyUsage_未录进价不按零成本算(t *testing.T) {

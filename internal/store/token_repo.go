@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/crypto"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/crypto"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // 令牌列表查询的条数约束（与渠道列表同样的保护思路：避免一次性拉全表）。

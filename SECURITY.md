@@ -13,7 +13,7 @@
 
 1. 打开仓库 → **Security** 标签页 → **Report a vulnerability**
 2. 或直接访问：
-   `https://github.com/LTZY-ACU/AQUA-API/security/advisories/new`
+   `https://github.com/LTZY-ACU/LTZY-API/security/advisories/new`
 
 报告中请尽量包含（**切勿附带真实密钥或令牌**）：
 

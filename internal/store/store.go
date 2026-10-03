@@ -9,7 +9,7 @@
 //
 // 流转（Flow）：
 //
-//	cmd/aqua/main.go
+//	cmd/ltzy/main.go
 //	  └─ store.Open(driver, dsn)     建立连接 + 设置连接池 + 校验可用性
 //	       └─ store.Migrate(ctx)     按版本顺序执行迁移（幂等，可重复调用）
 //	            └─ 供 store 下的各仓储（C4 起陆续加入）读写数据

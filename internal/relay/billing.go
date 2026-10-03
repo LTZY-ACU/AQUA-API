@@ -52,8 +52,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/reqctx"
 )
 
 // priceCacheTTL 是价格缓存的存活时间。

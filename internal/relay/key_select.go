@@ -47,7 +47,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // ErrNoUsableCredential 表示渠道的凭据池当前没有可用凭据

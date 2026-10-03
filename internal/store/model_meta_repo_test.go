@@ -14,7 +14,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // newTestModelRepos 构造基于临时数据库的两个仓储。

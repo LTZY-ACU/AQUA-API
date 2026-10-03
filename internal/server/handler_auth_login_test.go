@@ -30,9 +30,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/crypto"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/store"
+	"github.com/LTZY-ACU/ltzy-api/internal/crypto"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/store"
 )
 
 // TestLogin_请求体不被前置中间件吃掉 覆盖"登录前有人读了 body 却没放回"。

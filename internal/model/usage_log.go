@@ -237,6 +237,77 @@ type ModelUsage struct {
 	Tokens   int64  // token 数
 }
 
+// LeaderboardEntry 是「用量排行榜」中的一行：某个用户在统计窗口内的综合用量。
+//
+// 分数口径（与前端展示一致）：
+//
+//	score = 0.5 × (requests / 榜内最大请求数) + 0.5 × (tokens / 榜内最大 token 数)
+//
+// 归一化而不是直接用绝对量相加：请求数与 token 数的量纲差异极大
+// （一次长回答可能消耗数万 token，而请求数只有 1），直接相加会被 token 主导，
+// 让"请求少但 token 多"的用户永远霸榜，榜单失去区分度。
+//
+// Paid 表示该用户是否属于"付费用户"（存在已支付订单）。排行榜据此
+// 拆成「付费榜 / 免费榜」两个榜单，避免免费用户与付费用户混排后
+// 免费榜永远被付费用户占据（付费用户往往使用量更大）。
+type LeaderboardEntry struct {
+	UserID   uint64 // 用户 ID
+	Username string // 用户名（榜单展示的"账号 ID"）
+	// Requests 是窗口内请求总数。
+	Requests int64
+	// Tokens 是窗口内 token 消耗总数。
+	Tokens int64
+	// AvgLatencyMS 是窗口内平均请求耗时（毫秒）。
+	//
+	// 只统计成功请求（2xx/3xx）：失败请求的耗时往往极短（在网关层就被拒），
+	// 混入平均会系统性拉低"模型快不快"的可信度。
+	AvgLatencyMS float64
+	// PeakConcurrency 是窗口内的峰值并发请求数估算。
+	//
+	// 口径：把每条成功请求视为 [开始, 结束] 的时间区间（开始 = created_at − latency），
+	// 用差分事件扫描（开始 +1 / 结束 −1）求最大重叠数。该值反映"最忙的瞬间
+	// 同时有多少请求在途"，是衡量该账号并行使用强度的直观指标。
+	PeakConcurrency int64
+	// Paid 标记该用户是否付费用户（存在 status=paid 的充值订单）。
+	Paid bool
+	// SuccessRequests 是窗口内该用户的成功请求数（2xx/3xx）。
+	//
+	// Requests 统计全部请求（含失败），SuccessRequests 只数成功——
+	// 两者相除即成功率。这是"用得稳不稳"与"用得多不多"的区分：
+	// 次数很高但频繁失败的用户，请求数领先却成功率低，应当被识别出来。
+	SuccessRequests int64
+}
+
+// SuccessRate 返回该用户的请求成功率（0~1）；无请求时返回 0。
+func (e LeaderboardEntry) SuccessRate() float64 {
+	if e.Requests <= 0 {
+		return 0
+	}
+	return float64(e.SuccessRequests) / float64(e.Requests)
+}
+
+// LeaderboardScore 返回综合使用量分数（0~100）。
+//
+// 两个归一化分量各占 50 分，缺失分母（榜内最大值为 0）时对应分量按 0 计。
+//
+// 满分封顶 100：归一化后榜首两项均为 1，分数恰为 100；分数是"相对榜内
+// 标杆的刻度"，不是累计量，因此用得再久也不会超过榜首——把它做成可比较
+// 的百分制刻度，比 0~1 的小数直观，也杜绝了"数字无限增长"的误读。
+func (e LeaderboardEntry) LeaderboardScore(maxRequests, maxTokens int64) float64 {
+	var score float64
+	if maxRequests > 0 {
+		score += 50 * float64(e.Requests) / float64(maxRequests)
+	}
+	if maxTokens > 0 {
+		score += 50 * float64(e.Tokens) / float64(maxTokens)
+	}
+	// 浮点误差保护：归一化比值理论上不会超过 1，但除法舍入可能给出 1.0000000002。
+	if score > 100 {
+		return 100
+	}
+	return score
+}
+
 // ModelFailureStat 是"某个渠道上、某个模型、某个失败状态码"的计数。
 //
 // 用途：后台渠道详情页据此标记"这个模型最近一直 403/404"，
@@ -354,6 +425,22 @@ type UsageLogRepository interface {
 	// 403 意味着凭据对该模型无授权，站长据此清理渠道模型清单。
 	// 只统计 status_code >= 400 的行，且 model 非空。
 	ModelFailureStats(ctx context.Context, channelID uint64, since time.Time) ([]ModelFailureStat, error)
+
+	// Leaderboard 返回统计窗口内各用户的综合用量排行（按请求数降序）。
+	//
+	// 用途：门户概览页的「用量排行榜」——付费榜 / 免费榜各取前 N 名。
+	// 实现要点（与 store 层契约一致）：
+	//   - 只统计成功请求（2xx/3xx）：失败请求不消耗 token、耗时不可信，
+	//     混入会同时污染"分数"与"平均耗时"两个口径；
+	//   - 只统计 user_id > 0 的行：未认证/系统调用无账号可归属；
+	//   - 平均耗时只按成功请求计算；峰值并发用差分事件扫描估算；
+	//   - 返回结果无序，由调用方决定排序与截断（付费/免费分榜在此之上做）。
+	//
+	// 窗口由 q.Since（含）到 q.Until（不含，nil 表示现在）限定；
+	// 参考 TopModels 的 limit 语义，本方法不设内部条数上限（全量返回，
+	// 供调用方一次性分完两个榜单，避免"付费榜要前 20、免费榜也要前 20"
+	// 这种需求拆成两次全量查询）。
+	Leaderboard(ctx context.Context, q UsageLogQuery) ([]LeaderboardEntry, error)
 }
 
 // ChannelKeyUsage 是一把密钥在某个模型上的用量汇总（密钥余额核算的输入）。

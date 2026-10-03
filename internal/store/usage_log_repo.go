@@ -25,10 +25,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // 日志列表查询的条数约束。
@@ -327,6 +328,179 @@ func (r *usageLogRepository) ModelFailureStats(ctx context.Context, channelID ui
 	return result, nil
 }
 
+// Leaderboard 返回统计窗口内各用户的综合用量排行。
+//
+// SQL 采用「两次聚合」：
+//  1. 子查询按 user_id 聚合请求数、token 总量、平均耗时，并过滤成功请求；
+//  2. 外层 LEFT JOIN users（取用户名）与 payment_orders 的已支付标记（付费判定）。
+//
+// 峰值并发不在 SQL 里算：它需要把每条请求展开成 [开始, 结束] 区间再做
+// 差分事件扫描，SQLite 表达繁琐且不易维护，因此这里只取回每用户
+// 成功请求的 (created_at, latency_ms) 样本，由 Go 侧做扫描（见 peakConcurrency）。
+// 样本量 = 该窗口内成功请求数，对自托管网关规模（每日数千条）完全可控。
+func (r *usageLogRepository) Leaderboard(ctx context.Context, q model.UsageLogQuery) ([]model.LeaderboardEntry, error) {
+	// 通用 WHERE 里的列名（created_at / user_id / token_id / model / status_code）在
+	// 第一遍聚合查询（JOIN users / payment_orders）中会与关联表列名歧义，
+	// 必须统一限定为 u.<col>。buildUsageWhere 生成的片段格式固定
+	// （"col = ?" / "(col >= 200 AND col < 300)" 等），逐列名替换即可。
+	where, args := buildUsageWhere(q)
+	whereQualified := qualifyUsageWhereColumns(where)
+
+	// 排行榜口径：统计【全部请求】（含失败），成功数另行聚合——
+	// 这样"请求数"反映真实使用量，"成功率"能独立衡量稳定性，两者不互相污染。
+	// 唯一硬约束是必须有归属账号（user_id > 0），否则无法归属到人。
+	joinConditions := []string{whereQualified}
+	if whereQualified != "" {
+		joinConditions[0] = "(" + whereQualified + ")"
+	}
+	joinConditions = append(joinConditions, "u.user_id > 0")
+	joinFilter := strings.Join(joinConditions, " AND ")
+
+	// 第二遍：单表并发样本（无 JOIN，列名不带前缀）
+	// 第二遍（并发样本）仍只取【成功】请求：区间重叠算法要求每条区间有效，
+	// 失败请求没有可用的"在途时长"，计入只会让并发数虚高。
+	flatConditions := []string{where}
+	if where != "" {
+		flatConditions[0] = "(" + where + ")"
+	}
+	flatConditions = append(flatConditions, "status_code >= 200", "status_code < 400", "user_id > 0")
+	flatFilter := strings.Join(flatConditions, " AND ")
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT u.user_id,
+		       COALESCE(SUM(u.total_tokens), 0),
+		       COALESCE(AVG(CASE WHEN u.status_code >= 200 AND u.status_code < 400 THEN u.latency_ms END), 0),
+		       COUNT(1),
+		       COALESCE(SUM(CASE WHEN u.status_code >= 200 AND u.status_code < 400 THEN 1 ELSE 0 END), 0),
+		       COALESCE(us.username, ''),
+		       EXISTS(SELECT 1 FROM payment_orders po WHERE po.user_id = u.user_id AND po.status = 2) AS paid
+		FROM usage_logs u
+		LEFT JOIN users us ON us.id = u.user_id
+		WHERE `+joinFilter+`
+		GROUP BY u.user_id, us.username, paid`,
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("store: 排行榜聚合查询失败: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	// 第一遍：汇总指标 + 收集并发样本
+	type rowSample struct {
+		entry  model.LeaderboardEntry
+		events []usageEvent
+	}
+	byUser := make(map[uint64]*rowSample)
+	for rows.Next() {
+		var (
+			userID         uint64
+			tokens         int64
+			avgLatency     float64
+			requests       int64
+			successReqs    int64
+			username       string
+			paid           bool
+		)
+		if err := rows.Scan(&userID, &tokens, &avgLatency, &requests, &successReqs, &username, &paid); err != nil {
+			return nil, fmt.Errorf("store: 读取排行榜聚合结果失败: %w", err)
+		}
+		byUser[userID] = &rowSample{
+			entry: model.LeaderboardEntry{
+				UserID:          userID,
+				Username:        username,
+				Requests:        requests,
+				SuccessRequests: successReqs,
+				Tokens:          tokens,
+				AvgLatencyMS:    avgLatency,
+				Paid:            paid,
+			},
+			events: make([]usageEvent, 0, int(requests)),
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: 遍历排行榜聚合结果失败: %w", err)
+	}
+
+	// 第二遍：拉取每用户成功请求的 (created_at, latency_ms)，供并发扫描。
+	// 单独查询而非 JOIN 进上面的大查询：避免结果集膨胀（每行带全部区间事件），
+	// 且这里只需要两列，SQLite 扫描更轻。单表查询用无前缀的 flatFilter。
+	eventRows, err := r.db.QueryContext(ctx, `
+		SELECT user_id, created_at, latency_ms
+		FROM usage_logs
+		WHERE `+flatFilter+`
+		ORDER BY user_id, created_at`,
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("store: 排行榜并发样本查询失败: %w", err)
+	}
+	defer func() { _ = eventRows.Close() }()
+
+	for eventRows.Next() {
+		var (
+			userID   uint64
+			created  int64
+			latency  int
+		)
+		if err := eventRows.Scan(&userID, &created, &latency); err != nil {
+			return nil, fmt.Errorf("store: 读取排行榜并发样本失败: %w", err)
+		}
+		if sample, ok := byUser[userID]; ok && latency >= 0 {
+			// 区间：开始 = created_at − latency（秒），结束 = created_at。
+			// latency_ms 换算成秒时向 0 截断（区间至少 1 秒），避免毫秒级请求
+			// 被算成"开始晚于结束"的空区间。
+			start := created - int64(latency/1000)
+			if start > created {
+				start = created
+			}
+			sample.events = append(sample.events, usageEvent{at: start, delta: 1}, usageEvent{at: created, delta: -1})
+		}
+	}
+	if err := eventRows.Err(); err != nil {
+		return nil, fmt.Errorf("store: 遍历排行榜并发样本失败: %w", err)
+	}
+
+	result := make([]model.LeaderboardEntry, 0, len(byUser))
+	for _, sample := range byUser {
+		sample.entry.PeakConcurrency = peakConcurrency(sample.events)
+		result = append(result, sample.entry)
+	}
+	return result, nil
+}
+
+// usageEvent 是一次差分事件：某个时间点上并发数 +1（请求开始）或 −1（请求结束）。
+type usageEvent struct {
+	at    int64 // 事件发生时间（Unix 秒）
+	delta int   // +1 或 −1
+}
+
+// peakConcurrency 用差分事件扫描求区间集合的最大重叠数。
+//
+// 算法：把所有「开始 +1 / 结束 −1」事件按时间排序，同时间点的事件合并
+// （先加后减——同一秒开始的请求与结束的请求重叠，计入并发），
+// 然后从左到右累加 delta，过程中的最大值即峰值并发。
+func peakConcurrency(events []usageEvent) int64 {
+	if len(events) == 0 {
+		return 0
+	}
+	sort.Slice(events, func(i, j int) bool {
+		if events[i].at != events[j].at {
+			return events[i].at < events[j].at
+		}
+		return events[i].delta > events[j].delta // +1 排在 −1 前
+	})
+
+	var (
+		current int64
+		peak    int64
+	)
+	for _, e := range events {
+		current += int64(e.delta)
+		if current > peak {
+			peak = current
+		}
+	}
+	return peak
+}
+
 // SumUsageByChannelKey 按 (密钥, 模型) 汇总某渠道的用量，用于密钥余额核算。
 //
 // SQL 层面的三个约束与 model.UsageLogRepository 的接口注释一一对应：
@@ -369,6 +543,23 @@ func (r *usageLogRepository) SumUsageByChannelKey(ctx context.Context, channelID
 		return nil, fmt.Errorf("store: 遍历密钥用量汇总失败: %w", err)
 	}
 	return result, nil
+}
+
+// qualifyUsageWhereColumns 把 buildUsageWhere 生成的 WHERE 片段中的
+// 裸列名统一加上表别名前缀（用于带 JOIN 的查询，避免歧义）。
+//
+// 实现说明：buildUsageWhere 产出的片段结构固定，出现的列名只有
+// user_id / token_id / channel_id / model / status_code / created_at 六种，
+// 且都以 "列名 + 操作符" 形式出现（= / >= / < / IN 等），逐列名做
+// "完整单词边界"替换即可。此函数仅被 Leaderboard 使用（JOIN 场景），
+// 其它单表查询不受影响。
+func qualifyUsageWhereColumns(where string) string {
+	columns := []string{"user_id", "token_id", "channel_id", "model", "status_code", "created_at"}
+	qualified := where
+	for _, col := range columns {
+		qualified = strings.ReplaceAll(qualified, col, "u."+col)
+	}
+	return qualified
 }
 
 // buildUsageWhere 构造日志查询的 WHERE 子句与参数。

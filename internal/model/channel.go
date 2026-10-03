@@ -11,7 +11,7 @@
 // 流转（Flow）：
 //
 //	internal/store 实现 ChannelRepository 接口
-//	  └─ cmd/aqua/main.go 装配后注入 internal/server 与 internal/relay
+//	  └─ cmd/ltzy/main.go 装配后注入 internal/server 与 internal/relay
 //	       └─ 业务代码仅面对 model.Channel 与 model.ChannelRepository
 //
 // 扩展（Extend）：
@@ -30,7 +30,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
+	"github.com/LTZY-ACU/ltzy-api/internal/channeltype"
 )
 
 // 领域错误定义。

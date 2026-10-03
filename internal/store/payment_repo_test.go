@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // newTestOrderRepo 构造订单仓储并返回用户仓储（入账需要真实用户）。
@@ -430,5 +430,87 @@ func TestPaymentOrderRepository_SumPaidAmountCents(t *testing.T) {
 	}
 	if other != 0 {
 		t.Fatalf("无订单用户应为 0，实际 %d", other)
+	}
+}
+
+// TestPaymentOrderRepository_ListReconcilable_范围与排除 锁死对账查询的口径。
+//
+// 资损场景：对账循环靠这个查询找到"回调丢失"的订单，范围错一点都会
+// 让用户的钱要么漏掉（该查的不查）、要么被重复处理（不该查的进了循环）。
+func TestPaymentOrderRepository_ListReconcilable_范围与排除(t *testing.T) {
+	// 不用 newTestOrderRepo：本测试需要裸 DB 句柄回溯 created_at，
+	// 在这里直接搭一套（与 helper 等价）。
+	st := newTestStore(t)
+	db := st.DB()
+	repo := NewPaymentOrderRepository(db)
+	userRepo := NewUserRepository(db)
+	user := newActiveUser(t, "对账范围测试用户")
+	if err := userRepo.Create(context.Background(), user); err != nil {
+		t.Fatalf("创建测试用户失败: %v", err)
+	}
+	userID := user.ID
+	ctx := context.Background()
+
+	// 1) 待支付：必须出现（回调可能丢失，只有查单能发现）
+	pendingFresh := newPendingOrder(userID, "pay2026010100000eaaaaaa", 100, 100)
+	pendingExpired := newPendingOrder(userID, "pay2026010100000fbbbbbb", 200, 200)
+	pendingExpired.ExpiresAt = time.Now().Add(-time.Hour)
+	for _, order := range []*model.PaymentOrder{pendingFresh, pendingExpired} {
+		if err := repo.Create(ctx, order); err != nil {
+			t.Fatalf("创建订单失败: %v", err)
+		}
+	}
+
+	// 2) 已关闭、近 48h 创建：必须出现（用户可能付款了但回调永久丢失）
+	closedRecent := newPendingOrder(userID, "pay2026010100000gcccccc", 300, 300)
+	if err := repo.Create(ctx, closedRecent); err != nil {
+		t.Fatalf("创建订单失败: %v", err)
+	}
+	if err := repo.UpdateStatus(ctx, closedRecent.TradeNo, model.PaymentStatusClosed); err != nil {
+		t.Fatalf("关闭订单失败: %v", err)
+	}
+
+	// 3) 已关闭、创建于 48h 之前：不出现（追溯窗口外，留人工对账）
+	closedStale := newPendingOrder(userID, "pay2026010100000hdddddd", 400, 400)
+	if err := repo.Create(ctx, closedStale); err != nil {
+		t.Fatalf("创建订单失败: %v", err)
+	}
+	if err := repo.UpdateStatus(ctx, closedStale.TradeNo, model.PaymentStatusClosed); err != nil {
+		t.Fatalf("关闭订单失败: %v", err)
+	}
+	// 把创建时间改到 49 小时前（直接 SQL，仓储层不暴露改历史时间的口子是刻意的）
+	if _, err := db.Exec(
+		"UPDATE payment_orders SET created_at = ? WHERE trade_no = ?",
+		time.Now().Add(-49*time.Hour).Unix(), closedStale.TradeNo); err != nil {
+		t.Fatalf("回溯创建时间失败: %v", err)
+	}
+
+	// 4) 已支付：不出现（无需再查，查了也没意义）
+	paidOrder := newPendingOrder(userID, "pay2026010100000ieeeeeee", 500, 500)
+	if err := repo.Create(ctx, paidOrder); err != nil {
+		t.Fatalf("创建订单失败: %v", err)
+	}
+	if _, err := repo.MarkPaid(ctx, paidOrder.TradeNo, "", "", time.Now()); err != nil {
+		t.Fatalf("标记支付失败: %v", err)
+	}
+
+	got, err := repo.ListReconcilable(ctx, time.Now().Add(-48*time.Hour))
+	if err != nil {
+		t.Fatalf("查询待对账订单失败: %v", err)
+	}
+
+	gotSet := make(map[string]bool, len(got))
+	for _, order := range got {
+		gotSet[order.TradeNo] = true
+	}
+	for _, want := range []string{pendingFresh.TradeNo, pendingExpired.TradeNo, closedRecent.TradeNo} {
+		if !gotSet[want] {
+			t.Errorf("订单 %s 应在对账范围内（待支付或近 48h 已关闭）", want)
+		}
+	}
+	for _, banned := range []string{closedStale.TradeNo, paidOrder.TradeNo} {
+		if gotSet[banned] {
+			t.Errorf("订单 %s 不应对账（超出追溯窗口或已支付）", banned)
+		}
 	}
 }

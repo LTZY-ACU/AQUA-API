@@ -41,9 +41,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/config"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/notify"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/notify"
 )
 
 // healthProbeConfig 是巡检运行时的已归一配置。

@@ -17,7 +17,7 @@ import { THEME_INIT_SCRIPT } from '@/lib/theme/theme-context'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'AQUA-API · 自托管 LLM API 网关',
+  title: 'LTZY-API · 自托管 LLM API 网关',
   description: '自托管、可私有部署的 LLM API 网关：统一多协议上游、精细计费、全量日志与审计。',
   robots: { index: true, follow: true },
   icons: {

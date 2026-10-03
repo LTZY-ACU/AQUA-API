@@ -28,7 +28,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
 )
 
 // adminAllowCIDREnv 是白名单环境变量名，仅用于 403 文案提示，便于管理员自助排查。

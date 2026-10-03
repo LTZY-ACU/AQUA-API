@@ -51,7 +51,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // 支付宝协议常量。

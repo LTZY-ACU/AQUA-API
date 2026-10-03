@@ -24,8 +24,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/metrics"
-	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
+	"github.com/LTZY-ACU/ltzy-api/internal/metrics"
+	"github.com/LTZY-ACU/ltzy-api/internal/server/middleware"
 )
 
 // newInstrumentedEngine 起一个带追踪与指标的测试引擎。

@@ -18,7 +18,7 @@ journalctl -u aqua-api -n 200 --no-pager  # 最近的日志
 
 | 类型 | 去哪里 |
 | --- | --- |
-| Bug 报告 | [开 Issue](https://github.com/LTZY-ACU/AQUA-API/issues/new)（请用模板填写） |
+| Bug 报告 | [开 Issue](https://github.com/LTZY-ACU/LTZY-API/issues/new)（请用模板填写） |
 | 功能建议 | 开 Issue 并标注 `enhancement` |
 | 使用问题 / 交流讨论 | **QQ 群 1103667832** |
 | 安全漏洞 | **不要开公开 Issue**，见 [SECURITY.md](SECURITY.md) |

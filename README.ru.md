@@ -1,12 +1,14 @@
 <div align="center">
 
-<img src="favicon.ico" width="88" alt="AQUA-API" />
+<img src="favicon.ico" width="88" alt="LTZY-API" />
 
-# AQUA-API
+# LTZY-API
 
 **Соберите все ваши AI-бэкенды в единой точке входа.**
 
 Самостоятельно размещаемый шлюз LLM API · Система управления использованием AI
+
+Self-hosted LLM Gateway · OpenAI-compatible API
 
 ![License](assets/badges/license.svg)
 ![Go](assets/badges/go.svg)
@@ -19,6 +21,8 @@
 
 [简体中文](README.md) · [English](README.en.md) · [Français](README.fr.md) · [Русский](README.ru.md) · [Español](README.es.md) · [العربية](README.ar.md)
 
+> Ранее назывался **AQUA-API** — в октябре 2026 года переименован в **LTZY-API**. Старые ссылки перенаправляются автоматически.
+
 </div>
 
 ---
@@ -27,9 +31,9 @@
 
 | Канал | Адрес |
 | --- | --- |
-| Официальный сайт (онлайн-демонстрация) | https://aqua.is3.cc |
-| Репозиторий кода | https://github.com/LTZY-ACU/AQUA-API |
-| Сообщить о проблеме (Issues) | https://github.com/LTZY-ACU/AQUA-API/issues |
+| Официальный сайт (онлайн-демонстрация) | https://ltzy.top |
+| Репозиторий кода | https://github.com/LTZY-ACU/LTZY-API |
+| Сообщить о проблеме (Issues) | https://github.com/LTZY-ACU/LTZY-API/issues |
 
 > **Этот репозиторий — единственный авторитетный источник официальных адресов.** При изменении домена он обновляется здесь первым, а затем синхронизируется в любое другое место.
 > Поэтому добавить в закладки этот репозиторий надёжнее, чем сохранять один домен.
@@ -101,13 +105,13 @@
 
 ## Что это
 
-AQUA-API — это **самостоятельно размещаемый шлюз LLM API**, а также **система управления использованием AI**.
+LTZY-API — это **самостоятельно размещаемый шлюз LLM API**, а также **система управления использованием AI**.
 
 Имеющиеся у вас внешние сервисы обычно представляют собой набор несовместимых друг с другом вещей: официальные ключи OpenAI, Azure, Claude, Gemini, облачные провайдеры,
 различные OpenAI-совместимые сервисы, аккаунты по подписке (Claude / Codex / Gemini) и локально запущенные Ollama / vLLM.
 А на стороне потребителя — самые разные приложения: Claude Code, Codex CLI, Cursor, собственные приложения, скрипты, плагины.
 
-AQUA-API встаёт посередине и превращает всё это в **единую точку входа, единый протокол и понятную отчётность**.
+LTZY-API встаёт посередине и превращает всё это в **единую точку входа, единый протокол и понятную отчётность**.
 
 ```mermaid
 flowchart LR
@@ -118,7 +122,7 @@ flowchart LR
         C4["Собственные приложения / скрипты / плагины"]
     end
 
-    AQUA["AQUA-API<br/>Единый протокол · умная маршрутизация · точный биллинг<br/>Группы · пул учётных данных · панель управления"]
+    LTZY["LTZY-API<br/>Единый протокол · умная маршрутизация · точный биллинг<br/>Группы · пул учётных данных · панель управления"]
 
     subgraph U["Внешние сервисы"]
         U1["OpenAI / Azure"]
@@ -128,15 +132,15 @@ flowchart LR
         U5["Локальные Ollama / vLLM"]
     end
 
-    C1 --> AQUA
-    C2 --> AQUA
-    C3 --> AQUA
-    C4 --> AQUA
-    AQUA --> U1
-    AQUA --> U2
-    AQUA --> U3
-    AQUA --> U4
-    AQUA --> U5
+    C1 --> LTZY
+    C2 --> LTZY
+    C3 --> LTZY
+    C4 --> LTZY
+    LTZY --> U1
+    LTZY --> U2
+    LTZY --> U3
+    LTZY --> U4
+    LTZY --> U5
 ```
 
 Основная задача проекта укладывается всего в три слова: **единство** (протокол и точка входа), **надёжность** (автоматический обход сбоев), **прозрачность расчётов** (каждое списание подтверждено документально).
@@ -147,7 +151,7 @@ flowchart LR
 
 Подобных шлюзов немало, не хватает лишь того, **кому можно спокойно доверить учёт денег**. Каждый пункт ниже — результат пройденных на практике ошибок.
 
-| Критерий | Типичный подход | AQUA-API |
+| Критерий | Типичный подход | LTZY-API |
 | --- | --- | --- |
 | Ключи внешних сервисов | Хранятся в базе в открытом виде, в панели видно открытый текст | Шифрование AES-256-GCM при сохранении, мастер-ключ только из переменных окружения; даже при компрометации панели открытый текст не извлечь |
 | Мастер-ключ шифрования | Прописан вместе с остальным в файле конфигурации | Одноимённое поле в файле конфигурации игнорируется; ключ задаётся только через переменную окружения и не утекает вместе с репозиторием |
@@ -567,14 +571,16 @@ sequenceDiagram
 
 ## Быстрый старт
 
+> В этом разделе описан лишь кратчайший путь. **Полное руководство по развёртыванию** (продакшн-установка systemd, обратный прокси Nginx/Caddy с HTTPS, обновление и откат, справочник по CLI и переменным окружения, FAQ) — в [DEPLOYMENT.md](DEPLOYMENT.md) (на китайском).
+
 ### Вариант 1: Docker Compose (рекомендуется)
 
 ```bash
-git clone https://github.com/LTZY-ACU/AQUA-API.git && cd AQUA-API
+git clone https://github.com/LTZY-ACU/LTZY-API.git && cd LTZY-API
 cp .env.example .env
 
-docker build -t aqua-api:local .          # Первая сборка (фронтенд + бэкенд + рабочий образ)
-docker run --rm aqua-api:local -gen-key   # Вывести мастер-ключ и вписать в AQUA_APP_KEY в .env
+docker build -t ltzy-api:local .          # Первая сборка (фронтенд + бэкенд + рабочий образ)
+docker run --rm ltzy-api:local -gen-key   # Вывести мастер-ключ и вписать в AQUA_APP_KEY в .env
 
 docker compose up -d
 ```
@@ -584,21 +590,21 @@ docker compose up -d
 ### Вариант 2: docker run (без compose)
 
 ```bash
-docker build -t aqua-api:local .
+docker build -t ltzy-api:local .
 
-docker run -d --name aqua-api \
+docker run -d --name ltzy-api \
   -p 8787:8787 \
   -e AQUA_APP_KEY="<你的主密钥>" \
   -e AQUA_SERVER_LISTEN=0.0.0.0:8787 \
   -v "$PWD/data:/data" \
   --restart unless-stopped \
-  aqua-api:local
+  ltzy-api:local
 ```
 
 ### Вариант 3: один бинарный файл (Linux-сервер / systemd)
 
 ```bash
-go build -o aqua ./cmd/aqua           # Чистый Go, нулевой CGO, gcc не нужен
+go build -o aqua ./cmd/ltzy           # Чистый Go, нулевой CGO, gcc не нужен
 
 ./aqua -gen-key                        # Генерация мастер-ключа шифрования (только генерация, без записи на диск)
 
@@ -625,7 +631,7 @@ sudo systemctl status aqua-api
 # Фронтенд (необязательно: в репозитории web/dist — заглушка, реальный интерфейс встраивается только после сборки)
 cd web && npm ci && npm run build && cd ..
 
-go build -o bin/aqua ./cmd/aqua
+go build -o bin/aqua ./cmd/ltzy
 export AQUA_APP_KEY="<你的主密钥>"      # Windows: $env:AQUA_APP_KEY="..."
 ./bin/aqua -config ./aqua.json          # Без -config используются значения по умолчанию и переменные окружения
 curl http://127.0.0.1:8787/healthz
@@ -691,7 +697,7 @@ location / {
 | `AQUA_SMTP_USERNAME` | Нет | Имя пользователя SMTP |
 | `AQUA_SMTP_PASSWORD` | Нет | Пароль SMTP, задаётся только через переменную окружения |
 | `AQUA_SMTP_FROM` | Нет | Адрес отправителя |
-| `AQUA_SMTP_FROM_NAME` | Нет | Отображаемое имя отправителя, по умолчанию `AQUA-API` |
+| `AQUA_SMTP_FROM_NAME` | Нет | Отображаемое имя отправителя, по умолчанию `LTZY-API` |
 | `AQUA_EPAY_KEY` | Нет | Секретный ключ продавца YiPay (подпись MD5) |
 | `AQUA_STRIPE_SECRET_KEY` | Нет | Stripe Secret Key |
 | `AQUA_STRIPE_WEBHOOK_SECRET` | Нет | Секрет подписи Stripe Webhook |
@@ -726,7 +732,7 @@ location / {
 
 ## Примеры подключения
 
-Любой клиент, совместимый с OpenAI, — укажите Base URL сюда и замените Key на токен AQUA-API.
+Любой клиент, совместимый с OpenAI, — укажите Base URL сюда и замените Key на токен LTZY-API.
 
 ### curl
 
@@ -759,7 +765,7 @@ print(resp.choices[0].message.content)
 
 ### Клиент Claude Code / Anthropic
 
-AQUA-API нативно поддерживает протокол Anthropic и может напрямую обслуживать трафик Claude Code:
+LTZY-API нативно поддерживает протокол Anthropic и может напрямую обслуживать трафик Claude Code:
 
 ```bash
 export ANTHROPIC_BASE_URL=https://你的域名
@@ -961,7 +967,7 @@ cd web && npm ci && npm run type-check && npm run build   # Фронтенд
 Структура каталогов (корень данного репозитория — это и есть каталог кода):
 
 ```
-cmd/aqua/              Точка входа программы (только сборка, без бизнес-логики)
+cmd/ltzy/              Точка входа программы (только сборка, без бизнес-логики)
 internal/config/       Загрузка и валидация конфигурации
 internal/model/        Модели предметной области и интерфейсы репозиториев (без SQL)
 internal/store/        Реализация персистентности (SQL + версионируемые миграции, разбивка по диалектам)
@@ -1024,6 +1030,6 @@ aqua-api.service       Юнит systemd (развёртывание на «го�
 
 **Если этот проект сэкономил вам время на сверке отчётности, поставьте Star ⭐**
 
-[Онлайн-демонстрация](https://aqua.is3.cc) · [Создать Issue](https://github.com/LTZY-ACU/AQUA-API/issues) · [GitHub](https://github.com/LTZY-ACU/AQUA-API) · [English](README.en.md)
+[Онлайн-демонстрация](https://ltzy.top) · [Создать Issue](https://github.com/LTZY-ACU/LTZY-API/issues) · [GitHub](https://github.com/LTZY-ACU/LTZY-API) · [English](README.en.md)
 
 </div>

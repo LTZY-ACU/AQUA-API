@@ -31,7 +31,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/LTZY-ACU/aqua-api/internal/i18n"
+	"github.com/LTZY-ACU/ltzy-api/internal/i18n"
 )
 
 // 支持的端点路径。

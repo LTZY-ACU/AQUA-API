@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // newCorpusRepo 在临时库上构造语料仓储。
@@ -38,7 +38,7 @@ func TestCorpusRepository_清单_增删查(t *testing.T) {
 	ctx := context.Background()
 	repo := newCorpusRepo(t)
 
-	for _, name := range []string{"AQUA-CALL/deepseek-v4.1-flash", "z-ai/glm-5.3"} {
+	for _, name := range []string{"LTZY-CALL/deepseek-v4.1-flash", "z-ai/glm-5.3"} {
 		if err := repo.UpsertCorpusModel(ctx, &model.CorpusModel{
 			Model: name, Enabled: true, Remark: "国产大模型",
 		}); err != nil {
@@ -64,11 +64,11 @@ func TestCorpusRepository_清单_增删查(t *testing.T) {
 	if err != nil {
 		t.Fatalf("查询启用清单失败: %v", err)
 	}
-	if len(enabled) != 1 || enabled[0] != "AQUA-CALL/deepseek-v4.1-flash" {
+	if len(enabled) != 1 || enabled[0] != "LTZY-CALL/deepseek-v4.1-flash" {
 		t.Fatalf("启用清单应只剩按次专线那条，实际 %v", enabled)
 	}
 
-	if err := repo.DeleteCorpusModel(ctx, "AQUA-CALL/deepseek-v4.1-flash"); err != nil {
+	if err := repo.DeleteCorpusModel(ctx, "LTZY-CALL/deepseek-v4.1-flash"); err != nil {
 		t.Fatalf("移除清单项失败: %v", err)
 	}
 	enabled, _ = repo.EnabledCorpusModels(ctx)
@@ -91,7 +91,7 @@ func TestCorpusRepository_样本_写入读取与幂等(t *testing.T) {
 		RequestID:     "req-1",
 		UserID:        37,
 		TokenID:       5,
-		Model:         "AQUA-CALL/deepseek-v4.1-flash",
+		Model:         "LTZY-CALL/deepseek-v4.1-flash",
 		UpstreamModel: "deepseek-v4.1-flash",
 		ChannelID:     4,
 		ChannelKeyID:  514,
@@ -174,12 +174,12 @@ func TestCorpusRepository_样本_筛选与导出(t *testing.T) {
 			t.Fatalf("写入样本失败: %v", err)
 		}
 	}
-	insert("r1", "AQUA-CALL/deepseek-v4.1-flash", 37)
-	insert("r2", "AQUA-CALL/deepseek-v4.1-flash", 139)
+	insert("r1", "LTZY-CALL/deepseek-v4.1-flash", 37)
+	insert("r2", "LTZY-CALL/deepseek-v4.1-flash", 139)
 	insert("r3", "z-ai/glm-5.3", 37)
 
 	items, total, err := repo.ListCorpusSamples(ctx, model.CorpusSampleQuery{
-		Model: "AQUA-CALL/deepseek-v4.1-flash", Limit: 10,
+		Model: "LTZY-CALL/deepseek-v4.1-flash", Limit: 10,
 	})
 	if err != nil || total != 2 || len(items) != 2 {
 		t.Fatalf("按模型筛选应命中 2 条，实际 total=%d len=%d err=%v", total, len(items), err)
@@ -248,7 +248,7 @@ func TestCorpusRepository_福利资格_生效与撤销(t *testing.T) {
 	repo := newCorpusRepo(t)
 
 	grant := &model.CorpusGrant{
-		UserID: 37, Model: "AQUA-CALL/deepseek-v4.1-flash",
+		UserID: 37, Model: "LTZY-CALL/deepseek-v4.1-flash",
 		FreeAccess: true, Remark: "第一批报名用户",
 	}
 	if err := repo.UpsertCorpusGrant(ctx, grant); err != nil {

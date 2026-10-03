@@ -4,15 +4,15 @@
 # 方便他人在论文、报告或产品中规范引用本项目。
 
 cff-version: 1.2.0
-title: AQUA-API
+title: LTZY-API
 message: 如果你在论文、报告或产品中使用了本项目，请按以下信息引用。
 type: software
 authors:
   - name: 小涑
     alias: xiaosu4610
     website: https://github.com/xiaosu4610
-repository-code: https://github.com/LTZY-ACU/AQUA-API
-url: https://aqua.is3.cc
+repository-code: https://github.com/LTZY-ACU/LTZY-API
+url: https://ltzy.top
 license: MIT
 abstract: 自托管 LLM API 网关与 AI 用量管理系统：统一上游协议与凭据池、智能调度与失败分类重试、精确计费与额度风控、分组与代理定价、运营后台与成本对账。单二进制部署，零 CGO。
 keywords:

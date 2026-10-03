@@ -19,7 +19,7 @@ import { BrandLogo } from '@/components/BrandMark'
 import { QqGroupEntry } from '@/components/site/QqGroupEntry'
 import { useSite } from '@/lib/site/site-context'
 
-const REPO_URL = 'https://github.com/LTZY-ACU/AQUA-API'
+const REPO_URL = 'https://github.com/LTZY-ACU/LTZY-API'
 
 /** 页脚链接矩阵：三栏，标题走等宽小字 */
 const COLUMNS: { title: string; links: { label: string; href: string; external?: boolean }[] }[] = [
@@ -106,6 +106,9 @@ export function SiteFooter() {
         <div className="mt-10 flex flex-col gap-2 border-t border-line pt-6 text-xs text-ink-3 sm:flex-row sm:items-center sm:justify-between">
           <span>
             © {year} {status?.operator_name || siteName} · MIT 许可证
+            {/* 版本号来自 /api/status（构建时 ldflags 注入）。
+                "dev" 表示本地裸编译产物——如实展示而非隐藏，便于自托管者自查在跑哪一版。 */}
+            {status?.version && <span> · {status.version}</span>}
           </span>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             {status?.icp_license && (

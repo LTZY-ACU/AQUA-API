@@ -27,8 +27,8 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/config"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // seoTestSettingsRepo 是内存版设置仓储，供 SEO 测试注入自定义配置。

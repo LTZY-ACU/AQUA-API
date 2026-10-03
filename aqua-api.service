@@ -1,4 +1,4 @@
-; AQUA-API 的 systemd 单元文件（裸机 / 云主机部署用）。
+; LTZY-API 的 systemd 单元文件（裸机 / 云主机部署用）。
 ;
 ; 安装步骤：
 ;   sudo useradd -r -s /usr/sbin/nologin aqua
@@ -13,8 +13,8 @@
 ;   EnvironmentFile 可以单独设成 0600 且只由 root 可读。
 
 [Unit]
-Description=AQUA-API · LLM API 网关与 AI 资产管理系统
-Documentation=https://github.com/LTZY-ACU/AQUA-API
+Description=LTZY-API · LLM API 网关与 AI 资产管理系统
+Documentation=https://github.com/LTZY-ACU/LTZY-API
 After=network-online.target
 Wants=network-online.target
 

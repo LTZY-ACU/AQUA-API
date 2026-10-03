@@ -51,10 +51,13 @@ import type {
   RedeemCodeQuery,
   SiteSettings,
   SMTPSettings,
+  SpeedTestRunResult,
   SMTPSettingsPayload,
   Task,
   TaskProvider,
   TaskQuery,
+  TrialGrantPayload,
+  TrialGrantResult,
   UpdateChannelKeyPayload,
   UpdateRedeemCodePayload,
   UpdateSiteSettingsPayload,
@@ -116,6 +119,18 @@ export function testChannel(id: number): Promise<ChannelTestResult> {
   })
 }
 
+/**
+ * POST /api/admin/channels/{id}/speedtest：模型测速（逐模型测首字延迟）。
+ *
+ * 每次对上游产生真实但极小的消耗（提示词 "ping" + max_tokens=1 ≈ 2~3 token/模型）。
+ * 前端为拿到实时进度，通常一次只传一个模型并循环调用；后端串行探测。
+ */
+export function speedTestChannel(id: number, models: string[]): Promise<SpeedTestRunResult> {
+  return api.post<SpeedTestRunResult>(`/admin/channels/${id}/speedtest`, { models }, {
+    timeout: UPSTREAM_TIMEOUT_MS,
+  })
+}
+
 /* ── 令牌 ───────────────────────────────────────────────── */
 
 /** GET /api/admin/tokens：全部令牌 */
@@ -167,6 +182,21 @@ export function updateUser(id: number, payload: UpdateUserPayload): Promise<Admi
 /** DELETE /api/admin/users/{id}：删除用户 */
 export function deleteUser(id: number): Promise<unknown> {
   return api.delete<unknown>(`/admin/users/${id}`)
+}
+
+/* ── 限时试用额度 ───────────────────────────────────────── */
+
+/**
+ * POST /api/admin/trial-grants：给全站用户批量发放限时试用额。
+ *
+ * 为什么单独成一个函数而不是混进 updateUser：
+ *   这是一次「给所有人加钱」的批量写操作，只对「启用且额度非不限」的用户生效，
+ *   金额按分计（amount_cents），换算由后端按充值比例完成。
+ *   后端要求 confirm=true 且批次唯一（同一批次只发一次），
+ *   前端务必先做二次确认弹层再调用，并提示用户记住批次名。
+ */
+export function grantTrialQuota(payload: TrialGrantPayload): Promise<TrialGrantResult> {
+  return api.post<TrialGrantResult>('/admin/trial-grants', payload)
 }
 
 /* ── 调用日志 ───────────────────────────────────────────── */

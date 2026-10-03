@@ -29,7 +29,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // TestChannelIsHealthy 钉住健康判定的三条边界。

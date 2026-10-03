@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // alertChannelColumns 是 alert_channels 的列清单（读写共用，避免两处手写导致错位）。

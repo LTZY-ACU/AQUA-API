@@ -22,11 +22,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // buildLogQuery 解析日志查询条件。
@@ -148,35 +149,74 @@ func (s *Server) handleMyUsage(c *gin.Context) {
 	}
 	since := truncateToDay(time.Now()).AddDate(0, 0, -days+1)
 
-	summary, err := s.deps.UsageLogs.Summary(ctx, model.UsageLogQuery{UserID: &userID, Since: &since})
-	if err != nil {
+	// 三个统计查询相互独立，并行执行以缩短响应时间：
+	// 串行时 3 次 SQL 往返累加，并行时总耗时≈最慢的一次。
+	//
+	// 并发正确性（重要）：
+	//   - 用 WaitGroup 等全部 goroutine 结束，而不是"等某个 channel 收到值"——
+	//     若某次查询失败，其结果 channel 永远不会收到值，主协程在阻塞读会
+	//     永久挂起（线上表现为整体页请求超时）；
+	//   - 结果写入各自独立的变量（不同 goroutine 写不同变量），无数据竞争；
+	//   - 错误用单独切片收集，取第一个即可。
+	type usageResult struct {
+		summary *model.UsageSummary
+		series  []model.DailyUsage
+		byModel []model.ModelUsage
+	}
+	var (
+		result usageResult
+		errs   []error
+		wg     sync.WaitGroup
+	)
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+		summary, err := s.deps.UsageLogs.Summary(ctx, model.UsageLogQuery{UserID: &userID, Since: &since})
+		if err != nil {
+			errs = append(errs, err)
+			return
+		}
+		result.summary = summary
+	}()
+	go func() {
+		defer wg.Done()
+		series, err := s.deps.UsageLogs.DailySeries(ctx, model.UsageLogQuery{UserID: &userID, Since: &since})
+		if err != nil {
+			errs = append(errs, err)
+			return
+		}
+		result.series = series
+	}()
+	go func() {
+		defer wg.Done()
+		byModel, err := s.deps.UsageLogs.TopModels(ctx, model.UsageLogQuery{UserID: &userID, Since: &since}, 10)
+		if err != nil {
+			errs = append(errs, err)
+			return
+		}
+		result.byModel = byModel
+	}()
+
+	wg.Wait()
+
+	if len(errs) > 0 {
+		// 有查询失败：不区分具体是哪个，统一按统计失败处理
 		s.respondInternalError(c, "统计用量失败")
-		return
-	}
-
-	series, err := s.deps.UsageLogs.DailySeries(ctx, model.UsageLogQuery{UserID: &userID, Since: &since})
-	if err != nil {
-		s.respondInternalError(c, "统计用量趋势失败")
-		return
-	}
-
-	byModel, err := s.deps.UsageLogs.TopModels(ctx, model.UsageLogQuery{UserID: &userID, Since: &since}, 10)
-	if err != nil {
-		s.respondInternalError(c, "统计模型分布失败")
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"range_days":     days,
-		"total_requests": summary.Requests,
-		"total_tokens":   summary.Tokens,
-		"total_quota":    summary.Quota,
-		"success_rate":   summary.SuccessRate(),
+		"total_requests": result.summary.Requests,
+		"total_tokens":   result.summary.Tokens,
+		"total_quota":    result.summary.Quota,
+		"success_rate":   result.summary.SuccessRate(),
 		// 账户额度信息一并返回，便于概览页一次请求渲染完整
 		"quota":           user.Quota,
 		"used_quota":      user.UsedQuota,
 		"remaining_quota": user.RemainingQuota(),
-		"series":          toDailyUsageDTOList(series),
-		"by_model":        toModelUsageDTOList(byModel),
+		"series":          toDailyUsageDTOList(result.series),
+		"by_model":        toModelUsageDTOList(result.byModel),
 	})
 }

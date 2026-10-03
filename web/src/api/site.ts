@@ -31,7 +31,7 @@ export async function fetchSiteStatus(force = false): Promise<SiteStatus> {
   const status = await api.get<SiteStatus>('/status')
   // 兜底：契约保证 models 为数组，但空站点/后端早期版本可能返回 null，避免视图层崩溃
   const normalized: SiteStatus = {
-    name: status?.name || 'AQUA-API',
+    name: status?.name || 'LTZY-API',
     version: status?.version || 'dev',
     registration_enabled: Boolean(status?.registration_enabled),
     site_description: status?.site_description || '',
@@ -57,7 +57,7 @@ export async function fetchSiteStatus(force = false): Promise<SiteStatus> {
 
 /** 供页脚等处读取「已缓存的」站点名，未加载时返回默认值（不触发请求） */
 export function peekSiteName(): string {
-  return cachedStatus?.name || 'AQUA-API'
+  return cachedStatus?.name || 'LTZY-API'
 }
 
 /* ── 模型广场与充值参数（均无需登录）─────────────────────── */

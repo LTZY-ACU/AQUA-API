@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
 )
 
 // TestMetrics端点_输出可被抓取的指标 验证"业务请求 → 指标可见"的完整链路。

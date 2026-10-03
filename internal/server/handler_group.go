@@ -40,9 +40,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
-	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/server/middleware"
 )
 
 // ---------------------------------------------------------------------------
@@ -655,6 +655,14 @@ type plazaModelDTO struct {
 	ListPrice *plazaPriceDTO `json:"list_price,omitempty"`
 	// ChannelCount 是支持该模型的启用渠道数量，作为"供给充足度"的直观指标。
 	ChannelCount int `json:"channel_count"`
+	// SpeedTTFBMS 是该模型在各启用渠道中最近一次测速的最小首字延迟（毫秒）。
+	//
+	// 运营参考数据：后台「模型测速」的产物（每次真实调用约消耗 2~3 token），
+	// 不代表实时性能。omitempty——未测过或站长关闭公示时整个字段不下发，
+	// 前端据此不渲染延迟列（与"还没测过"是同一种表现，无需区分）。
+	SpeedTTFBMS int `json:"speed_ttfb_ms,omitempty"`
+	// SpeedTestedAt 是该延迟的测速时间（Unix 秒），让用户知道数字有多新鲜。
+	SpeedTestedAt int64 `json:"speed_tested_at,omitempty"`
 }
 
 // plazaViewerDTO 描述"当前查看者以什么身份看广场"。
@@ -707,6 +715,58 @@ type plazaGroupDTO struct {
 	RpmLimit int `json:"rpm_limit"`
 }
 
+// plazaSpeedByModel 汇总各启用渠道的最新测速结果，按模型取最小首字延迟。
+//
+// 返回两张表：模型 → 最小 TTFB（毫秒）、模型 → 该结果的时间（Unix 秒）。
+// 取 MIN 而不是平均的原因：用户关心的是"最快能多快拿到首字"，
+// 路由层本身也会优先选快的渠道，平均数反而不能代表真实体验。
+// viewerIsAdmin 为真时豁免「广场公示」开关：公示只约束给普通用户看的数据，
+// 站长自己（后台内嵌广场 / 登录态）不应被自己的开关挡在门外，
+// 否则关掉公示就失去了核对测速数据的入口；测速总开关仍生效（关了就是没数据）。
+// 任一前置条件不满足（仓储缺失 / 开关关闭 / 读库失败 / 无成功记录）
+// 都返回空表，调用方按"没有数据"处理，绝不让测速数据问题拖垮广场。
+func (s *Server) plazaSpeedByModel(ctx context.Context, channels []*model.Channel, viewerIsAdmin bool) (map[string]int, map[string]int64) {
+	ttfb := make(map[string]int)
+	testedAt := make(map[string]int64)
+
+	if s.deps.ModelSpeeds == nil {
+		return ttfb, testedAt
+	}
+	// 公示开关在每次请求时读取：站长在后台关掉后无需重启或等缓存过期。
+	settings, err := model.LoadSiteSettings(ctx, s.deps.Settings)
+	if err != nil || !settings.SpeedTest.Enabled || (!settings.SpeedTest.Public && !viewerIsAdmin) {
+		return ttfb, testedAt
+	}
+
+	results, err := s.deps.ModelSpeeds.Latest(ctx)
+	if err != nil {
+		// 读库失败按"没有数据"处理（返回空表）：延迟展示是增强能力，
+		// 宁可这一页没有延迟列，也不能让整个广场 500。
+		return ttfb, testedAt
+	}
+
+	// 只统计【当前启用】渠道的结果：停用渠道的延迟对"现在调用多快"
+	// 是误导（它的模型可能已从路由池摘除）。
+	enabledIDs := make(map[uint64]struct{}, len(channels))
+	for _, channel := range channels {
+		enabledIDs[channel.ID] = struct{}{}
+	}
+
+	for _, result := range results {
+		if _, serving := enabledIDs[result.ChannelID]; !serving {
+			continue
+		}
+		if !result.OK || result.TTFBMS <= 0 {
+			continue
+		}
+		if current, exists := ttfb[result.Model]; !exists || result.TTFBMS < current {
+			ttfb[result.Model] = result.TTFBMS
+			testedAt[result.Model] = result.TestedAt.Unix()
+		}
+	}
+	return ttfb, testedAt
+}
+
 // handleModelPlaza 处理 GET /api/models（公开的模型广场数据）。
 //
 // 参数：
@@ -741,6 +801,10 @@ func (s *Server) handleModelPlaza(c *gin.Context) {
 	if viewer != nil {
 		delete(hiddenGroups, viewer.AgentGroup)
 	}
+
+	// 模型测速：各启用渠道最近一次结果 → 每个模型取最小首字延迟。
+	// 在开关关闭 / 未测过 / 读库失败时返回空表，模型卡片自然不带延迟字段。
+	speedTTFB, speedTestedAt := s.plazaSpeedByModel(ctx, channels, s.plazaViewerIsAdmin(c))
 
 	groupFilter := strings.TrimSpace(c.Query("group"))
 	if hiddenGroups[groupFilter] {
@@ -859,6 +923,10 @@ func (s *Server) handleModelPlaza(c *gin.Context) {
 			item.Available = modelGroupChannelCount[modelName][viewer.AgentGroup] > 0
 			item.ChannelCount = modelGroupChannelCount[modelName][viewer.AgentGroup]
 		}
+		if ttfb, ok := speedTTFB[modelName]; ok {
+			item.SpeedTTFBMS = ttfb
+			item.SpeedTestedAt = speedTestedAt[modelName]
+		}
 		items = append(items, item)
 	}
 
@@ -931,6 +999,15 @@ func (s *Server) resolvePlazaViewer(ctx context.Context, c *gin.Context) *plazaV
 		return nil
 	}
 	return &plazaViewerDTO{AgentGroup: group.Name, Label: group.Label(), Ratio: group.Ratio, RpmLimit: group.RpmLimit}
+}
+
+// plazaViewerIsAdmin 判断当前广场查看者是否管理员（未登录 / 非管理员为 false）。
+//
+// 用途：测速数据的「广场公示」开关只约束普通用户，管理员始终可见——
+// 复用会话中间件解析出的当前用户（与 resolvePlazaViewer 同一来源）。
+func (s *Server) plazaViewerIsAdmin(c *gin.Context) bool {
+	user, ok := middleware.CurrentUser(c)
+	return ok && user != nil && user.IsAdmin()
 }
 
 // plazaAgentPricePair 返回代理视图下的两档价格：代理价与原价。

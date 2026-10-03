@@ -36,7 +36,7 @@
 -- ── 一、语料模型清单 ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS corpus_models (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    -- model 是【对外模型名】（用户实际调用的名字，如 AQUA-CALL/deepseek-v4.1-flash）。
+    -- model 是【对外模型名】（用户实际调用的名字，如 LTZY-CALL/deepseek-v4.1-flash）。
     -- 用对外名而不是上游名：清单是按"用户看得见、点得着的模型"挑选的，
     -- 且同一对外名在不同渠道可能映射到不同上游名。
     model      TEXT    NOT NULL,

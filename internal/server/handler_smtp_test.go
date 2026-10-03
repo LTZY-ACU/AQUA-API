@@ -13,10 +13,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/config"
-	"github.com/LTZY-ACU/aqua-api/internal/crypto"
-	"github.com/LTZY-ACU/aqua-api/internal/mailer"
-	"github.com/LTZY-ACU/aqua-api/internal/store"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/crypto"
+	"github.com/LTZY-ACU/ltzy-api/internal/mailer"
+	"github.com/LTZY-ACU/ltzy-api/internal/store"
 )
 
 // baseSMTPConfig 是测试用的"环境变量兜底配置"（非真实凭据）。
@@ -86,7 +86,7 @@ func TestSMTPConfig_保存即生效且不回传口令(t *testing.T) {
 
 	// ── 2. 保存后台配置 → 立即生效（无需重启） ─────────────────
 	payload := `{"host":"smtpdm.aliyun.com","port":465,"username":"owner@example.com",` +
-		`"from":"owner@example.com","from_name":"AQUA 站点","enabled":true,"password":"s3cret-token"}`
+		`"from":"owner@example.com","from_name":"LTZY 站点","enabled":true,"password":"s3cret-token"}`
 	rec, body = doBearerJSON(t, fx.srv, http.MethodPut, path, fx.adminTok, payload)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("保存邮件通道配置失败：%d %s", rec.Code, rec.Body.String())
@@ -118,7 +118,7 @@ func TestSMTPConfig_保存即生效且不回传口令(t *testing.T) {
 
 	// ── 3. 口令留空再保存 → 沿用原口令，通道不被改坏 ────────────
 	payload = `{"host":"smtpdm.aliyun.com","port":587,"username":"owner@example.com",` +
-		`"from":"owner@example.com","from_name":"AQUA 站点","enabled":true,"password":""}`
+		`"from":"owner@example.com","from_name":"LTZY 站点","enabled":true,"password":""}`
 	rec, body = doBearerJSON(t, fx.srv, http.MethodPut, path, fx.adminTok, payload)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("二次保存失败：%d %s", rec.Code, rec.Body.String())
@@ -135,7 +135,7 @@ func TestSMTPConfig_保存即生效且不回传口令(t *testing.T) {
 
 	// ── 4. 关闭启用 → 回退环境变量 ──────────────────────────────
 	payload = `{"host":"smtpdm.aliyun.com","port":587,"username":"owner@example.com",` +
-		`"from":"owner@example.com","from_name":"AQUA 站点","enabled":false,"password":""}`
+		`"from":"owner@example.com","from_name":"LTZY 站点","enabled":false,"password":""}`
 	rec, body = doBearerJSON(t, fx.srv, http.MethodPut, path, fx.adminTok, payload)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("关闭启用失败：%d %s", rec.Code, rec.Body.String())

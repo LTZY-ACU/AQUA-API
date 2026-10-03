@@ -29,7 +29,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // fakeAuditRepo 是 model.AuditLogRepository 的内存假实现，并发安全。

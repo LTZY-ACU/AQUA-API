@@ -31,7 +31,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // maintenanceTables 是运维概览与备份校验共同关注的核心表清单。

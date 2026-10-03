@@ -17,7 +17,7 @@ package relay
 import (
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // newRetryBilling 构造一个带指定分组倍率的计费组件（供重试率统计测试）。

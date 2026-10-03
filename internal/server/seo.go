@@ -31,7 +31,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // seoMetaStartMarker / seoMetaEndMarker 是 index.html 中 SEO 块的包裹标记。

@@ -28,7 +28,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // externalAccountColumns 是查询列清单，顺序必须与 scanExternal 的扫描顺序一致。

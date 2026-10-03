@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/crypto"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/crypto"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // channelKeyColumns 集中定义查询列，顺序必须与 scanChannelKey 的扫描顺序严格一致。
@@ -119,11 +119,14 @@ func (r *channelKeyRepository) ReplaceCredentials(ctx context.Context, channelID
 	}
 
 	desired := make(map[string]model.CredentialInput, len(inputs))
-	// ordered 保留管理员提交的原始顺序：下面的新增必须按它落库，
-	// 新密钥的 id 升序才会与"粘贴顺序"一致。若直接 range desired（map），
-	// 插入顺序每次随机，sequential 策略与 ORDER BY id ASC 的语义会不可预期，
-	// 也会让"第几把密钥"这类排障判断失去依据。
-	ordered := make([]model.CredentialInput, 0, len(inputs))
+	// order 钉住「输入顺序」：插入顺序决定自增 ID，也就是池在后台展示与
+	// 轮询调度的次序。若直接遍历 desired（map），同一批输入每次落库的
+	// 顺序都不同——"先贴的钥匙排前面"的直觉失效，依赖池序的调用方
+	//（含凭据路由测试）会随机拿到另一把钥匙。
+	//
+	// 存 hash 而非 input：hash 已是去重后的唯一键，后面按它回查 desired
+	// 即可，多存一份 input 只会让两个变量表示同一件事、增加走偏的机会。
+	order := make([]string, 0, len(inputs))
 	touchedKinds := make(map[model.CredentialKind]struct{}, 2)
 	for _, input := range inputs {
 		if err := input.Validate(); err != nil {
@@ -135,7 +138,7 @@ func (r *channelKeyRepository) ReplaceCredentials(ctx context.Context, channelID
 			continue
 		}
 		desired[hash] = input
-		ordered = append(ordered, input)
+		order = append(order, hash)
 	}
 
 	existing, err := r.listHashByKind(ctx, channelID)
@@ -169,8 +172,8 @@ func (r *channelKeyRepository) ReplaceCredentials(ctx context.Context, channelID
 	// 2) 按输入顺序新增目标集合中缺失的凭据；已存在的凭据保留状态与统计（并保护已录余额）
 	now := time.Now().Unix()
 	added := 0
-	for _, input := range ordered {
-		hash := input.IdentityHash(crypto.SHA256Hex)
+	for _, hash := range order {
+		input := desired[hash]
 		if _, ok := existing[input.Kind][hash]; ok {
 			// 已存在：保留其状态与失败统计，不重置。
 			//

@@ -44,9 +44,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/config"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
 )
 
 // smtpConfigSource 表示当前生效的配置来自哪里，用于界面提示"现在用的是哪一套"。
@@ -342,7 +342,7 @@ func (s *Server) handleTestSMTP(c *gin.Context) {
 		return
 	}
 
-	subject := "AQUA-API 邮件通道测试"
+	subject := "LTZY-API 邮件通道测试"
 	body := buildSMTPTestHTML(time.Now())
 
 	// 用独立超时而非请求 context：SMTP 会话最长 25 秒，
@@ -368,7 +368,7 @@ func (s *Server) handleTestSMTP(c *gin.Context) {
 func buildSMTPTestHTML(now time.Time) string {
 	timestamp := now.Format("2006-01-02 15:04:05")
 	return `<!DOCTYPE html><html><body style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.7;color:#1f2937">
-<p>这是一封来自 <strong>AQUA-API</strong> 的测试邮件。</p>
+<p>这是一封来自 <strong>LTZY-API</strong> 的测试邮件。</p>
 <p>你收到它，说明站点的邮件通道配置正确，注册邮箱验证码可以正常发出。</p>
 <p style="color:#6b7280;font-size:13px">发送时间：` + timestamp + `</p>
 </body></html>`

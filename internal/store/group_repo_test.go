@@ -11,7 +11,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // newTestGroupRepo 构造基于临时数据库的分组仓储。

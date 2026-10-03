@@ -21,8 +21,8 @@ package middleware
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/i18n"
-	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/ltzy-api/internal/i18n"
+	"github.com/LTZY-ACU/ltzy-api/internal/reqctx"
 )
 
 // Locale 返回解析 Accept-Language 并写入请求 context 的中间件。

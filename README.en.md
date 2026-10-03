@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="favicon.ico" width="88" alt="AQUA-API" />
+<img src="favicon.ico" width="88" alt="LTZY-API" />
 
-# AQUA-API
+# LTZY-API
 
 **Bring every AI upstream you own into a single entry point.**
 
-Self-hosted LLM API gateway · AI usage management system
+Self-hosted LLM Gateway · OpenAI-compatible API · AI usage management system
 
 ![License](assets/badges/license.svg)
 ![Go](assets/badges/go.svg)
@@ -19,6 +19,8 @@ Self-hosted LLM API gateway · AI usage management system
 
 [简体中文](README.md) · [English](README.en.md) · [Français](README.fr.md) · [Русский](README.ru.md) · [Español](README.es.md) · [العربية](README.ar.md)
 
+> Formerly known as **AQUA-API** — renamed to **LTZY-API** in Oct 2026. Old links redirect automatically.
+
 </div>
 
 ---
@@ -27,9 +29,9 @@ Self-hosted LLM API gateway · AI usage management system
 
 | Channel | Address |
 | --- | --- |
-| Official website (live demo) | https://aqua.is3.cc |
-| Source repository | https://github.com/LTZY-ACU/AQUA-API |
-| Issues | https://github.com/LTZY-ACU/AQUA-API/issues |
+| Official website (live demo) | https://ltzy.top |
+| Source repository | https://github.com/LTZY-ACU/LTZY-API |
+| Issues | https://github.com/LTZY-ACU/LTZY-API/issues |
 
 > **This repository is the sole authoritative source of the official address.** If the domain ever changes, it is updated here first and only then propagated anywhere else.
 > As a result, bookmarking this repository is more reliable than bookmarking a domain.
@@ -61,7 +63,7 @@ It is common for social apps (QQ / WeChat, etc.) to falsely flag sites like this
 - [Official Address](#official-address)
 - [Disclaimer](#disclaimer)
 - [What Is This](#what-is-this)
-- [Why AQUA-API](#why-aqua-api)
+- [Why LTZY-API](#why-ltzy-api)
 - [Feature Overview](#feature-overview)
 - [Core Features](#core-features)
 - [System Architecture](#system-architecture)
@@ -101,13 +103,13 @@ For brand and trademark boundaries, see the [Brand and Trademark Notice](TRADEMA
 
 ## What Is This
 
-AQUA-API is a **self-hosted LLM API gateway** and, at the same time, an **AI usage management system**.
+LTZY-API is a **self-hosted LLM API gateway** and, at the same time, an **AI usage management system**.
 
 The upstreams you hold are usually a jumble of mutually incompatible things: official OpenAI keys, Azure, Claude, Gemini, various cloud vendors,
 all kinds of OpenAI-compatible services, subscription accounts (Claude / Codex / Gemini), and locally run Ollama / vLLM.
 Your downstreams are various applications: Claude Code, Codex CLI, Cursor, in-house apps, scripts, and plugins.
 
-AQUA-API sits in the middle and turns this jumble into **one entry point, one protocol, and one clear set of books**.
+LTZY-API sits in the middle and turns this jumble into **one entry point, one protocol, and one clear set of books**.
 
 ```mermaid
 flowchart LR
@@ -118,7 +120,7 @@ flowchart LR
         C4["In-house apps / scripts / plugins"]
     end
 
-    AQUA["AQUA-API<br/>Unified protocol · smart scheduling · precise billing<br/>Groups · credential pools · admin console"]
+    LTZY["LTZY-API<br/>Unified protocol · smart scheduling · precise billing<br/>Groups · credential pools · admin console"]
 
     subgraph U["Upstream Services"]
         U1["OpenAI / Azure"]
@@ -128,26 +130,26 @@ flowchart LR
         U5["Local Ollama / vLLM"]
     end
 
-    C1 --> AQUA
-    C2 --> AQUA
-    C3 --> AQUA
-    C4 --> AQUA
-    AQUA --> U1
-    AQUA --> U2
-    AQUA --> U3
-    AQUA --> U4
-    AQUA --> U5
+    C1 --> LTZY
+    C2 --> LTZY
+    C3 --> LTZY
+    C4 --> LTZY
+    LTZY --> U1
+    LTZY --> U2
+    LTZY --> U3
+    LTZY --> U4
+    LTZY --> U5
 ```
 
 The core problems it solves come down to three words: **unified** (protocol and entry point), **reliable** (automatic failure avoidance), and **accountable** (every cent is traceable).
 
 ---
 
-## Why AQUA-API
+## Why LTZY-API
 
 Gateways are plentiful; what is scarce is one you can trust with your books. Every row below was shaped by a real-world pitfall.
 
-| Concern | Common practice | AQUA-API |
+| Concern | Common practice | LTZY-API |
 | --- | --- | --- |
 | Upstream keys | Stored in plaintext; the console can read them back | Encrypted at rest with AES-256-GCM; the master key is injected only from an environment variable, so a compromised console cannot export plaintext |
 | Encryption master key | Written into the config file alongside everything else | A field of the same name in the config file is ignored outright; it can only come from an environment variable, so it never leaks with the repository |
@@ -570,14 +572,16 @@ otherwise that portion of cost counts as 0 and the report skews optimistic.
 
 ## Quick Start
 
+> This section only covers the shortest path. **The complete deployment guide** (production systemd setup, Nginx/Caddy reverse proxy with HTTPS, upgrade & rollback, CLI and environment variable reference, FAQ) is available in [DEPLOYMENT.md](DEPLOYMENT.md) (in Chinese).
+
 ### Option 1: Docker Compose (Recommended)
 
 ```bash
-git clone https://github.com/LTZY-ACU/AQUA-API.git && cd AQUA-API
+git clone https://github.com/LTZY-ACU/LTZY-API.git && cd LTZY-API
 cp .env.example .env
 
-docker build -t aqua-api:local .          # First build (frontend + backend + runtime image)
-docker run --rm aqua-api:local -gen-key   # Print a master key and put it into AQUA_APP_KEY in .env
+docker build -t ltzy-api:local .          # First build (frontend + backend + runtime image)
+docker run --rm ltzy-api:local -gen-key   # Print a master key and put it into AQUA_APP_KEY in .env
 
 docker compose up -d
 ```
@@ -587,21 +591,21 @@ Open `http://127.0.0.1:8787` in a browser. Data lands in `./data` on the host; t
 ### Option 2: docker run (Without Compose)
 
 ```bash
-docker build -t aqua-api:local .
+docker build -t ltzy-api:local .
 
-docker run -d --name aqua-api \
+docker run -d --name ltzy-api \
   -p 8787:8787 \
   -e AQUA_APP_KEY="<your master key>" \
   -e AQUA_SERVER_LISTEN=0.0.0.0:8787 \
   -v "$PWD/data:/data" \
   --restart unless-stopped \
-  aqua-api:local
+  ltzy-api:local
 ```
 
 ### Option 3: Single Binary (Linux Server / systemd)
 
 ```bash
-go build -o aqua ./cmd/aqua           # Pure Go, zero CGO, no gcc required
+go build -o aqua ./cmd/ltzy           # Pure Go, zero CGO, no gcc required
 
 ./aqua -gen-key                        # Generate the encryption master key (generate only, never written to disk)
 
@@ -628,7 +632,7 @@ sudo systemctl status aqua-api
 # Frontend (optional: web/dist in the repo is a placeholder; the real UI is only embedded after a build)
 cd web && npm ci && npm run build && cd ..
 
-go build -o bin/aqua ./cmd/aqua
+go build -o bin/aqua ./cmd/ltzy
 export AQUA_APP_KEY="<your master key>"      # Windows: $env:AQUA_APP_KEY="..."
 ./bin/aqua -config ./aqua.json          # Without -config, defaults and environment variables are used
 curl http://127.0.0.1:8787/healthz
@@ -694,7 +698,7 @@ Precedence: **defaults < config file < environment variables**.
 | `AQUA_SMTP_USERNAME` | No | SMTP username |
 | `AQUA_SMTP_PASSWORD` | No | SMTP password; it can only come from an environment variable |
 | `AQUA_SMTP_FROM` | No | Sender address |
-| `AQUA_SMTP_FROM_NAME` | No | Sender display name, default `AQUA-API` |
+| `AQUA_SMTP_FROM_NAME` | No | Sender display name, default `LTZY-API` |
 | `AQUA_EPAY_KEY` | No | EPay merchant key (MD5 signature) |
 | `AQUA_STRIPE_SECRET_KEY` | No | Stripe Secret Key |
 | `AQUA_STRIPE_WEBHOOK_SECRET` | No | Stripe Webhook signing secret |
@@ -729,7 +733,7 @@ See [`.env.example`](.env.example) for a complete example.
 
 ## Integration Examples
 
-Any OpenAI-compatible client works: point its Base URL here and replace the key with an AQUA-API token.
+Any OpenAI-compatible client works: point its Base URL here and replace the key with an LTZY-API token.
 
 ### curl
 
@@ -762,7 +766,7 @@ print(resp.choices[0].message.content)
 
 ### Claude Code / Anthropic Clients
 
-AQUA-API natively supports the Anthropic protocol and can take over Claude Code's traffic directly:
+LTZY-API natively supports the Anthropic protocol and can take over Claude Code's traffic directly:
 
 ```bash
 export ANTHROPIC_BASE_URL=https://your-domain
@@ -964,7 +968,7 @@ cd web && npm ci && npm run type-check && npm run build   # Frontend
 Directory structure (the repository root is the code directory):
 
 ```
-cmd/aqua/              Program entry point (assembly only, no business logic)
+cmd/ltzy/              Program entry point (assembly only, no business logic)
 internal/config/       Configuration loading and validation
 internal/model/        Domain models and repository interfaces (no SQL)
 internal/store/        Persistence implementation (SQL + versioned migrations, split by dialect)
@@ -1027,6 +1031,6 @@ Companion files:
 
 **If this project saved you time on reconciliation, a Star is welcome ⭐**
 
-[Live Demo](https://aqua.is3.cc) · [Open an Issue](https://github.com/LTZY-ACU/AQUA-API/issues) · [GitHub](https://github.com/LTZY-ACU/AQUA-API) · [English](README.en.md)
+[Live Demo](https://ltzy.top) · [Open an Issue](https://github.com/LTZY-ACU/LTZY-API/issues) · [GitHub](https://github.com/LTZY-ACU/LTZY-API) · [English](README.en.md)
 
 </div>

@@ -34,9 +34,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
-	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/server/middleware"
 )
 
 // financeSummaryDTO 是财务板块顶部汇总卡的对外表示。

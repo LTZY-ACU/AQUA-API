@@ -14,7 +14,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // TestProbeChannel_Anthropic类型走Messages协议 验证测活会按类型改写路径与鉴权头。

@@ -26,7 +26,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // countingStatusUpstream 启动一个"总是返回指定状态码"的上游，并统计被请求次数。

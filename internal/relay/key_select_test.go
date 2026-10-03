@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // newTestPicker 构造一个使用可控时钟与独立粘性表的 keyPicker。

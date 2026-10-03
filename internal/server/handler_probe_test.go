@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // TestPickProbeCredential_跳过冷却与余额耗尽 验证选密钥的规则与池内统计。

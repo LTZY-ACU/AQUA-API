@@ -27,8 +27,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/config"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // TestHealthProbeConfigFrom_非正值回退默认 覆盖配置归一（含防御 ticker 失控）。

@@ -33,7 +33,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // corpusSamplePreviewBytes 是列表查询里正文预览的字节数。

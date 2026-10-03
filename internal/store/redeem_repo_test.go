@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // newTestRedeemFixture 构造基于临时数据库的兑换码仓储与用户仓储。

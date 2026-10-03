@@ -12,6 +12,7 @@
  *   → 若 URL 带 trade_no：轮询 getMyOrder() 直至终态或超时 → 已支付则刷新用户余额
  *   → 下单 createOrder() → 有 pay_url 则跳收银台（按钮进入「正在跳转」态，避免重复点击）
  *   → 回到本页 → 走上面的确认分支
+ *   → 兑换码：RedeemCard → redeemMyCode() → POST /api/user/redeem → 刷新用户余额
  *
  * 扩展（Extend）：
  *   新增支付通道：后端 /api/payment/public 会自动多出一条 method，本页无需改动。
@@ -21,14 +22,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 
-import { createOrder, getMyOrder } from '@/api/portal'
+import { createOrder, getMyOrder, redeemMyCode } from '@/api/portal'
 import { fetchPaymentInfo } from '@/api/site'
 import type { PaymentOrder, PublicPaymentInfo } from '@/api/types'
 import { ComplianceNotice } from '@/components/site/ComplianceNotice'
 import { Badge, Card } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/lib/auth/auth-context'
+import { useSite } from '@/lib/site/site-context'
 import { useToast } from '@/lib/toast/toast-context'
+import { formatYuanFromQuota } from '@/utils/money'
 
 const PRESETS = [10, 30, 50, 100, 200, 500]
 
@@ -293,6 +296,8 @@ export default function ConsoleRechargePage() {
         <Card>
           <p className="text-sm text-ink-2">本站当前未开放在线充值。如需充值请联系管理员。</p>
         </Card>
+        {/* 未开放在线充值时，兑换码往往是用户唯一的自助加余额途径，必须保留入口 */}
+        <RedeemCard />
       </div>
     )
   }
@@ -407,6 +412,82 @@ export default function ConsoleRechargePage() {
           {redirecting ? '正在跳转…' : '立即支付'}
         </Button>
       </div>
+
+      {/* 兑换码：与在线充值并列的另一种加余额方式，不依赖支付通道是否就绪 */}
+      <RedeemCard />
     </div>
+  )
+}
+
+/** 兑换码卡片：输入兑换码领取额度（POST /api/user/redeem）。 */
+function RedeemCard() {
+  const [code, setCode] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [gained, setGained] = useState<number | null>(null)
+  const { toastError, toastSuccess } = useToast()
+  const { refreshUser } = useAuth()
+  const { quotaPerYuan } = useSite()
+
+  async function handleRedeem() {
+    const trimmed = code.trim()
+    if (!trimmed) {
+      toastError('请输入兑换码')
+      return
+    }
+    setSubmitting(true)
+    setGained(null)
+    try {
+      const result = await redeemMyCode(trimmed)
+      setGained(result.quota)
+      setCode('')
+      toastSuccess('兑换成功，额度已到账')
+      // 额度已入账：立即刷新用户快照，让顶栏与概览页的余额同步更新
+      void refreshUser()
+    } catch (err) {
+      // 失败原因由后端按界面语言返回精确文案（不存在/已使用/已过期/已作废），直接展示
+      toastError(err instanceof Error ? err.message : '兑换失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Card>
+      <div className="text-sm font-semibold text-ink-2">兑换码</div>
+      <p className="mt-1 text-xs text-ink-3">有兑换码？输入后立即领取额度，无需支付，即时到账。</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => {
+            // 回车即兑换：兑换码是"输入即提交"的场景，多一次点击只是摩擦
+            if (e.key === 'Enter' && !submitting && code.trim()) void handleRedeem()
+          }}
+          disabled={submitting}
+          placeholder="输入兑换码"
+          className="h-9 min-w-0 flex-1 rounded-md border border-line-2 bg-card px-3 font-mono text-sm outline-none focus:border-brand"
+        />
+        <Button
+          variant="primary"
+          loading={submitting}
+          disabled={!code.trim()}
+          onClick={handleRedeem}
+        >
+          兑换
+        </Button>
+      </div>
+      {gained !== null && (
+        <div className="mt-3 rounded-md border border-ok/40 bg-ok/5 px-3 py-2 text-[13px] text-ink-2">
+          兑换成功，已到账{' '}
+          <span className="font-semibold text-ok">{formatYuanFromQuota(gained, quotaPerYuan)}</span>
+          ，完整流水见{' '}
+          <Link href="/console/finance" className="text-brand hover:underline">
+            财务记录
+          </Link>
+          。
+        </div>
+      )}
+    </Card>
   )
 }

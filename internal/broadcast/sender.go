@@ -35,7 +35,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // 发送节奏参数（改这三个值就能整体调节奏）。

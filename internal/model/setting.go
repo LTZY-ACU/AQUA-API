@@ -174,6 +174,34 @@ const (
 	// 关闭时中间件直接放行，连词表都不加载，不产生任何额外开销。
 	SettingKeySensitiveFilterEnabled = "sensitive_filter_enabled"
 
+	// ── 模型测速（渠道 × 模型的延迟探测）──────────────────────────
+	//
+	// 测速会对上游产生真实（但极小，每次约 2~3 token）的消耗，
+	// 且延迟数据是否向用户公开属于运营决策，因此做成设置而非写死。
+
+	// SettingKeySpeedTestEnabled 模型测速总开关（"true" / "false"），默认开启。
+	//
+	// 关闭时管理端测速接口直接拒绝、广场不再下发延迟字段；
+	// 已落库的历史结果保留（重新开启后立即恢复展示）。
+	SettingKeySpeedTestEnabled = "speedtest_enabled"
+	// SettingKeySpeedTestPublic 是否在模型广场向【未登录用户】展示模型延迟，默认开启。
+	//
+	// 独立于总开关：站长可能想"自己后台测着看，但不对外公开"——
+	// 上游延迟侧面反映供应商质量，是否公示由站长决定。
+	SettingKeySpeedTestPublic = "speedtest_public"
+	// SettingKeySpeedTestTimeoutSeconds 单个模型的测速超时（秒），默认 20。
+	SettingKeySpeedTestTimeoutSeconds = "speedtest_timeout_seconds"
+	// SettingKeySpeedTestMaxModels 单次测速请求允许测的模型数上限，默认 50。
+	//
+	// 上限的意义：测速是逐模型串行的真实上游请求，一个声明了几百个模型的
+	// 渠道若不设限，一次点击就可能把接口挂住几十分钟。
+	SettingKeySpeedTestMaxModels = "speedtest_max_models"
+	// SettingKeySpeedTestAutoBlock 测速后是否自动屏蔽无权限模型，默认开启。
+	//
+	// "无权限"指上游对探测请求明确回 403/404（详见 ModelSpeedResult.NoPermission）；
+	// 开启时这些模型会被自动从渠道清单移除，省去管理员逐个比对再手删。
+	SettingKeySpeedTestAutoBlock = "speedtest_auto_block"
+
 	// ── 合规信息（对外公示）──────────────────────────────────────
 	//
 	// 这一组是"必须对用户公示"的主体与联系方式信息，展示在页脚与协议页：
@@ -220,6 +248,9 @@ type SiteSettings struct {
 	// Safeguard 是内容安全相关的运营参数（敏感词过滤等）。
 	Safeguard SafeguardSettings
 
+	// SpeedTest 是模型测速的运营参数（开关 / 超时 / 数量上限）。
+	SpeedTest SpeedTestSettings
+
 	// Compliance 是需对用户公示的主体与联系方式信息（页脚、协议页、举报入口用）。
 	Compliance ComplianceSettings
 }
@@ -252,6 +283,55 @@ type SafeguardSettings struct {
 	// 关闭时 /v1 入口中间件直接放行且不加载词表；开启后命中词条即拒绝请求。
 	// 默认 false：拦截会直接改变用户可用性，必须由站长显式开启。
 	SensitiveFilterEnabled bool
+}
+
+// SpeedTestSettings 是模型测速的运营参数。
+//
+// 为什么单独成块：这一组参数都服务于同一个动作（对上游发最小请求测延迟），
+// 后台渲染成一个表单区块，读写在 load/ToMap 里前缀一致，扩展（如定时自动测）
+// 也归到这里。
+type SpeedTestSettings struct {
+	// Enabled 是测速总开关；关闭时管理端测速接口拒绝、广场不下发延迟。
+	Enabled bool
+	// Public 控制是否把测得的延迟展示在公开的模型广场。
+	Public bool
+	// TimeoutSeconds 是单个模型一次测速的超时（秒）。
+	TimeoutSeconds int
+	// MaxModels 是单次测速请求允许测的模型数上限。
+	MaxModels int
+	// AutoBlock 控制测速后是否自动屏蔽无权限模型（403/404），默认开启。
+	//
+	// 关闭它适合"清单是合同"的场景：模型清单由人工核对过，测速失败也只记录
+	// 不改动，避免自动化触碰配置。
+	AutoBlock bool
+}
+
+// 测速参数的合法区间。
+//
+// 设区间的原因与邀请额度上限相同：超时/数量被误填成天文数字时，
+// 一次点击就会把管理端接口挂住极久（串行 × 超时），属于可预期的自伤。
+const (
+	// MinSpeedTestTimeoutSeconds 是单模型测速超时下限：再短测不出慢模型。
+	MinSpeedTestTimeoutSeconds = 5
+	// MaxSpeedTestTimeoutSeconds 是单模型测速超时上限（与多数上游的排队耐心相当）。
+	MaxSpeedTestTimeoutSeconds = 120
+	// MaxSpeedTestModels 是单次请求模型数上限的绝对边界。
+	MaxSpeedTestModels = 500
+)
+
+// ValidateSpeedTestSettings 校验测速参数是否在合法区间。
+//
+// 供后台保存时把关；LoadSiteSettings 对脏值走"丢弃并回退默认"，
+// 两道防线保证库里无论被写成什么样，运行期拿到的都是可用值。
+func ValidateSpeedTestSettings(s SpeedTestSettings) error {
+	if s.TimeoutSeconds < MinSpeedTestTimeoutSeconds || s.TimeoutSeconds > MaxSpeedTestTimeoutSeconds {
+		return fmt.Errorf("测速超时必须在 %d ~ %d 秒之间，当前 %d",
+			MinSpeedTestTimeoutSeconds, MaxSpeedTestTimeoutSeconds, s.TimeoutSeconds)
+	}
+	if s.MaxModels < 1 || s.MaxModels > MaxSpeedTestModels {
+		return fmt.Errorf("单次测速模型数上限必须在 1 ~ %d 之间，当前 %d", MaxSpeedTestModels, s.MaxModels)
+	}
+	return nil
 }
 
 // ReferralSettings 是邀请返利 / 每日签到的运营参数。
@@ -451,7 +531,7 @@ func (p PaymentSettings) CurrencyOrDefault() string {
 // 设计意图：任何一项未配置时都应回退到合理默认，保证"零配置可用"。
 func DefaultSiteSettings() SiteSettings {
 	return SiteSettings{
-		SiteName: "AQUA-API",
+		SiteName: "LTZY-API",
 		// 站点描述的默认值刻意避免"资产""金融"这类联想词：
 		// 它同时出现在搜索引擎摘要与社交平台分享卡片上，
 		// 金融类表述会让支付通道与浏览器风控对站点产生错误归类。
@@ -527,6 +607,21 @@ func DefaultSiteSettings() SiteSettings {
 		Safeguard: SafeguardSettings{
 			SensitiveFilterEnabled: false,
 		},
+		// 模型测速默认值：功能开启、广场公开展示、单模型 20 秒、单次最多 50 个模型、
+		// 自动屏蔽无权限模型。
+		//
+		// 为什么默认开启：测速只由管理员显式触发，开着不产生任何后台流量；
+		// 公开展示默认开启是因为"用户在模型页看到延迟"正是本功能的主诉求，
+		// 需要收敛的站长在后台把 speedtest_public 关掉即可；
+		// 自动屏蔽同理——"测完顺手清掉没权限的模型"是测速的主要收益之一，
+		// 且判据（403/404）是确定性的，不会误伤暂时性失败。
+		SpeedTest: SpeedTestSettings{
+			Enabled:        true,
+			Public:         true,
+			TimeoutSeconds: 20,
+			MaxModels:      50,
+			AutoBlock:      true,
+		},
 		// 合规信息默认全空：备案号与主体名称只能由站长填入（我们无从得知），
 		// 前台在各字段为空时优雅降级（不展示该项），后台表单会提示"必填以符合公示要求"。
 		Compliance: ComplianceSettings{},
@@ -577,6 +672,12 @@ func (s SiteSettings) ToMap() map[string]string {
 
 		SettingKeySensitiveFilterEnabled: strconv.FormatBool(s.Safeguard.SensitiveFilterEnabled),
 
+		SettingKeySpeedTestEnabled:        strconv.FormatBool(s.SpeedTest.Enabled),
+		SettingKeySpeedTestPublic:         strconv.FormatBool(s.SpeedTest.Public),
+		SettingKeySpeedTestTimeoutSeconds: strconv.Itoa(s.SpeedTest.TimeoutSeconds),
+		SettingKeySpeedTestMaxModels:      strconv.Itoa(s.SpeedTest.MaxModels),
+		SettingKeySpeedTestAutoBlock:      strconv.FormatBool(s.SpeedTest.AutoBlock),
+
 		SettingKeySiteOperatorName:  s.Compliance.OperatorName,
 		SettingKeySiteICPLicense:    s.Compliance.ICPLicense,
 		SettingKeySitePoliceLicense: s.Compliance.PoliceLicense,
@@ -626,6 +727,7 @@ func LoadSiteSettings(ctx context.Context, repo SettingRepository) (SiteSettings
 	loadReferralSettings(&settings.Referral, values)
 	loadSafeguardSettings(&settings.Safeguard, values)
 	loadComplianceSettings(&settings.Compliance, values)
+	loadSpeedTestSettings(&settings.SpeedTest, values)
 
 	return settings, nil
 }
@@ -639,6 +741,44 @@ func loadSafeguardSettings(target *SafeguardSettings, values map[string]string) 
 		if parsed, err := strconv.ParseBool(v); err == nil {
 			target.SensitiveFilterEnabled = parsed
 		}
+	}
+}
+
+// loadSpeedTestSettings 把 KV 中的测速参数合并进强类型结构。
+//
+// 与其余 load* 一致：只在"存在且解析成功且落在合法区间"时覆盖，
+// 脏值（如超时 99999）一律丢弃并保留默认值，绝不让一个坏值
+// 把管理端测速接口变成"一点就挂几分钟"的自伤入口。
+func loadSpeedTestSettings(target *SpeedTestSettings, values map[string]string) {
+	if v, ok := values[SettingKeySpeedTestEnabled]; ok {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			target.Enabled = parsed
+		}
+	}
+	if v, ok := values[SettingKeySpeedTestPublic]; ok {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			target.Public = parsed
+		}
+	}
+	if v, ok := values[SettingKeySpeedTestTimeoutSeconds]; ok {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			target.TimeoutSeconds = parsed
+		}
+	}
+	if v, ok := values[SettingKeySpeedTestMaxModels]; ok {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			target.MaxModels = parsed
+		}
+	}
+	if v, ok := values[SettingKeySpeedTestAutoBlock]; ok {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			target.AutoBlock = parsed
+		}
+	}
+	// 区间兜底：直接跑 Validate 并在越界时整体回退默认，
+	// 保证运行期取到的参数组合永远可用。
+	if err := ValidateSpeedTestSettings(*target); err != nil {
+		*target = DefaultSiteSettings().SpeedTest
 	}
 }
 

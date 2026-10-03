@@ -32,7 +32,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // taskColumns 集中定义查询列，顺序必须与 scanTask 的扫描顺序严格一致。

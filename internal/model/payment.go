@@ -272,6 +272,18 @@ type PaymentOrderRepository interface {
 	// 数量应为 0；一旦出现必须补偿，否则就是用户付了钱没到账。
 	ListPaidUncredited(ctx context.Context, limit int) ([]*PaymentOrder, error)
 
+	// ListReconcilable 列出需要主动对账的订单，供支付对账循环使用。
+	//
+	// 范围：
+	//  1. 全部"待支付"订单——回调可能丢失（域名迁移、网关故障、配置错误），
+	//     只有主动向网关查单才能发现"用户已付款但回调没到"的订单；
+	//  2. since 之后创建的"已关闭"订单——订单超时被关不等于用户没付钱
+	//     （他可能付完款回调才延迟到达，或回调永远丢失），对关闭后的订单
+	//     追溯一个窗口期，给"迟到的钱"一条自动到账的路。
+	//
+	// 不含"已支付"（无需再查）与"已退款"（绝不能被重新入账）。
+	ListReconcilable(ctx context.Context, since time.Time) ([]*PaymentOrder, error)
+
 	// CloseExpired 关闭在 before 之前到期且仍未支付的订单，返回关闭条数。
 	CloseExpired(ctx context.Context, before time.Time) (int64, error)
 

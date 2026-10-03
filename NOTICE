@@ -1,4 +1,4 @@
-AQUA-API
+LTZY-API
 Copyright (C) 2026 小涑 (xiaosu4610). All rights reserved.
 
 本软件依据《MIT 许可证》授权。
@@ -18,7 +18,7 @@ Copyright (C) 2026 小涑 (xiaosu4610). All rights reserved.
 
   - 首次提交：2026-09-26 15:34:02 +0800（UTC+8），提交 73974fd
     "chore: 初始化工程骨架与规范文档"
-  - 公开仓库：https://github.com/LTZY-ACU/AQUA-API
+  - 公开仓库：https://github.com/LTZY-ACU/LTZY-API
 
 Git 提交记录中的时间戳、作者信息与提交内容共同构成本项目的
 创作时间证据。任何第三方就本项目已公开发表的实现主张权利，
@@ -28,11 +28,11 @@ Git 提交记录中的时间戳、作者信息与提交内容共同构成本项�
 
 商标与品牌（Trademark and branding）
 
-"AQUA-API" 名称、项目 Logo 与 favicon.ico 为项目作者所有，
+"LTZY-API" 名称、项目 Logo 与 favicon.ico 为项目作者所有，
 不在 MIT 许可证的授权范围内（MIT 仅授予著作权许可，不含商标许可）。
 
 未经书面许可，不得在商业产品、推广材料或服务名称中使用
-"AQUA-API" 及相关商标，亦不得暗示衍生产品与原作者存在官方关联。
+"LTZY-API" 及相关商标，亦不得暗示衍生产品与原作者存在官方关联。
 详见 TRADEMARK.md。
 
 -------------------------------------------------------------------------------

@@ -13,6 +13,7 @@ import type { FinanceSummary } from '@/api/types'
 import { fetchMyTrial } from '@/api/portal'
 import { fetchMyUsage } from '@/api/portal'
 import type { UsageStats } from '@/api/types'
+import { UsageLeaderboard } from '@/components/UsageLeaderboard'
 import { Card, Skeleton, StatCard } from '@/components/ui/Display'
 import { EChart } from '@/components/ui/EChart'
 import { useAuth } from '@/lib/auth/auth-context'
@@ -139,6 +140,9 @@ export default function ConsoleOverviewPage() {
           {usage ? <EChart option={modelOption} height={280} /> : <Skeleton className="m-4 h-64" />}
         </Card>
       </div>
+
+      {/* 用量排行榜：付费榜 / 免费榜（各 Top 20，自己所在行高亮并标注"我"） */}
+      <UsageLeaderboard />
     </div>
   )
 }

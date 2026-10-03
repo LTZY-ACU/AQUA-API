@@ -65,7 +65,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     })()
   }, [])
 
-  const siteName = status?.name || peekSiteName() || 'AQUA-API'
+  const siteName = status?.name || peekSiteName() || 'LTZY-API'
   const quotaPerYuan = status?.quota_per_yuan ?? 0
 
   const value = useMemo(

@@ -32,8 +32,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/metrics"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/metrics"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // ── 测试替身 ──────────────────────────────────────────────────────────────

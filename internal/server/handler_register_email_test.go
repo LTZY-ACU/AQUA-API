@@ -23,7 +23,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // registerWithEmail 发起一次带邮箱的注册，直接返回 HTTP 状态与响应体。

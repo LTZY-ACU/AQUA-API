@@ -38,9 +38,9 @@
 package openapi
 
 import (
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
-	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
-	"github.com/LTZY-ACU/aqua-api/internal/version"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/server/middleware"
+	"github.com/LTZY-ACU/ltzy-api/internal/version"
 )
 
 // specVersion 是本规范遵循的 OpenAPI 版本。

@@ -26,6 +26,7 @@ import { SiteHeader } from '@/components/site/SiteHeader'
 import { Badge, EmptyState, Skeleton, Tabs } from '@/components/ui/Display'
 import { Button } from '@/components/ui/Button'
 import { useSite } from '@/lib/site/site-context'
+import { formatLatency } from '@/utils/format'
 import { formatDiscountLabel } from '@/utils/money'
 import { vendorLabel, vendorOf, vendorTone } from '@/utils/vendor'
 
@@ -143,6 +144,7 @@ export default function ModelPlazaPage() {
                   <th className="hidden px-4 py-2.5 font-normal sm:table-cell">分组</th>
                   <th className="px-4 py-2.5 text-right font-normal">价格</th>
                   <th className="hidden px-4 py-2.5 text-right font-normal md:table-cell">渠道</th>
+                  <th className="hidden px-4 py-2.5 text-right font-normal md:table-cell">首字延迟</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -150,7 +152,7 @@ export default function ModelPlazaPage() {
                   <Fragment key={vendor}>
                     {/* 厂商分区行：跨越整表，给长表一个视觉锚点 */}
                     <tr className="bg-surface/60">
-                      <td colSpan={4} className="px-4 py-1.5">
+                      <td colSpan={5} className="px-4 py-1.5">
                         <span className="flex items-center gap-2">
                           <span className={`flex h-5 w-5 items-center justify-center rounded-full ring-1 text-[10px] font-semibold ${vendorTone(vendor)}`}>
                             {vendorLabel(vendor).slice(0, 1).toUpperCase()}
@@ -223,7 +225,26 @@ function ModelRow({ model, viewer, onOpen }: { model: PlazaModel; viewer?: Plaza
         )}
       </td>
       <td className="hidden px-4 py-2.5 text-right font-mono text-ink-3 md:table-cell">{model.channel_count}</td>
+      <td className="hidden px-4 py-2.5 text-right md:table-cell">
+        <SpeedCell ms={model.speed_ttfb_ms} />
+      </td>
     </tr>
+  )
+}
+
+/**
+ * 首字延迟单元格：后台「模型测速」的快照数据（非实时）。
+ *
+ * 未下发（未测过 / 站长关闭公示）时显示 "—"，与"渠道"列的空态保持一致；
+ * 颜色分档：<1s 快（绿）、1~3s 正常（默认）、>3s 慢（橙），扫视即可分拣。
+ */
+function SpeedCell({ ms }: { ms?: number }) {
+  if (!ms || ms <= 0) return <span className="font-mono text-ink-3">—</span>
+  const tone = ms < 1000 ? 'text-ok' : ms < 3000 ? 'text-ink-2' : 'text-warn'
+  return (
+    <span className={`font-mono tabular-nums ${tone}`} title="后台测速快照（首字延迟，非实时）">
+      {formatLatency(ms)}
+    </span>
   )
 }
 

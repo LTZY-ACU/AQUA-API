@@ -50,7 +50,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
 )
 
 // 媒体类上游端点路径。

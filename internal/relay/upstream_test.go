@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
+	"github.com/LTZY-ACU/ltzy-api/internal/channeltype"
 )
 
 // mustType 取出渠道类型规格，取不到即测试失败。

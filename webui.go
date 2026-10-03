@@ -10,7 +10,7 @@
 //
 //	构建：cd web && npm run build  →  产出 web/dist/*
 //	编译：本文件把 web/dist 嵌入二进制
-//	  └─ cmd/aqua/main.go 读取 aqua.WebDist → 传给 server 注册静态路由
+//	  └─ cmd/ltzy/main.go 读取 ltzy.WebDist → 传给 server 注册静态路由
 //
 // 扩展（Extend）：
 //

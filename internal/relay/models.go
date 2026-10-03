@@ -39,11 +39,9 @@ import (
 const (
 	// modelsPath 是 OpenAI 兼容的模型列表端点。
 	//
-	// 必须带 /v1 前缀：本项目的 base_url 约定是"只填到域名根"，
-	// 版本前缀由各端点常量自己带上（见 oai.ChatCompletionsPath = "/v1/chat/completions"）。
-	// 曾经的坑：这里写成 "/models"，配合 base_url=https://host/v1 拉取能成功，
-	// 但同一渠道转发对话请求会拼成 /v1/v1/chat/completions 而返回 404——
-	// 两处路径约定必须严格一致。
+	// 端点常量自带 /v1 前缀；基础地址也带版本段时由 joinUpstreamURL 统一去重
+	//（曾经的坑：base_url=https://host/v1 直接拼接会请求 /v1/v1/models 而 404，
+	// 与对话端点的 /v1/v1/chat/completions 是同一类问题，修复也共用一处）。
 	modelsPath = "/v1/models"
 	// modelListTimeout 是拉取模型列表的整体超时。
 	//
@@ -77,7 +75,10 @@ func (r *Relay) FetchModels(ctx context.Context, baseURL, apiKey string) ([]stri
 		return nil, fmt.Errorf("relay: 上游地址必须以 http:// 或 https:// 开头，当前为 %q", baseURL)
 	}
 
-	requestURL := strings.TrimRight(baseURL, "/") + modelsPath
+	// 经 joinUpstreamURL 拼接与去重：管理员把 base_url 填成
+	// https://host/v1 时不再拼出 /v1/v1/models（404），与转发链路口径一致。
+	// （v2 起 versionSegment 还能覆盖智谱 /api/paas/v4 这类「非 v1 版本段」的上游。）
+	requestURL := joinUpstreamURL(strings.TrimRight(baseURL, "/"), modelsPath)
 
 	// 单独设置超时：与全站上游超时保持一致（见 UpstreamTimeout 的说明）。
 	ctx, cancel := context.WithTimeout(ctx, modelListTimeout)

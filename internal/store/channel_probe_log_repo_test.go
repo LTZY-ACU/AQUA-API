@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // appendProbeLog 往库里写一条探针历史，返回写入时刻。

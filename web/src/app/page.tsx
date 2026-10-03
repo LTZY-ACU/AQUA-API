@@ -34,7 +34,7 @@ import { useAuth } from '@/lib/auth/auth-context'
 import { useSite } from '@/lib/site/site-context'
 import { formatDiscountLabel, formatYuanPerCall, formatYuanPerMillion } from '@/utils/money'
 
-const REPO_URL = 'https://github.com/LTZY-ACU/AQUA-API'
+const REPO_URL = 'https://github.com/LTZY-ACU/LTZY-API'
 
 /* ── 小节头：等宽编号 + 标题 + 说明 ─────────────────────── */
 
@@ -55,9 +55,9 @@ function SectionHead({ index, title, desc, anchorId }: { index: string; title: s
 function Hero() {
   const { status } = useSite()
   const { isLoggedIn } = useAuth()
-  const sampleModel = status?.models?.[0] || 'AQUA-CALL/deepseek-v4-flash'
+  const sampleModel = status?.models?.[0] || 'LTZY-CALL/deepseek-v4-flash'
 
-  const [origin, setOrigin] = useState('https://aqua.is3.cc')
+  const [origin, setOrigin] = useState('https://ltzy.top')
   useEffect(() => {
     if (typeof window !== 'undefined') setOrigin(window.location.origin)
   }, [])
@@ -208,7 +208,7 @@ const STEPS = [
 ]
 
 function Quickstart() {
-  const [origin, setOrigin] = useState('https://aqua.is3.cc')
+  const [origin, setOrigin] = useState('https://ltzy.top')
   useEffect(() => {
     if (typeof window !== 'undefined') setOrigin(window.location.origin)
   }, [])

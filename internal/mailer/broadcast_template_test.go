@@ -37,19 +37,19 @@ func TestRenderBroadcast_模板目录与未知键(t *testing.T) {
 	}
 
 	// 未知键必须返回 ok=false：调用方据此拒绝请求，而不是发一封空邮件出去
-	if _, _, ok := RenderBroadcast("not-a-template", "AQUA-API"); ok {
+	if _, _, ok := RenderBroadcast("not-a-template", "LTZY-API"); ok {
 		t.Fatal("未知模板键应返回 ok=false")
 	}
 }
 
 // TestRenderBroadcast_计费专线通知关键信息齐全且无链接 覆盖内容约束。
 func TestRenderBroadcast_计费专线通知关键信息齐全且无链接(t *testing.T) {
-	subject, body, ok := RenderBroadcast(BroadcastTemplateBillingLine, "AQUA-API")
+	subject, body, ok := RenderBroadcast(BroadcastTemplateBillingLine, "LTZY-API")
 	if !ok {
 		t.Fatal("计费专线模板应可渲染")
 	}
 
-	if !strings.Contains(subject, "AQUA-API") || !strings.Contains(subject, "计费专线") {
+	if !strings.Contains(subject, "LTZY-API") || !strings.Contains(subject, "计费专线") {
 		t.Errorf("主题应含站点名与核心信息（计费专线已上线），实际 %q", subject)
 	}
 
@@ -77,7 +77,7 @@ func TestRenderBroadcast_计费专线通知关键信息齐全且无链接(t *tes
 	}
 
 	// 硬约束：不含任何网址（含本站域名），也不含 <a> 超链接
-	for _, forbidden := range []string{"http://", "https://", "<a ", "aqua.is3.cc", "www."} {
+	for _, forbidden := range []string{"http://", "https://", "<a ", "ltzy.top", "www."} {
 		if strings.Contains(body, forbidden) {
 			t.Errorf("正文不应出现 %q（运营要求引导去官网但不挂链接）", forbidden)
 		}
@@ -91,23 +91,23 @@ func TestRenderBroadcast_计费专线通知关键信息齐全且无链接(t *tes
 
 // TestRenderBroadcast_按次专线通知关键信息齐全且不泄露定价 覆盖内容与运营约束。
 //
-// 与计费专线模板的区别：本模板面向"按次计费"的 AQUA-CALL/ 专线，
+// 与计费专线模板的区别：本模板面向"按次计费"的 LTZY-CALL/ 专线，
 // 且运营明确要求【不得出现任何具体价格/折扣/充值门槛数字】——
 // 只告知"新分组已上线""上线优惠进行中"。这条一旦被改文案时破坏，
 // 就等于把定价方案直接群发给全体用户，故用测试钉死。
 func TestRenderBroadcast_按次专线通知关键信息齐全且不泄露定价(t *testing.T) {
-	subject, body, ok := RenderBroadcast(BroadcastTemplateCallLine, "AQUA-API")
+	subject, body, ok := RenderBroadcast(BroadcastTemplateCallLine, "LTZY-API")
 	if !ok {
 		t.Fatal("按次专线模板应可渲染")
 	}
 
-	if !strings.Contains(subject, "AQUA-API") || !strings.Contains(subject, "按次") {
+	if !strings.Contains(subject, "LTZY-API") || !strings.Contains(subject, "按次") {
 		t.Errorf("主题应含站点名与核心信息（按次专线已上线），实际 %q", subject)
 	}
 
 	// 关键信息逐项核对（每一项缺失都会让通知失去意义）
 	required := []string{
-		"按次专线", "AQUA-CALL/", "上线优惠", "模型广场",
+		"按次专线", "LTZY-CALL/", "上线优惠", "模型广场",
 		"deepseek-v4-flash", "deepseek-v4.1-flash", "deepseek-v4-pro",
 		"glm-5.3", "glm-5.3-flash", "kimi-k3",
 		"gpt-image-2-w", "gpt-image-2.5",
@@ -139,7 +139,7 @@ func TestRenderBroadcast_按次专线通知关键信息齐全且不泄露定价(
 	}
 
 	// 硬约束：不含任何网址（含本站域名），也不含 <a> 超链接
-	for _, forbidden := range []string{"http://", "https://", "<a ", "aqua.is3.cc", "www."} {
+	for _, forbidden := range []string{"http://", "https://", "<a ", "ltzy.top", "www."} {
 		if strings.Contains(body, forbidden) {
 			t.Errorf("正文不应出现 %q（运营要求引导去官网但不挂链接）", forbidden)
 		}
@@ -157,11 +157,11 @@ func TestRenderBroadcast_按次专线通知关键信息齐全且不泄露定价(
 // 否则用户既不会去用、过期后还会以为额度凭空消失。
 // 但模型单价仍然一个字都不能出现（写了就等于把定价方案群发出去）。
 func TestRenderBroadcast_试用额通知写明金额与期限(t *testing.T) {
-	subject, body, ok := RenderBroadcast(BroadcastTemplateTrialGrant, "AQUA-API")
+	subject, body, ok := RenderBroadcast(BroadcastTemplateTrialGrant, "LTZY-API")
 	if !ok {
 		t.Fatal("试用额模板应可渲染")
 	}
-	if !strings.Contains(subject, "AQUA-API") || !strings.Contains(subject, "试用额") {
+	if !strings.Contains(subject, "LTZY-API") || !strings.Contains(subject, "试用额") {
 		t.Errorf("主题应含站点名与核心信息（试用额已发放），实际 %q", subject)
 	}
 
@@ -173,7 +173,7 @@ func TestRenderBroadcast_试用额通知写明金额与期限(t *testing.T) {
 	}
 
 	// 引导到按次专线的关键信息
-	for _, want := range []string{"AQUA-CALL/", "按次专线", "访问令牌", "所属分组", "glm-5.3"} {
+	for _, want := range []string{"LTZY-CALL/", "按次专线", "访问令牌", "所属分组", "glm-5.3"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("正文缺少关键信息 %q", want)
 		}
@@ -192,7 +192,7 @@ func TestRenderBroadcast_试用额通知写明金额与期限(t *testing.T) {
 			t.Errorf("正文不应出现 %q（合规红线）", banned)
 		}
 	}
-	for _, forbidden := range []string{"http://", "https://", "<a ", "aqua.is3.cc", "www."} {
+	for _, forbidden := range []string{"http://", "https://", "<a ", "ltzy.top", "www."} {
 		if strings.Contains(body, forbidden) {
 			t.Errorf("正文不应出现 %q（运营要求引导去官网但不挂链接）", forbidden)
 		}
@@ -214,7 +214,7 @@ func TestRenderBroadcast_站点名被转义(t *testing.T) {
 
 	// 站点名为空时回退默认名，而不是留下一处空白
 	_, fallback, _ := RenderBroadcast(BroadcastTemplateBillingLine, "   ")
-	if !strings.Contains(fallback, "AQUA-API") {
-		t.Error("站点名为空时应回退为 AQUA-API")
+	if !strings.Contains(fallback, "LTZY-API") {
+		t.Error("站点名为空时应回退为 LTZY-API")
 	}
 }

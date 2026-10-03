@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
 )
 
 func testSender() *Sender {
@@ -25,9 +25,30 @@ func testSender() *Sender {
 		Port:     465,
 		Username: "user@example.com",
 		From:     "user@example.com",
-		FromName: "AQUA 网关",
+		FromName: "LTZY 网关",
 		Password: "not-a-real-password",
 	})
+}
+
+// TestValidateRecipient_头注入防御 收件人是唯一同时进入 SMTP 信封与
+// 邮件头的用户可控字段，CR/LF/NUL 必须被拒绝，否则可注入任意邮件头（如 Bcc）。
+func TestValidateRecipient_头注入防御(t *testing.T) {
+	if err := validateRecipient("user@example.com"); err != nil {
+		t.Errorf("正常地址不应报错，实际: %v", err)
+	}
+	if err := validateRecipient(""); err == nil {
+		t.Error("空收件人应报错")
+	}
+	for _, evil := range []string{
+		"user@example.com\r\nBcc: victim@evil.com",
+		"user@example.com\nBcc: victim@evil.com",
+		"user@example.com\rBcc: victim@evil.com",
+		"user\x00@example.com",
+	} {
+		if err := validateRecipient(evil); err == nil {
+			t.Errorf("含控制字符的地址 %q 应被拒绝", evil)
+		}
+	}
 }
 
 func TestConfigured_缺口令_应判为未配置(t *testing.T) {
@@ -51,7 +72,7 @@ func TestConfigured_缺口令_应判为未配置(t *testing.T) {
 }
 
 func TestBuildMessage_中文主题与HTML正文_应可正确解码(t *testing.T) {
-	subject, body := RegisterCodeEmail("AQUA 网关", "482913", 5*time.Minute)
+	subject, body := RegisterCodeEmail("LTZY 网关", "482913", 5*time.Minute)
 
 	raw := buildMessage(testSender().snapshot(), "user@example.com", subject, body)
 
@@ -129,10 +150,10 @@ func TestBuildMessage_未配置发件人显示名_不应出现尖括号包裹(t 
 
 func TestRegisterCodeEmail_空站点名_应回退为默认品牌名(t *testing.T) {
 	subject, body := RegisterCodeEmail("   ", "123456", 5*time.Minute)
-	if !strings.Contains(subject, "AQUA-API") {
+	if !strings.Contains(subject, "LTZY-API") {
 		t.Errorf("站点名为空时应回退默认品牌名，实际主题: %q", subject)
 	}
-	if !strings.Contains(body, "AQUA-API") {
+	if !strings.Contains(body, "LTZY-API") {
 		t.Error("正文站点名为空时应回退默认品牌名")
 	}
 }

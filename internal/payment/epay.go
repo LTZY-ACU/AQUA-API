@@ -50,7 +50,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // 易支付协议常量。
@@ -256,7 +256,7 @@ func (p *epayProvider) ParseNotify(ctx context.Context, notify *Notify) (*Notify
 		// 查询本身因网络/接口不可用而失败时只记日志、放行——因为此时签名与语义
 		// 校验已经通过（攻击者拿不到商户密钥），而误拒会让"真付了钱的用户"
 		// 拿不到额度。两害相权，取其轻。
-		if err := p.verifyWithGateway(ctx, settings, tradeNo, amountCents); err != nil {
+		if err := p.verifyWithGateway(ctx, tradeNo, amountCents); err != nil {
 			if errors.Is(err, errGatewaySaysUnpaid) {
 				return nil, fmt.Errorf("%w：上游网关确认该订单未支付", ErrSignatureInvalid)
 			}
@@ -292,61 +292,83 @@ var errGatewaySaysUnpaid = errors.New("payment: 上游网关确认订单未支�
 // 有的用 data 包裹、有的用 trade_status 而非 status），解析时几种都认；
 // 完全无法识别响应结构时按"查询失败"返回（放行），而不是武断判定为未支付——
 // 否则换一家服务商就会导致"付了钱不到账"。
-func (p *epayProvider) verifyWithGateway(ctx context.Context, settings model.PaymentSettings, tradeNo string, expectCents int64) error {
+func (p *epayProvider) verifyWithGateway(ctx context.Context, tradeNo string, expectCents int64) error {
+	result, err := p.QueryOrder(ctx, tradeNo)
+	if err != nil {
+		return err
+	}
+	if !result.Recognized {
+		// 无法识别的响应结构：不武断判定，交给上层的"放行"分支
+		return errors.New("payment: 上游响应无法识别，跳过核实")
+	}
+	if !result.Paid {
+		return errGatewaySaysUnpaid
+	}
+	if result.AmountCents > 0 && result.AmountCents != expectCents {
+		return errGatewaySaysUnpaid
+	}
+	return nil
+}
+
+// QueryOrder 主动向易支付网关查询订单状态（实现 Querier，供对账循环使用）。
+//
+// 与 verifyWithGateway 的分工：本方法只返回"网关怎么说"的原始结论
+// （含金额与第三方单号，是否放行由调用方决定）；verifyWithGateway 则在
+// 回调路径上把它翻译成"放行/拒绝"两种语义。
+func (p *epayProvider) QueryOrder(ctx context.Context, tradeNo string) (*OrderQueryResult, error) {
+	settings, err := p.settings(ctx)
+	if err != nil {
+		return nil, err
+	}
 	gateway := strings.TrimSpace(settings.Param(model.PaymentMethodEPay, "gateway"))
 	if gateway == "" {
-		return errors.New("payment: 未配置网关地址，跳过上游核实")
+		return nil, errors.New("payment: 未配置网关地址，无法查单")
 	}
 
 	query := url.Values{}
 	query.Set("act", "order")
 	query.Set("pid", strings.TrimSpace(settings.Param(model.PaymentMethodEPay, "pid")))
 	query.Set("key", strings.TrimSpace(p.opts.Secrets.EPayKey))
-	query.Set("out_trade_no", tradeNo)
+	query.Set("out_trade_no", strings.TrimSpace(tradeNo))
 
-	// 固定 5 秒超时：核实是加分项，不能因为它让回调处理长时间挂起——
-	// 支付平台对回调响应时间有要求（过长会重复投递）。
+	// 超时与回调核实共用 5 秒：查单是兜底路径，不能拖垮主流程。
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	endpoint := strings.TrimRight(gateway, "/") + "/api.php?" + query.Encode()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return fmt.Errorf("payment: 构造上游核实请求失败: %w", err)
+		return nil, fmt.Errorf("payment: 构造查单请求失败: %w", err)
 	}
 	resp, err := p.client().Do(req)
 	if err != nil {
-		return fmt.Errorf("payment: 请求上游失败: %w", err)
+		return nil, fmt.Errorf("payment: 请求上游失败: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// 只读 64KiB：这是公开可达路径发起的对外请求，不能让异常大响应拖垮内存
+	// 只读 64KiB：这是对外请求，不能让异常大响应拖垮内存
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if err != nil {
-		return fmt.Errorf("payment: 读取上游响应失败: %w", err)
+		return nil, fmt.Errorf("payment: 读取上游响应失败: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("payment: 上游返回 HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("payment: 上游返回 HTTP %d", resp.StatusCode)
 	}
 
-	order, ok := parseEPayOrderQuery(raw)
-	if !ok {
-		// 无法识别的响应结构：不武断判定，交给上层的"放行"分支
-		return errors.New("payment: 上游响应无法识别，跳过核实")
-	}
-	if !order.Paid {
-		return errGatewaySaysUnpaid
-	}
-	if order.AmountCents > 0 && order.AmountCents != expectCents {
-		return errGatewaySaysUnpaid
-	}
-	return nil
+	order, recognized := parseEPayOrderQuery(raw)
+	return &OrderQueryResult{
+		Paid:            order.Paid,
+		AmountCents:     order.AmountCents,
+		ProviderTradeNo: order.ProviderTradeNo,
+		Recognized:      recognized,
+	}, nil
 }
 
 // epayOrderQuery 是从上游查询接口里提取出的关键信息。
 type epayOrderQuery struct {
-	Paid        bool
-	AmountCents int64
+	Paid            bool
+	AmountCents     int64
+	ProviderTradeNo string
 }
 
 // parseEPayOrderQuery 解析上游订单查询响应。
@@ -386,6 +408,13 @@ func parseEPayOrderQuery(raw []byte) (epayOrderQuery, bool) {
 	if rawMoney, ok := target["money"]; ok {
 		recognized = true
 		result.AmountCents = yuanToCents(fmt.Sprint(rawMoney))
+	}
+
+	// 第三方订单号：trade_no（对账与补账落库都需要它）
+	if rawTradeNo, ok := target["trade_no"]; ok && rawTradeNo != nil {
+		if trimmed, ok := rawTradeNo.(string); ok {
+			result.ProviderTradeNo = strings.TrimSpace(trimmed)
+		}
 	}
 
 	return result, recognized

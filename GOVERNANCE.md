@@ -74,7 +74,7 @@ GitHub 组织**没有**「用户主动申请加入」的原生功能，只支持
 申请人接受邀请 → 正式成为协作者
 ```
 
-**入口**：[新建 Issue → 申请加入开发组](https://github.com/LTZY-ACU/AQUA-API/issues/new?template=join_request.yml)
+**入口**：[新建 Issue → 申请加入开发组](https://github.com/LTZY-ACU/LTZY-API/issues/new?template=join_request.yml)
 
 **审核口径**：
 

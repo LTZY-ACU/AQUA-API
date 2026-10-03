@@ -30,8 +30,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/channeltype"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // Codex 订阅账号的出站端点（相对渠道 base_url）。

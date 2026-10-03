@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button'
 
 const GROUPS = [
   {
-    name: 'AQUA-API 主群',
+    name: 'LTZY-API 主群',
     desc: '讨论使用问题、渠道接入、新功能预告。',
     url: 'https://qm.qq.com/q/jH8kWrKONr',
     primary: true,

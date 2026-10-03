@@ -37,9 +37,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/config"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/netguard"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/netguard"
 )
 
 // 本包对外暴露的哨兵错误，供上层用 errors.Is 精确判断并映射 HTTP 状态码。
@@ -124,6 +124,51 @@ type Provider interface {
 	// 约定：验签失败必须返回 ErrSignatureInvalid；金额不一致返回 ErrAmountMismatch。
 	// 上层据此拒绝入账，本方法不得"自动容忍"。
 	ParseNotify(ctx context.Context, notify *Notify) (*NotifyResult, error)
+}
+
+// OrderQueryResult 是主动查单（对账）的结果。
+type OrderQueryResult struct {
+	// Paid 表示网关明确回答"该订单支付成功"。
+	Paid bool
+	// AmountCents 是网关侧实付金额（分）；0 表示网关未回金额。
+	AmountCents int64
+	// ProviderTradeNo 是第三方订单号（供对账与落库）。
+	ProviderTradeNo string
+	// Recognized 表示响应结构可识别。false = 无法判断（绝不能当"未支付"处理）。
+	Recognized bool
+}
+
+// Querier 是支持主动查单的通道适配器（可选能力）。
+//
+// 为什么是可选接口而不是塞进 Provider：Stripe/微信支付等通道的查单
+// 需要额外的 API 凭据与调用形态，并非所有部署都配置；把"必须实现"
+// 强加给所有通道，会让新增通道的门槛无谓升高。对账循环对不支持查单
+// 的通道记一条日志后跳过即可。
+type Querier interface {
+	// QueryOrder 向网关查询订单状态。
+	//
+	// 返回 (result, nil) 时 result.Recognized 表达"能否判定"；
+	// 网络/HTTP 层错误返回 error（对账方应跳过本轮，下轮再试）。
+	QueryOrder(ctx context.Context, tradeNo string) (*OrderQueryResult, error)
+}
+
+// ErrQueryUnsupported 表示该通道不支持主动查单（未实现 Querier）。
+var ErrQueryUnsupported = errors.New("payment: 该通道不支持主动查单")
+
+// QueryOrder 按通道名查询订单在网关侧的状态（对账入口）。
+//
+// 调用方需自行将 result.AmountCents 与本地订单金额比对——与回调路径
+// 同一标准：金额不一致一律不入账。
+func (r *Registry) QueryOrder(ctx context.Context, method, tradeNo string) (*OrderQueryResult, error) {
+	provider, err := r.Get(method)
+	if err != nil {
+		return nil, err
+	}
+	querier, ok := provider.(Querier)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrQueryUnsupported, method)
+	}
+	return querier.QueryOrder(ctx, tradeNo)
 }
 
 // Options 是注册表构造参数。

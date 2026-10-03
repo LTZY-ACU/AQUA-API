@@ -57,7 +57,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
 )
 
 // maxGeminiStreamLineBytes 是解析 Gemini SSE 单行的字节上限。

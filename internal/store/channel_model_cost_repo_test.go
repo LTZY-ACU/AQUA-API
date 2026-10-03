@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // newTestChannelCostRepo 构造基于临时数据库的上游进价仓储。

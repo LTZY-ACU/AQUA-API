@@ -31,10 +31,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/mailer"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
-	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
+	"github.com/LTZY-ACU/ltzy-api/internal/mailer"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/server/middleware"
 )
 
 // announcementBroadcastTemplate 是"由公告触发的邮件群发"在批次表里的模板键。

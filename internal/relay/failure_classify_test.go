@@ -30,7 +30,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // TestClassifyUpstreamFailure_各类失败判据 覆盖语义分类表。

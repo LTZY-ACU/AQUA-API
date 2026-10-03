@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/config"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // TestShouldAutoDisable 表驱动覆盖自动停用的判定规则（纯函数，无副作用）。

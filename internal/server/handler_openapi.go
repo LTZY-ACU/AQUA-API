@@ -33,7 +33,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/openapi"
+	"github.com/LTZY-ACU/ltzy-api/internal/openapi"
 )
 
 // openapiCache 缓存已序列化的规范。

@@ -26,7 +26,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
+	"github.com/LTZY-ACU/ltzy-api/internal/channeltype"
 )
 
 // channelTypeFieldDTO 是渠道类型的一个额外参数字段（供前端做条件表单）。

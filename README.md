@@ -1,12 +1,14 @@
 <div align="center">
 
-<img src="favicon.ico" width="88" alt="AQUA-API" />
+<img src="favicon.ico" width="88" alt="LTZY-API" />
 
-# AQUA-API
+# LTZY-API
 
 **把你的所有 AI 上游，收进一个入口。**
 
 自托管 LLM API 网关 · AI 用量管理系统
+
+Self-hosted LLM Gateway · OpenAI-compatible API
 
 ![License](assets/badges/license.svg)
 ![Go](assets/badges/go.svg)
@@ -19,6 +21,8 @@
 
 [简体中文](README.md) · [English](README.en.md) · [Français](README.fr.md) · [Русский](README.ru.md) · [Español](README.es.md) · [العربية](README.ar.md)
 
+> 本项目前身为 **AQUA-API**，2026-10 起更名为 **LTZY-API**；旧地址自动重定向，无需更新收藏。
+
 </div>
 
 ---
@@ -27,9 +31,9 @@
 
 | 渠道 | 地址 |
 | --- | --- |
-| 官方网站（在线演示） | https://aqua.is3.cc |
-| 代码仓库 | https://github.com/LTZY-ACU/AQUA-API |
-| 提交 Issue | https://github.com/LTZY-ACU/AQUA-API/issues |
+| 官方网站（在线演示） | https://ltzy.top |
+| 代码仓库 | https://github.com/LTZY-ACU/LTZY-API |
+| 提交 Issue | https://github.com/LTZY-ACU/LTZY-API/issues |
 
 > **本仓库是官方地址的唯一权威来源。** 域名如有变更，会先在这里更新，再同步到其它任何地方。
 > 因此，收藏本仓库比收藏一个域名更可靠。
@@ -100,13 +104,13 @@
 
 ## 这是什么
 
-AQUA-API 是一个**自托管的 LLM API 网关**，同时是一套 **AI 用量管理系统**。
+LTZY-API 是一个**自托管的 LLM API 网关**，同时是一套 **AI 用量管理系统**。
 
 你手上的上游通常是一团互不兼容的东西：OpenAI 官方 Key、Azure、Claude、Gemini、各家云厂商、
 各类 OpenAI 兼容服务、订阅来的账号（Claude / Codex / Gemini），以及本地跑的 Ollama / vLLM。
 而你的下游是各种应用：Claude Code、Codex CLI、Cursor、自研 App、脚本、插件。
 
-AQUA-API 站在中间，把这一团整理成**一个入口、一套协议、一本清楚的账**。
+LTZY-API 站在中间，把这一团整理成**一个入口、一套协议、一本清楚的账**。
 
 ```mermaid
 flowchart LR
@@ -117,7 +121,7 @@ flowchart LR
         C4["自研应用 / 脚本 / 插件"]
     end
 
-    AQUA["AQUA-API<br/>统一协议 · 智能调度 · 精确计费<br/>分组 · 凭据池 · 运营后台"]
+    LTZY["LTZY-API<br/>统一协议 · 智能调度 · 精确计费<br/>分组 · 凭据池 · 运营后台"]
 
     subgraph U["上游服务"]
         U1["OpenAI / Azure"]
@@ -127,15 +131,15 @@ flowchart LR
         U5["本地 Ollama / vLLM"]
     end
 
-    C1 --> AQUA
-    C2 --> AQUA
-    C3 --> AQUA
-    C4 --> AQUA
-    AQUA --> U1
-    AQUA --> U2
-    AQUA --> U3
-    AQUA --> U4
-    AQUA --> U5
+    C1 --> LTZY
+    C2 --> LTZY
+    C3 --> LTZY
+    C4 --> LTZY
+    LTZY --> U1
+    LTZY --> U2
+    LTZY --> U3
+    LTZY --> U4
+    LTZY --> U5
 ```
 
 它解决的核心问题只有三个词：**统一**（协议与入口）、**可靠**（故障自动避让）、**可算账**（每一分钱有据可查）。
@@ -146,7 +150,7 @@ flowchart LR
 
 同类网关不少，缺的是**能安心托付账目**的那一个。下面每一条都是踩过坑之后的设计。
 
-| 关注点 | 常见做法 | AQUA-API |
+| 关注点 | 常见做法 | LTZY-API |
 | --- | --- | --- |
 | 上游密钥 | 明文存库，后台可看回明文 | AES-256-GCM 加密落库，主密钥只从环境变量注入；后台被攻破也导不出明文 |
 | 加密主密钥 | 一并写进配置文件 | 配置文件中的同名字段直接被忽略，只能走环境变量，不会随仓库泄露 |
@@ -247,10 +251,11 @@ flowchart LR
 ### 运营与后台
 
 - **模型广场**：分面筛选 + 分面计数联动 + 搜索 + 排序 + 卡片与列表双视图 +
-  详情弹窗（价格表、生效时间、可直接运行的 cURL、费用试算器）
+  详情弹窗（价格表、生效时间、可直接运行的 cURL、费用试算器、**实时 tokens/s 与连通性测试**）
 - **渠道管理**：增删改、连通性测活、密钥池抽屉、一键拉取上游模型列表、上游进价核算（按量 / 按次）
 - **渠道健康面板**：成功率、冷却中密钥数、剩余余额一屏尽览；支持按成功率自动停用
 - **财务对账报表**：按分组 / 渠道 / 模型聚合收入、成本、毛利与毛利率
+- **用量排行榜**：付费榜 / 免费榜各 Top 20（详见下文「用量排行榜」）
 - **重试率告警**：按折扣分组统计 `r = 上游调用次数 / 计费请求次数`，越过保本线即告警
 - **令牌**：额度 / 过期 / 模型白名单 / 所属分组 / 周期预算 / 明文受审计找回
 - **用户体系**：注册、邮箱验证码登录与重置密码、限时试用额发放与到期回收
@@ -258,11 +263,74 @@ flowchart LR
 - **站点公告 / 操作审计 / 敏感词 / SMTP / 异步任务 / 群发邮件 / 语料共建**
 - **其余后台**：模型元数据与映射、OAuth 订阅账号、运行维护概览与数据库备份
 
+### 用量排行榜
+
+概览页图表下方的排行榜，回答「谁在用、用了多少」。两个榜单各取前 20 名：
+
+- **付费榜 / 免费榜**：按是否存在已支付订单（`payment_orders.status = paid`）拆分。
+  混排会让免费榜永远被付费用户占据——付费用户的使用强度通常不是一个量级。
+- **综合分数** = 50% × 请求数（榜内归一） + 50% × Token 消耗（榜内归一）。
+  归一化而非直接相加：一次长回答可能消耗数万 token 而请求数只有 1，
+  直接相加会被 token 单方面主导，榜单失去区分度。
+- **每行展示**：哈希配色的字母头像（同一用户颜色稳定）、账号 ID、请求数、Token、
+  分数进度条、平均请求耗时、峰值并发。
+- **自己所在行高亮**并标注「我」，未进前 20 时在榜单头部显示自己的名次。
+- **管理员**可通过「完整榜单」开关查看全部名次（`?all=1`，接口不截断）。
+
+峰值并发用差分事件扫描估算：把每条成功请求视为区间 `[created_at − latency, created_at]`，
+按时间排序后从左到右累加「开始 +1 / 结束 −1」，过程中的最大值即峰值——
+它反映「最忙的瞬间同时有多少请求在途」，比单纯的 RPS 更贴近真实并行压力。
+
+口径与 `usage_logs` 完全一致（只统计成功请求），与概览页、仪表盘同源，
+不存在第二套统计。
+
 ### 前端与主题
 
 - **三套主题**：浅色 / 深色 / 深蓝色，随时切换，偏好本地持久化
 - **六语言界面**：简体中文、English、Français、Русский、Español、العربية（含 RTL 布局）
 - **移动端**：底部导航、表格自动降级为卡片、安全区适配、弹窗底部弹出
+- **在线使用界面**（`/console/playground`）：直接调用站点当前全部可用模型，模型列表每 30 秒
+  自动刷新（渠道上下线、令牌权限变化即时反映），流式输出并实时显示本轮耗时与首字延迟
+- **用量排行榜**（概览页图表下方）：付费榜 / 免费榜各 Top 20；综合分数 = 请求数 50% + Token 消耗 50%
+  （榜内归一化），展示平均请求时间与峰值并发；自己所在行高亮并标注「我」，管理员可切换完整榜单
+- **模型详情实时指标**：输出速率（tokens/s）、平均耗时、首字延迟 TTFB 每 5 秒刷新；内置连通性
+  测试——发起一次真实 agent 调用（请求发起 → 鉴权 → 流式返回），读到首个响应即断开，
+  返回连通结果与首字延迟，token 消耗可忽略
+
+### 在线使用界面
+
+`/console/playground` 是浏览器里的模型试玩台：粘贴访问令牌即可调用站点当前**全部可用模型**。
+
+- **模型列表实时更新**：以公开模型广场为基底，每 30 秒轮询 `GET /v1/models`
+  （OpenAI 兼容端点，带当前令牌鉴权）补充「此刻真能调」的模型。
+  渠道上线 / 下线、令牌模型白名单调整，都会在一个轮询周期内反映到下拉框。
+- **调用状态实时可见**：请求发起后立即进入「正在生成…」状态并可随时停止；
+  流式输出过程中页面底部实时显示本轮**首字延迟（TTFB）**与**总耗时**，
+  完成后定格——回答「这次调用到底发生了什么」而不只是给一段文本。
+- **与真实调用完全同路径**：走 `/v1/chat/completions`，因此鉴权、分组路由、
+  密钥轮询、额度预扣与计费都与生产流量一致，试玩结果可信。
+
+令牌只保存在页面内存（不写 localStorage），刷新即失效。
+
+### 模型实时指标与连通性测试
+
+模型详情弹窗底部有两块实时信息，帮助判断「这个模型现在能不能用、好不好用」：
+
+| 指标 | 来源 | 刷新 |
+| --- | --- | --- |
+| 输出速率（tokens/s） | `usage_logs.tokens_per_second` 近 15 分钟均值 | 5 秒 |
+| 平均耗时 | `usage_logs.latency_ms` 近 15 分钟均值（仅成功请求） | 5 秒 |
+| 首字延迟 TTFB | `usage_logs.first_token_ms` 近 15 分钟均值 | 5 秒 |
+| 可用渠道数 | 启用渠道声明该模型的数量 | 5 秒 |
+
+**连通性测试**模拟真实 agent 调用：`POST /v1/chat/completions`（`stream: true`，
+最小消息 + `max_tokens: 8`）→ 读取首个 `data:` 块即 `abort()` 断开 →
+返回「是否连通」与首字延迟。刻意不引入后端专用测活接口：测试走的就是生产转发链路，
+因此它验证的是「这个模型对我通不通」，而不是「渠道凭据还活着」。
+
+边界处理：模型离线（`available = false`）时指标显示「离线」且测试按钮禁用；
+未填令牌时提示先在「访问令牌」页创建；`max_tokens: 8` + 首块即断保证单次测试
+几乎不产生 token 消耗，多次测试无成本压力。
 
 ---
 
@@ -454,7 +522,8 @@ flowchart TD
 令牌增删改查与明文找回（`/tokens`、`/tokens/:id/key`）、可选分组（`/groups`）、用量与日志
 （`/usage`、`/logs`）、任务（`/tasks`）、订单（`/orders`、`/orders/:tradeNo`）、兑换（`/redeem`）、
 邀请与奖励（`/referral`、`/referral/rewards`）、签到（`/checkin`）、财务概览（`/finance`）、
-试用额（`/trial`）。
+试用额（`/trial`）、**用量排行榜（`/leaderboard`，付费榜 / 免费榜各 Top 20，管理员 `?all=1` 看完整榜）**、
+**模型实时指标（`/models/:model/stats`，tokens/s · 平均耗时 · 首字延迟 TTFB）**。
 
 ### 管理后台 `/api/admin`
 
@@ -569,14 +638,16 @@ sequenceDiagram
 
 ## 快速开始
 
+> 本节只给最短路径。**完整部署教程**（systemd 生产部署、Nginx/Caddy 反代与 HTTPS、升级与回滚、CLI 与环境变量速查、常见问题）见 [DEPLOYMENT.md](DEPLOYMENT.md)。
+
 ### 方式一：Docker Compose（推荐）
 
 ```bash
-git clone https://github.com/LTZY-ACU/AQUA-API.git && cd AQUA-API
+git clone https://github.com/LTZY-ACU/LTZY-API.git && cd LTZY-API
 cp .env.example .env
 
-docker build -t aqua-api:local .          # 首次构建（前端 + 后端 + 运行镜像）
-docker run --rm aqua-api:local -gen-key   # 打印一个主密钥，填进 .env 的 AQUA_APP_KEY
+docker build -t ltzy-api:local .          # 首次构建（前端 + 后端 + 运行镜像）
+docker run --rm ltzy-api:local -gen-key   # 打印一个主密钥，填进 .env 的 AQUA_APP_KEY
 
 docker compose up -d
 ```
@@ -586,21 +657,21 @@ docker compose up -d
 ### 方式二：docker run（不使用 compose）
 
 ```bash
-docker build -t aqua-api:local .
+docker build -t ltzy-api:local .
 
-docker run -d --name aqua-api \
+docker run -d --name ltzy-api \
   -p 8787:8787 \
   -e AQUA_APP_KEY="<你的主密钥>" \
   -e AQUA_SERVER_LISTEN=0.0.0.0:8787 \
   -v "$PWD/data:/data" \
   --restart unless-stopped \
-  aqua-api:local
+  ltzy-api:local
 ```
 
 ### 方式三：单二进制（Linux 服务器 / systemd）
 
 ```bash
-go build -o aqua ./cmd/aqua           # 纯 Go，零 CGO，不需要 gcc
+go build -o aqua ./cmd/ltzy           # 纯 Go，零 CGO，不需要 gcc
 
 ./aqua -gen-key                        # 生成加密主密钥（只生成，不落盘）
 
@@ -627,7 +698,7 @@ sudo systemctl status aqua-api
 # 前端（可选：仓库中的 web/dist 为占位，正式界面需构建后才会内嵌）
 cd web && npm ci && npm run build && cd ..
 
-go build -o bin/aqua ./cmd/aqua
+go build -o bin/aqua ./cmd/ltzy
 export AQUA_APP_KEY="<你的主密钥>"      # Windows: $env:AQUA_APP_KEY="..."
 ./bin/aqua -config ./aqua.json          # 不加 -config 则使用默认值与环境变量
 curl http://127.0.0.1:8787/healthz
@@ -693,7 +764,7 @@ location / {
 | `AQUA_SMTP_USERNAME` | 否 | SMTP 用户名 |
 | `AQUA_SMTP_PASSWORD` | 否 | SMTP 密码，只能走环境变量 |
 | `AQUA_SMTP_FROM` | 否 | 发件人地址 |
-| `AQUA_SMTP_FROM_NAME` | 否 | 发件人显示名，默认 `AQUA-API` |
+| `AQUA_SMTP_FROM_NAME` | 否 | 发件人显示名，默认 `LTZY-API` |
 | `AQUA_EPAY_KEY` | 否 | 易支付商户密钥（MD5 签名） |
 | `AQUA_STRIPE_SECRET_KEY` | 否 | Stripe Secret Key |
 | `AQUA_STRIPE_WEBHOOK_SECRET` | 否 | Stripe Webhook 签名密钥 |
@@ -728,7 +799,7 @@ location / {
 
 ## 接入示例
 
-任何 OpenAI 兼容客户端，把 Base URL 指过来、Key 换成 AQUA-API 的令牌即可。
+任何 OpenAI 兼容客户端，把 Base URL 指过来、Key 换成 LTZY-API 的令牌即可。
 
 ### curl
 
@@ -761,7 +832,7 @@ print(resp.choices[0].message.content)
 
 ### Claude Code / Anthropic 客户端
 
-AQUA-API 原生支持 Anthropic 协议，可直接接管 Claude Code 的流量：
+LTZY-API 原生支持 Anthropic 协议，可直接接管 Claude Code 的流量：
 
 ```bash
 export ANTHROPIC_BASE_URL=https://你的域名
@@ -963,7 +1034,7 @@ cd web && npm ci && npm run type-check && npm run build   # 前端
 目录结构（本仓库根目录即代码目录）：
 
 ```
-cmd/aqua/              程序入口（仅装配，不含业务逻辑）
+cmd/ltzy/              程序入口（仅装配，不含业务逻辑）
 internal/config/       配置加载与校验
 internal/model/        领域模型与仓储接口（不含 SQL）
 internal/store/        持久化实现（SQL + 版本化迁移，按方言分目录）
@@ -1026,6 +1097,6 @@ aqua-api.service       systemd 单元（裸机部署）
 
 **如果这个项目帮你省下了对账的时间，欢迎点个 Star ⭐**
 
-[在线演示](https://aqua.is3.cc) · [提交 Issue](https://github.com/LTZY-ACU/AQUA-API/issues) · [GitHub](https://github.com/LTZY-ACU/AQUA-API) · [English](README.en.md)
+[在线演示](https://ltzy.top) · [提交 Issue](https://github.com/LTZY-ACU/LTZY-API/issues) · [GitHub](https://github.com/LTZY-ACU/LTZY-API) · [English](README.en.md)
 
 </div>

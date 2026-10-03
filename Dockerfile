@@ -1,12 +1,12 @@
-# AQUA-API 多阶段构建：前端产物内嵌进 Go 二进制，最终镜像只含一个可执行文件。
+# LTZY-API 多阶段构建：前端产物内嵌进 Go 二进制，最终镜像只含一个可执行文件。
 #
 # 为什么分三段：
 #   1) 前端构建需要 Node，运行期完全用不到；
 #   2) 后端用纯 Go（CGO_ENABLED=0）静态编译，运行期不需要 gcc 与 glibc；
 #   3) 最终镜像用 alpine，体积最小、攻击面最小。
 #
-# 构建：docker build -t aqua-api:local .
-# 运行：docker run -d --name aqua -p 8787:8787 -e AQUA_APP_KEY=<主密钥> -v $PWD/data:/data aqua-api:local
+# 构建：docker build -t ltzy-api:local .
+# 运行：docker run -d --name ltzy -p 8787:8787 -e AQUA_APP_KEY=<主密钥> -v $PWD/data:/data ltzy-api:local
 
 # ---------- 1. 前端构建 ----------
 FROM node:20-alpine AS web
@@ -33,7 +33,7 @@ RUN go mod download
 COPY . .
 # 用第 1 段的前端产物覆盖占位目录，go:embed 才能把界面打进二进制
 COPY --from=web /src/web/dist ./web/dist
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/aqua ./cmd/aqua
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/aqua ./cmd/ltzy
 
 # ---------- 3. 运行 ----------
 FROM alpine:3.20

@@ -31,8 +31,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/reqctx"
 )
 
 // addChannelInGroup 向仓储写入一个指定分组的启用渠道。

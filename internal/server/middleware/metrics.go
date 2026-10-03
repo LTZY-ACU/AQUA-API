@@ -27,7 +27,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/metrics"
+	"github.com/LTZY-ACU/ltzy-api/internal/metrics"
 )
 
 // 指标名（对外契约，改名等于让所有历史时序断裂，慎重）。

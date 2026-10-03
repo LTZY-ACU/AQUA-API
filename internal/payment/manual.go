@@ -32,7 +32,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // manualProvider 实现人工确认通道。

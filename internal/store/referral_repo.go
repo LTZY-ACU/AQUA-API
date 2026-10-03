@@ -31,7 +31,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // checkinStreakLookback 是计算连续签到时最多回看的签到记录条数。

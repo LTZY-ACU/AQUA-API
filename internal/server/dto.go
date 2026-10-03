@@ -22,7 +22,7 @@ package server
 import (
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // pagedResponse 是列表接口的统一响应结构。

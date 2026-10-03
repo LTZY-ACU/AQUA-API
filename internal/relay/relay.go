@@ -39,10 +39,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/corpus"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/netguard"
-	"github.com/LTZY-ACU/aqua-api/internal/reqctx"
+	"github.com/LTZY-ACU/ltzy-api/internal/corpus"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/netguard"
+	"github.com/LTZY-ACU/ltzy-api/internal/reqctx"
 )
 
 // ErrNoAvailableChannel 表示当前没有任何可用渠道能处理请求的模型。
@@ -50,6 +50,13 @@ import (
 // 这是运维最常见的故障信号（渠道被禁用/模型未声明），因此单独定义，
 // 便于上层层返回明确的 503 与可操作的提示。
 var ErrNoAvailableChannel = errors.New("relay: 没有可用的上游渠道")
+
+// AutoModelName 是保留的模型名：请求 model 填它时，网关自动选择
+// 「当前分组里延迟最低的可对话模型」来转发（见 resolveAutoChatModel）。
+//
+// 为什么用保留名而不是配置参数：auto 是"给调用方少记一个模型名"的体验优化，
+// 固定字符串最直观，也最容易在文档与调试里说清楚。
+const AutoModelName = "auto"
 
 // UpstreamTimeout 是网关等待上游响应的时间上限（首字节）。
 //
@@ -104,6 +111,10 @@ type Options struct {
 	Corpus *corpus.Guard
 	// CorpusSamples 是语料样本仓储；与 Corpus 同时为 nil 时才彻底关闭采集。
 	CorpusSamples model.CorpusRepository
+	// ModelSpeeds 是模型测速结果仓储；为 nil 时禁用 auto 路由
+	// （请求 model 填 auto 会按普通模型名处理 → 大概率 503），
+	// 其余转发路径完全不受影响。
+	ModelSpeeds model.ModelSpeedRepository
 }
 
 // Relay 是转发引擎，持有渠道仓储与上游 HTTP 客户端。
@@ -131,6 +142,8 @@ type Relay struct {
 	corpus *corpus.Guard
 	// corpusSamples 是语料样本仓储（可选）。为 nil 时不落样本。
 	corpusSamples model.CorpusRepository
+	// speeds 为模型测速结果仓储（可选）。为 nil 时 auto 路由不可用。
+	speeds model.ModelSpeedRepository
 }
 
 // New 创建转发引擎。
@@ -187,6 +200,7 @@ func New(channels model.ChannelRepository, opts Options) *Relay {
 		mappingCache:    mappingCache,
 		corpus:          opts.Corpus,
 		corpusSamples:   opts.CorpusSamples,
+		speeds:          opts.ModelSpeeds,
 		client: &http.Client{
 			Transport: &http.Transport{
 				// 走系统代理环境变量：便于在受限网络中经代理访问上游
@@ -290,6 +304,64 @@ func (r *Relay) groupFromContext(ctx context.Context) string {
 		return group
 	}
 	return r.group
+}
+
+// resolveAutoChatModel 解析 auto 模型名 → 「延迟最低的可对话模型」。
+//
+// 可对话的判定口径：该模型在【启用且属于请求分组】的渠道上有一条
+// 【成功的测速结果】（OK 且 TTFB>0）。测速探测本身就是一次最小 chat 请求，
+// 能拿到 200 与首字即证明"可对话"——比人工维护"哪些模型能对话"的清单可靠，
+// 也天然与模型广场展示的延迟同源（广场用的是同一份测速数据）。
+//
+// 选择规则：取所有可对话模型中 TTFB 最小者；并列时按模型名字典序取小，
+// 保证确定性（同一时刻任意两次请求得到同一答案，便于排查与复现）。
+//
+// 失败语义：无测速数据源 / 当前分组没有可对话模型时返回明确错误，
+// 调用方以 503 提示使用者先对渠道测速，而不是透传一条看不懂的上游错误。
+func (r *Relay) resolveAutoChatModel(ctx context.Context, group string) (string, error) {
+	if r.speeds == nil {
+		return "", errors.New("auto 路由暂不可用：未接入测速数据（请先对渠道执行一次测速）")
+	}
+	if group == "" {
+		group = r.group
+	}
+
+	enabled := model.ChannelStatusEnabled
+	channels, err := r.channels.List(ctx, model.ChannelQuery{Group: group, Status: &enabled})
+	if err != nil {
+		return "", fmt.Errorf("auto 路由失败：读取渠道失败: %w", err)
+	}
+	serving := make(map[uint64]*model.Channel, len(channels))
+	for _, ch := range channels {
+		serving[ch.ID] = ch
+	}
+
+	results, err := r.speeds.Latest(ctx)
+	if err != nil {
+		return "", fmt.Errorf("auto 路由失败：读取测速数据失败: %w", err)
+	}
+
+	best, bestTTFB := "", 0
+	for _, res := range results {
+		if !res.OK || res.TTFBMS <= 0 {
+			continue
+		}
+		ch := serving[res.ChannelID]
+		if ch == nil {
+			continue // 渠道不在本分组或已停用：旧测速结果不代表现在能服务
+		}
+		// 模型声明校验：结果可能早于渠道清单的后续修改，已被移除的模型不参与
+		if len(ch.Models) != 0 && !ch.HasModel(res.Model) {
+			continue
+		}
+		if best == "" || res.TTFBMS < bestTTFB || (res.TTFBMS == bestTTFB && res.Model < best) {
+			best, bestTTFB = res.Model, res.TTFBMS
+		}
+	}
+	if best == "" {
+		return "", errors.New("auto 路由失败：当前分组没有可对话的模型（请先对渠道执行测速，且至少有一条成功记录）")
+	}
+	return best, nil
 }
 
 // SelectChannel 为指定模型在指定分组中选择可用渠道（不排除任何渠道）。

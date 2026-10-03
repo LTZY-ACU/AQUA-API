@@ -29,9 +29,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
-	"github.com/LTZY-ACU/aqua-api/internal/store"
-	"github.com/LTZY-ACU/aqua-api/internal/version"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/store"
+	"github.com/LTZY-ACU/ltzy-api/internal/version"
 )
 
 // 运维接口相关常量。
@@ -416,10 +416,10 @@ func buildMaintenanceCompareRows(backup, current []store.TableStat) []maintenanc
 // 由前端展示步骤、管理员照做，避免一键误操作。
 func maintenanceRestoreSteps() []string {
 	return []string{
-		"1. 停止 AQUA-API 服务（如 systemctl stop aqua-api，或结束正在运行的进程），确保没有任何连接在写数据库。",
+		"1. 停止 LTZY-API 服务（如 systemctl stop aqua-api，或结束正在运行的进程），确保没有任何连接在写数据库。",
 		"2. 找到当前数据库文件（默认 ./data/aqua.db），将其改名留存，例如 aqua.db.before-restore。",
 		"3. 把已校验的备份文件复制到同一目录，并重命名为当前数据库文件名（aqua.db）。",
 		"4. 若同目录存在 aqua.db-wal / aqua.db-shm，一并删除（它们属于旧库，会与新文件不匹配）。",
-		"5. 重新启动 AQUA-API 服务，进入后台确认数据已恢复；确认无误后再删除改名留存的旧文件。",
+		"5. 重新启动 LTZY-API 服务，进入后台确认数据已恢复；确认无误后再删除改名留存的旧文件。",
 	}
 }

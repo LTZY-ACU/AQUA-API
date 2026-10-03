@@ -38,7 +38,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // defaultRefreshInterval 是内存快照的刷新周期。

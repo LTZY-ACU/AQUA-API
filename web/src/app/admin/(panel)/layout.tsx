@@ -36,6 +36,7 @@ const GROUPS: ShellNavGroup[] = [
       { label: '模型分组', href: '/admin/groups', labelKey: 'components.nav.admin.groups', icon: 'tag' },
       { label: '计价规则', href: '/admin/prices', labelKey: 'components.nav.admin.prices', icon: 'quota' },
       { label: '异步任务', href: '/admin/tasks', labelKey: 'components.nav.admin.tasks', icon: 'image' },
+      { label: '模型测速', href: '/admin/speedtest', icon: 'bolt' },
     ],
   },
   {
@@ -47,6 +48,7 @@ const GROUPS: ShellNavGroup[] = [
       { label: '令牌管理', href: '/admin/tokens', labelKey: 'components.nav.admin.tokens', icon: 'key' },
       { label: '用户管理', href: '/admin/users', labelKey: 'components.nav.admin.users', icon: 'users' },
       { label: '兑换码', href: '/admin/redeem-codes', labelKey: 'components.nav.admin.redeemCodes', icon: 'tag' },
+      { label: '群发邮件', href: '/admin/broadcast', icon: 'info' },
     ],
   },
   {
@@ -60,6 +62,7 @@ const GROUPS: ShellNavGroup[] = [
       { label: '内容安全', href: '/admin/sensitive-words', labelKey: 'components.nav.admin.sensitiveWords', icon: 'filter' },
       { label: '运维监控', href: '/admin/maintenance', labelKey: 'components.nav.admin.maintenanceMonitor', icon: 'trend' },
       { label: '系统设置', href: '/admin/settings', labelKey: 'components.nav.admin.settings', icon: 'sliders' },
+      { label: '语料共建', href: '/admin/corpus', icon: 'layers' },
     ],
   },
 ]

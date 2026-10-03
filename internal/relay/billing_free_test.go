@@ -22,7 +22,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // stubFreeChecker 是内存版免计费判定（对应 corpus.Guard 的最小能力集）。

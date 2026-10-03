@@ -31,7 +31,7 @@ export function QqGroupEntry({ variant = 'inline', className }: QqGroupEntryProp
       href={QQ_GROUP_URL}
       target="_blank"
       rel="noreferrer"
-      aria-label={`加入 QQ 群「AQUA开源社区」，群号 ${QQ_GROUP_NO}`}
+      aria-label={`加入 QQ 群「LTZY开源社区」，群号 ${QQ_GROUP_NO}`}
       className="inline-flex items-center gap-2 rounded-md border border-line-2 bg-card px-3 py-1.5 text-[13px] text-ink-2 transition hover:border-brand hover:text-brand"
     >
       <AppIcon name="qq" size={15} />
@@ -63,7 +63,7 @@ export function QqGroupEntry({ variant = 'inline', className }: QqGroupEntryProp
           <AppIcon name="qq" size={16} />
         </span>
         <div className="min-w-0">
-          <div className="text-[14px] font-semibold text-ink">AQUA 开源社区</div>
+          <div className="text-[14px] font-semibold text-ink">LTZY 开源社区</div>
           <div className="mt-0.5 text-[12px] text-ink-3">有问题进群聊，一起反馈、吹牛、出主意</div>
         </div>
       </div>

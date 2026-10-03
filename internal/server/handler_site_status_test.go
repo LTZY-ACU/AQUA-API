@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // TestSiteStatus_下发额度折算比例 校验前端折算所需的 quota_per_yuan。

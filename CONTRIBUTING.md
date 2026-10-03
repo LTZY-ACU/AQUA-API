@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢你愿意为 AQUA-API 贡献代码。请先阅读 [README.md](README.md) 了解项目定位，
+感谢你愿意为 LTZY-API 贡献代码。请先阅读 [README.md](README.md) 了解项目定位，
 再按本指南参与。
 
 ## 一、协作模式（Fork + Pull Request）
@@ -23,9 +23,9 @@
 
 ```bash
 # 1) 在网页上 fork 本仓库，然后：
-git clone https://github.com/<你的用户名>/AQUA-API.git
-cd AQUA-API
-git remote add upstream https://github.com/LTZY-ACU/AQUA-API.git
+git clone https://github.com/<你的用户名>/LTZY-API.git
+cd LTZY-API
+git remote add upstream https://github.com/LTZY-ACU/LTZY-API.git
 
 # 2) 从最新 main 拉出工作分支
 git fetch upstream

@@ -8,7 +8,7 @@
 //
 // 流转（Flow）：
 //
-//	cmd/aqua/main.go
+//	cmd/ltzy/main.go
 //	  └─ server.New(Deps{Config, Store, Channels})   装配 gin 引擎与路由
 //	       └─ server.Run(ctx)                         启动监听，ctx 取消后优雅关闭
 //	            └─ 处理器（health.go 等）调用 model / store 完成实际工作
@@ -33,17 +33,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/LTZY-ACU/aqua-api/internal/broadcast"
-	"github.com/LTZY-ACU/aqua-api/internal/config"
-	"github.com/LTZY-ACU/aqua-api/internal/corpus"
-	"github.com/LTZY-ACU/aqua-api/internal/mailer"
-	"github.com/LTZY-ACU/aqua-api/internal/metrics"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/notify"
-	"github.com/LTZY-ACU/aqua-api/internal/payment"
-	"github.com/LTZY-ACU/aqua-api/internal/relay"
-	"github.com/LTZY-ACU/aqua-api/internal/server/middleware"
-	"github.com/LTZY-ACU/aqua-api/internal/store"
+	"github.com/LTZY-ACU/ltzy-api/internal/broadcast"
+	"github.com/LTZY-ACU/ltzy-api/internal/config"
+	"github.com/LTZY-ACU/ltzy-api/internal/corpus"
+	"github.com/LTZY-ACU/ltzy-api/internal/mailer"
+	"github.com/LTZY-ACU/ltzy-api/internal/metrics"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/notify"
+	"github.com/LTZY-ACU/ltzy-api/internal/payment"
+	"github.com/LTZY-ACU/ltzy-api/internal/relay"
+	"github.com/LTZY-ACU/ltzy-api/internal/server/middleware"
+	"github.com/LTZY-ACU/ltzy-api/internal/store"
 )
 
 // Deps 汇总服务运行所需的外部依赖，由 main 装配后注入。
@@ -146,6 +146,12 @@ type Deps struct {
 	// 它是"能否看到密钥还剩多少"的前提——没有进价，消耗无从估算。
 	ChannelModelCosts model.ChannelModelCostRepository
 
+	// ModelSpeeds 是模型测速结果仓储（渠道 × 模型的最新延迟快照）。
+	//
+	// 为 nil 时测速接口仍可用但不落库（结果只在本次响应中可见），
+	// 模型广场相应不展示延迟——测速是运营增强能力，缺失不应拖垮核心链路。
+	ModelSpeeds model.ModelSpeedRepository
+
 	// EmailCodes 是注册邮箱验证码仓储（由 main 注入；验证码相关接口依赖它）。
 	EmailCodes model.EmailCodeRepository
 	// Mailer 是出站邮件发送器；未配置时验证码接口会返回明确的"邮件服务未配置"提示，
@@ -230,6 +236,11 @@ type Server struct {
 	// 放在 Server 而非包级全局：注册表随实例创建，测试里两个 Server 互不干扰
 	//（包级单例会让并行测试的指标互相污染，表现为"断言时好时坏"）。
 	metrics *metrics.Registry
+	// nameCache 缓存「用户 ID → 用户名」「渠道 ID → 渠道名」等名称映射，
+	// 供日志列表等需要批量解析名称的接口复用，避免每次请求全表扫描。
+	// 名称变化频率远低于查询频率，短 TTL（30s）足够；管理员改名的改动
+	// 至多滞后 30 秒出现在列表上，展示性数据可接受。
+	nameCache *ttlCache
 }
 
 // New 创建并装配 HTTP 服务（不启动监听，便于测试直接取用 Handler）。
@@ -290,6 +301,8 @@ func New(deps Deps) *Server {
 		// 内容合规过滤器：词表编译结果在组件内缓存，改词后由后台主动失效。
 		sensitiveFilter: middleware.NewSensitiveFilter(deps.SensitiveWords, deps.Settings),
 		metrics:         reg,
+		// 名称映射缓存：用户/渠道名等低频变化数据，30 秒 TTL。
+		nameCache: newTTLCache(30 * time.Second),
 	}
 	// 进程级指标：只能在拿到 s 之后注册（运行时长要以 startedAt 为基准）。
 	s.registerProcessMetrics()
@@ -329,6 +342,10 @@ func (s *Server) Handler() http.Handler {
 // 先停止接受新连接、等待在途请求完成（最多 10 秒）能显著改善升级/重启体验。
 func (s *Server) Run(ctx context.Context) error {
 	errCh := make(chan error, 1)
+
+	// 支付对账循环：补偿丢失的回调（主动向网关查单），随 ctx 取消退出。
+	// 见 reconcile_payment.go 的头注释——这是"回调是唯一入账触发器"的单点风险治理。
+	go s.startPaymentReconciler(ctx)
 
 	go func() {
 		if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

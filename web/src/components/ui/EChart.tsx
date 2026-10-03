@@ -18,8 +18,12 @@ import {
   TitleComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+// LegacyGridContainLabel：echarts v6 起 `grid.containLabel` 变为「需显式注册」的兼容特性，
+// 不注册则该选项静默失效（Y 轴大数字会被裁切），并打印 "use LegacyGridContainLabel" 提示。
+// 门户与后台趋势图都依赖 containLabel 自适应轴标签宽度，故在此统一注册，保持 v5 行为不变。
+import { LegacyGridContainLabel } from 'echarts/features'
 
-echarts.use([LineChart, BarChart, PieChart, GridComponent, TooltipComponent, LegendComponent, DatasetComponent, TitleComponent, CanvasRenderer])
+echarts.use([LineChart, BarChart, PieChart, GridComponent, TooltipComponent, LegendComponent, DatasetComponent, TitleComponent, CanvasRenderer, LegacyGridContainLabel])
 
 interface EChartProps {
   option: echarts.EChartsCoreOption

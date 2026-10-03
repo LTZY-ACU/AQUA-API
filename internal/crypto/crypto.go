@@ -10,7 +10,7 @@
 //
 // 流转（Flow）：
 //
-//	cmd/aqua/main.go
+//	cmd/ltzy/main.go
 //	  └─ crypto.New(cfg.Security.AppKey)   创建一个 Cipher 实例
 //	       └─ 注入到渠道仓储（internal/store），
 //	            写入渠道时 Encrypt，读取渠道时 Decrypt

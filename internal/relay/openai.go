@@ -37,9 +37,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/corpus"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/corpus"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
 )
 
 // 路由可观测响应头（B9）。
@@ -155,6 +155,23 @@ func (r *Relay) ServeChatCompletions(w http.ResponseWriter, req *http.Request) {
 		oai.WriteError(w, http.StatusBadRequest, "请求体不是合法的 JSON",
 			oai.TypeInvalidRequest, oai.CodeInvalidJSON)
 		return
+	}
+
+	// ── 步骤 2.6：auto 路由（保留模型名 auto）──────────────────
+	// model 填 "auto" 时，先解析为「延迟最低的可对话模型」，再走常规链路。
+	// 只对 chat.completions 生效：对话能力以测速探测成功为准
+	// （见 resolveAutoChatModel 的判定口径）。
+	if modelName == AutoModelName {
+		resolved, err := r.resolveAutoChatModel(req.Context(), r.groupFromContext(req.Context()))
+		if err != nil {
+			// auto 解析失败属于"配置/数据"问题而非客户端参数问题：
+			// 用 503 + 明确中文提示，让使用者知道该去测速而不是改参数。
+			oai.WriteError(w, http.StatusServiceUnavailable, err.Error(),
+				oai.TypeServer, oai.CodeNoAvailableChannel)
+			return
+		}
+		modelName = resolved
+		body = replaceModelField(body, resolved)
 	}
 
 	// ── 步骤 3~6：转发（含失败换渠道重试）───────────────────────

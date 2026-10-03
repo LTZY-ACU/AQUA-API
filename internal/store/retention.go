@@ -35,7 +35,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // RetentionPolicy 是一轮清理的策略：各表保留天数，0 = 该表不清理。

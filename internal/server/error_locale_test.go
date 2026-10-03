@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
 )
 
 // postV1WithLanguage 携带指定 Accept-Language 发起一次 /v1 请求（用无效令牌触发鉴权错误）。

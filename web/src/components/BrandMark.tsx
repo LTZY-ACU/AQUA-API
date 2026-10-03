@@ -13,7 +13,7 @@
  */
 
 interface BrandLogoProps {
-  /** 品牌文字（默认 AQUA-API） */
+  /** 品牌文字（默认 LTZY-API） */
   name?: string
   /** 图标尺寸（px），默认 22 */
   iconSize?: number
@@ -27,7 +27,7 @@ export function BrandMark({ size = 22 }: { size?: number }) {
     // ICO 由站长提供；favicon.ico 自带透明底与品牌图形，原样引用
     <img
       src="/favicon.ico"
-      alt="AQUA-API"
+      alt="LTZY-API"
       width={size}
       height={size}
       className="block"
@@ -37,7 +37,7 @@ export function BrandMark({ size = 22 }: { size?: number }) {
 }
 
 /** 品牌标 + 名称的组合（顶栏/页脚常用） */
-export function BrandLogo({ name = 'AQUA-API', iconSize = 22, textClass = 'text-ink' }: BrandLogoProps) {
+export function BrandLogo({ name = 'LTZY-API', iconSize = 22, textClass = 'text-ink' }: BrandLogoProps) {
   return (
     <span className="flex items-center gap-2">
       <BrandMark size={iconSize} />

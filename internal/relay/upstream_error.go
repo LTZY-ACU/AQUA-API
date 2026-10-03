@@ -26,7 +26,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
 )
 
 // sanitizeUpstreamError 把上游失败映射为本站定制错误（状态码 / 类型 / 错误码 / 文案）。

@@ -33,8 +33,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/channeltype"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // codexUsagePath 是 ChatGPT 的额度查询端点（相对 backend-api 根）。

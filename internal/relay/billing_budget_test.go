@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 // fakeBudgetTokenRepo 是只服务于预算用例的内存版令牌仓储。

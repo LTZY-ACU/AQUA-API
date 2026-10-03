@@ -33,12 +33,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/channeltype"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
 )
 
 // 上游路径模板常量。
@@ -280,6 +281,9 @@ func buildUpstreamRequest(in upstreamRequestInput) (*UpstreamRequest, error) {
 	}
 
 	path := upstreamPath(in)
+	// URL 的拼接与版本段去重统一交给 joinUpstreamURL（见其说明）：
+	// 管理员把 base_url 填成带版本段的地址（api.openai.com/v1、智谱 /api/paas/v4）时，
+	// 不能与端点常量自带的 /v1 前缀叠加成 /v1/v1/...（上游一律 404）。
 	query := url.Values{}
 	applyUpstreamQuery(in, query)
 
@@ -317,7 +321,7 @@ func buildUpstreamRequest(in upstreamRequestInput) (*UpstreamRequest, error) {
 	}
 
 	rawQuery := query.Encode()
-	req.URL = base + path
+	req.URL = joinUpstreamURL(base, path)
 	if rawQuery != "" {
 		req.URL += "?" + rawQuery
 	}
@@ -356,6 +360,46 @@ func resolveUpstreamBaseURL(in upstreamRequestInput) (string, error) {
 	}
 	// 去掉末尾多余的斜杠，避免出现 "//v1/..." 这类路径
 	return strings.TrimRight(base, "/"), nil
+}
+
+// versionSegmentPattern 匹配形如 v1、v4、v1beta 的"版本段"路径组件。
+var versionSegmentPattern = regexp.MustCompile(`^v\d+[a-z0-9]*$`)
+
+// joinUpstreamURL 拼接上游基础地址与端点路径，必要时去掉路径里的 /v1 版本段。
+//
+// 为什么需要它：本项目约定 base_url 只填到域名根、版本前缀由端点路径常量自带
+// （如 oai.ChatCompletionsPath = "/v1/chat/completions"）。但渠道目录里大量
+// OpenAI 兼容类型的默认地址自带版本段（api.openai.com/v1、智谱的 /api/paas/v4、
+// 百炼的 compatible-mode/v1），直接拼接会得到 /v1/v1/chat/completions 这类
+// 重复地址——上游一律 404 且从报错看不出原因。
+//
+// 剪除规则：base 【路径】的最后一个段是版本段（v1/v4/v1beta 等）且 path 以
+// /v1/ 开头时，去掉 path 的 /v1 前缀——base 的版本段视为管理员显式指定的版本。
+// 只要求"路径以 /v1/ 开头"而不要求两段相同，因此智谱 /api/paas/v4 + /v1/...
+// 这类"版本段不是 v1"的上游也能正确去重。
+//
+// 为什么用 url.Parse 提取路径段而不是字符串切分：只有前者能可靠区分 host 与
+// path，避免把 "https://v1"（主机名恰为 v1）误判成"以版本段结尾的基础地址"——
+// 这是两版实现合并时特意保留的防护（历史实现踩过这个坑）。
+// Anthropic 的 /messages、Gemini 的 /v1beta/...、Azure 的部署路径均不受影响。
+func joinUpstreamURL(base, path string) string {
+	if !strings.HasPrefix(path, "/v1/") {
+		return base + path
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.Host == "" {
+		// 解析不了或形态异常：原样拼接，宁可保持现状也不冒险改写。
+		return base + path
+	}
+	segs := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(segs) == 0 || segs[0] == "" {
+		// base 只有 host（无路径段）：不存在"版本段结尾"的情形
+		return base + path
+	}
+	if !versionSegmentPattern.MatchString(segs[len(segs)-1]) {
+		return base + path
+	}
+	return base + path[len("/v1"):]
 }
 
 // upstreamPath 返回上游端点路径：按协议改写调用方给出的 OpenAI 路径。

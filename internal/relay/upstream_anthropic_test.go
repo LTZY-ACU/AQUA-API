@@ -29,7 +29,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
+	"github.com/LTZY-ACU/ltzy-api/internal/channeltype"
 )
 
 // decodeMap 把 JSON 字节解析为 map，便于按字段断言。

@@ -264,6 +264,95 @@ export interface UsageStats {
   by_model: UsageByModel[]
 }
 
+/* ── 用量排行榜（GET /api/user/leaderboard）──────────────── */
+
+/** 排行榜中一行的对外表示。 */
+export interface LeaderboardEntry {
+  /** 名次（1 起） */
+  rank: number
+  user_id: number
+  /** 账号 ID（用户名） */
+  username: string
+  /** 窗口内请求总数（含成功与失败） */
+  requests: number
+  /** 窗口内 token 消耗总数 */
+  tokens: number
+  /**
+   * 综合使用量分数（0~100 封顶）。
+   *
+   * = 50 分 × 请求数归一 + 50 分 × token 归一（榜内相对刻度），
+   * 衡量「用得多不多」；与 success_rate（用得稳不稳）是两个独立维度。
+   */
+  score: number
+  /** 请求成功率（0~1）：成功数 / 总数，衡量稳定性 */
+  success_rate: number
+  /** 平均请求耗时（毫秒，仅成功请求） */
+  avg_latency_ms: number
+  /** 窗口内峰值并发请求数（差分扫描估算） */
+  peak_concurrency: number
+  /** 是否当前登录用户（前端据此高亮并标注"我"） */
+  is_me: boolean
+}
+
+/** 单个榜单（付费榜 / 免费榜）的响应。 */
+export interface LeaderboardSection {
+  items: LeaderboardEntry[]
+  /** 当前登录用户在该榜中的名次；未上榜为 0 */
+  my_rank: number
+}
+
+/** 排行榜顶部的全站汇总（与榜单同一时间窗、同一数据源） */
+export interface LeaderboardTotals {
+  /** 窗口内总请求数（含成功与失败） */
+  requests: number
+  /** 窗口内总 Token 消耗 */
+  tokens: number
+  /** 总成功率（0~1） */
+  success_rate: number
+  /** 窗口内有用量的用户数 */
+  users: number
+}
+
+/** GET /api/user/leaderboard?days=30 响应 */
+export interface LeaderboardStats {
+  range_days: number
+  totals: LeaderboardTotals
+  paid: LeaderboardSection
+  free: LeaderboardSection
+  updated_at: number
+}
+
+/* ── 模型实时指标与连通性测试（模型详情页）────────────────── */
+
+/** GET /api/user/models/stats?model=...&minutes=15 响应 */
+export interface ModelStats {
+  model: string
+  /** 是否至少有一个启用渠道支持该模型（false = 离线） */
+  available: boolean
+  /** 支持该模型的启用渠道数量（0 = 离线） */
+  channel_count: number
+  /** 窗口内该模型的成功请求数 */
+  requests: number
+  /** 窗口内平均输出速率（tokens/s；0 = 无样本） */
+  avg_tokens_per_second: number
+  /** 窗口内平均总耗时（毫秒；0 = 无请求） */
+  avg_latency_ms: number
+  /** 窗口内平均首字延迟 TTFB（毫秒；0 = 无样本） */
+  avg_first_token_ms: number
+}
+
+/** 模型连通性测试结果（前端直连 /v1/chat/completions 测得） */
+export interface ModelTestResult {
+  /** 是否连通（成功拿到首个数据块） */
+  connected: boolean
+  /** 首字延迟 TTFB（毫秒；未连通为 0） */
+  ttfb_ms: number
+  /** 未连通时的错误信息 */
+  error?: string
+  /** 测试实际使用的模型名 */
+  model: string
+}
+
 /** 调用日志对象（契约四节） */
 export interface UsageLog {
   id: number
@@ -780,6 +869,41 @@ export interface ChannelTestResult {
   pool_exhausted?: number
 }
 
+/** POST /api/admin/channels/{id}/speedtest 的单个模型结果 */
+export interface SpeedTestItem {
+  model: string
+  /** 实际发给上游的模型名（可能被渠道级映射改写） */
+  upstream_model?: string
+  ok: boolean
+  status_code: number
+  /** 首字延迟（毫秒）——测速主指标；失败时为 0 */
+  ttfb_ms: number
+  total_ms: number
+  message?: string
+  /** 该模型因无权限（403/404）被自动从渠道清单移除 */
+  blocked?: boolean
+}
+
+/** POST /api/admin/channels/{id}/speedtest 响应 */
+export interface SpeedTestRunResult {
+  items: SpeedTestItem[]
+  tested: number
+  ok_count: number
+  elapsed_ms: number
+  /** 整批级失败说明（如凭据不可用）；为空表示逐模型结果可信 */
+  message?: string
+  /** 本次被自动屏蔽（无权限 403/404）并从渠道清单移除的模型 */
+  blocked_models?: string[]
+  key_masked?: string
+  key_source?: string
+  pool_total?: number
+  pool_available?: number
+  pool_cooling?: number
+  pool_disabled?: number
+  pool_removed?: number
+  pool_exhausted?: number
+}
+
 /* ────────────────────────── 上游渠道类型目录 ────────────────────────── */
 
 /**
@@ -993,6 +1117,8 @@ export interface SiteSettings {
   seo: SeoSettings
   /** 内容安全（合规过滤）配置 */
   safeguard: SafeguardSettings
+  /** 模型测速配置 */
+  speedtest: SpeedTestSettings
   /**
    * 合规信息（对用户公示）：经营主体、备案号与客服邮箱。
    *
@@ -1025,6 +1151,20 @@ export interface SafeguardSettings {
   sensitive_filter_enabled: boolean
 }
 
+/** 模型测速配置 */
+export interface SpeedTestSettings {
+  /** 测速总开关：关闭时管理端测速接口拒绝、广场不下发延迟 */
+  enabled: boolean
+  /** 是否在模型广场向用户展示测得的延迟 */
+  public: boolean
+  /** 单个模型一次测速的超时（秒），后端限定 5~120 */
+  timeout_seconds: number
+  /** 单次测速请求允许测的模型数上限，后端限定 1~500 */
+  max_models: number
+  /** 测速后自动屏蔽无权限模型（上游明确回 403/404 的从渠道清单移除） */
+  auto_block: boolean
+}
+
 /**
  * PUT /api/admin/settings 的 seo 字段：只包含可写项。
  *
@@ -1055,6 +1195,7 @@ export type UpdateSiteSettingsPayload = Partial<{
   payment: PaymentSettings
   seo: UpdateSeoSettingsPayload
   safeguard: Partial<SafeguardSettings>
+  speedtest: Partial<SpeedTestSettings>
   /**
    * 合规信息：允许提交空串以清空某一项（如备案号填错要删掉），
    * 未提交的字段由后端保持原值。
@@ -1377,6 +1518,14 @@ export interface PlazaModel {
    * 普通用户视图不下发该字段。
    */
   list_price?: PlazaPrice
+  /**
+   * 最近一次测速的最小首字延迟（毫秒）。后台「模型测速」的产物，
+   * 每次测速对上游消耗约 2~3 token，因此是低频快照而非实时数据。
+   * 未测过或站长关闭公示时整个字段不下发（前端不渲染延迟列）。
+   */
+  speed_ttfb_ms?: number
+  /** 该延迟的测速时间（Unix 秒），让用户知道数字有多新鲜 */
+  speed_tested_at?: number
 }
 
 /** 模型广场的分组视图 */
@@ -1578,6 +1727,21 @@ export interface CreateOrderPayload {
   remark?: string
 }
 
+/**
+ * POST /api/user/redeem 响应：兑换码兑换结果。
+ *
+ * total_quota / remaining_quota 可选的原因：后端在"兑换已入账、但回显余额查询失败"时
+ * 只返回 quota（少一个展示字段，不影响入账结果），前端不能把它们当作必有字段。
+ */
+export interface RedeemResult {
+  /** 本次兑换获得的额度（站内整数单位） */
+  quota: number
+  /** 兑换后的总充值额度（尽力回显，可能缺失） */
+  total_quota?: number
+  /** 兑换后的剩余额度（尽力回显，可能缺失） */
+  remaining_quota?: number
+}
+
 /** 公开的充值参数（GET /api/payment/public） */
 export interface PublicPaymentInfo {
   enabled: boolean
@@ -1733,6 +1897,37 @@ export interface TrialGrant {
   expires_at: number
   /** 距到期的剩余秒数，用于直接渲染倒计时 */
   expires_in_seconds: number
+}
+
+/**
+ * POST /api/admin/trial-grants 请求体：给全站用户批量发放限时试用额。
+ *
+ * 金额刻意用「分」：站长按"1 毛钱"思考而不是按"100000 额度"，
+ * 分 → 额度的换算由后端按充值比例完成，保证"发放 0.1 元"与"充值 0.1 元"同值。
+ */
+export interface TrialGrantPayload {
+  /** 每位用户获得的金额（分）；0.1 元填 10 */
+  amount_cents: number
+  /** 自发放时刻起的有效小时数（1..720，上限 30 天） */
+  hours: number
+  /** 批次标识：同一批次只允许发放一次（防误发双份） */
+  batch: string
+  /** 必须显式为 true：发放即入用户余额，后端据此拦截误触 */
+  confirm: boolean
+}
+
+/** POST /api/admin/trial-grants 响应：发放结果回执 */
+export interface TrialGrantResult {
+  batch: string
+  /** 本次实际发放的用户数 */
+  recipients: number
+  /** 每人获得的额度（站内单位），用于核对与预期一致 */
+  amount_quota: number
+  /** 每人获得的金额（分），由请求原样回显 */
+  amount_cents: number
+  hours: number
+  /** 到期时间（unix 秒） */
+  expires_at: number
 }
 
 /** 一条返利明细（GET /api/user/referral/rewards） */

@@ -22,7 +22,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
 )
 
 var errFake = errors.New("fake repo failure")
@@ -51,20 +51,20 @@ func (f *fakeCorpusRepo) ActiveCorpusGrants(_ context.Context) ([]*model.CorpusG
 
 // TestGuard_ShouldCollect 覆盖"只有清单内的模型才采"。
 func TestGuard_ShouldCollect(t *testing.T) {
-	repo := &fakeCorpusRepo{models: []string{"AQUA-CALL/deepseek-v4.1-flash"}}
+	repo := &fakeCorpusRepo{models: []string{"LTZY-CALL/deepseek-v4.1-flash"}}
 	guard := NewGuard(repo)
 
-	if guard.ShouldCollect("AQUA-CALL/deepseek-v4.1-flash") {
+	if guard.ShouldCollect("LTZY-CALL/deepseek-v4.1-flash") {
 		t.Fatal("快照尚未加载时不应采集（宁可保守，也不要在不知清单的情况下乱采）")
 	}
 	if err := guard.Refresh(context.Background()); err != nil {
 		t.Fatalf("加载快照失败: %v", err)
 	}
 
-	if !guard.ShouldCollect("AQUA-CALL/deepseek-v4.1-flash") {
+	if !guard.ShouldCollect("LTZY-CALL/deepseek-v4.1-flash") {
 		t.Error("清单内的模型应采集")
 	}
-	if guard.ShouldCollect("AQUA-CALL/glm-5.3") {
+	if guard.ShouldCollect("LTZY-CALL/glm-5.3") {
 		t.Error("清单外的模型不应采集")
 	}
 	if guard.ShouldCollect("") {
@@ -75,10 +75,10 @@ func TestGuard_ShouldCollect(t *testing.T) {
 // TestGuard_IsFree 覆盖"按用户 × 模型判免计费"。
 func TestGuard_IsFree(t *testing.T) {
 	repo := &fakeCorpusRepo{grants: []*model.CorpusGrant{
-		{UserID: 37, Model: "AQUA-CALL/deepseek-v4.1-flash", FreeAccess: true,
+		{UserID: 37, Model: "LTZY-CALL/deepseek-v4.1-flash", FreeAccess: true,
 			Status: model.CorpusGrantActive},
 		// 未开启免计费的资格（只授权采集）不应产生免费效果
-		{UserID: 139, Model: "AQUA-CALL/deepseek-v4.1-flash", FreeAccess: false,
+		{UserID: 139, Model: "LTZY-CALL/deepseek-v4.1-flash", FreeAccess: false,
 			Status: model.CorpusGrantActive},
 	}}
 	guard := NewGuard(repo)
@@ -86,19 +86,19 @@ func TestGuard_IsFree(t *testing.T) {
 		t.Fatalf("加载快照失败: %v", err)
 	}
 
-	if !guard.IsFree(37, "AQUA-CALL/deepseek-v4.1-flash") {
+	if !guard.IsFree(37, "LTZY-CALL/deepseek-v4.1-flash") {
 		t.Error("已授权的福利账户应免计费")
 	}
-	if guard.IsFree(139, "AQUA-CALL/deepseek-v4.1-flash") {
+	if guard.IsFree(139, "LTZY-CALL/deepseek-v4.1-flash") {
 		t.Error("free_access=false 的资格不应免计费")
 	}
-	if guard.IsFree(37, "AQUA-CALL/glm-5.3") {
+	if guard.IsFree(37, "LTZY-CALL/glm-5.3") {
 		t.Error("福利只对授权的模型生效，其他模型照常计费")
 	}
-	if guard.IsFree(999, "AQUA-CALL/deepseek-v4.1-flash") {
+	if guard.IsFree(999, "LTZY-CALL/deepseek-v4.1-flash") {
 		t.Error("未授权的用户不应免计费")
 	}
-	if guard.IsFree(0, "AQUA-CALL/deepseek-v4.1-flash") {
+	if guard.IsFree(0, "LTZY-CALL/deepseek-v4.1-flash") {
 		t.Error("无用户身份时不应免计费")
 	}
 }

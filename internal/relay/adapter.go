@@ -37,8 +37,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/LTZY-ACU/aqua-api/internal/corpus"
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/corpus"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
 )
 
 // Adapter 描述「下游协议 ↔ 内部 OpenAI 协议」的双向转换能力。

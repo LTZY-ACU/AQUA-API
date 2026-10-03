@@ -28,7 +28,7 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/LTZY-ACU/aqua-api/internal/i18n"
+	"github.com/LTZY-ACU/ltzy-api/internal/i18n"
 )
 
 // Identity 描述一次模型调用请求的调用者身份。

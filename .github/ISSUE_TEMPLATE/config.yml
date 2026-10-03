@@ -12,13 +12,13 @@ contact_links:
     about: 使用问题、交流讨论、反馈建议请优先加群，响应更快。
 
   - name: 报告安全漏洞（私密通道）
-    url: https://github.com/LTZY-ACU/AQUA-API/security/advisories/new
+    url: https://github.com/LTZY-ACU/LTZY-API/security/advisories/new
     about: 请勿公开提交安全漏洞，走私密通道，详见 SECURITY.md。
 
   - name: 先查常见问题与文档
-    url: https://github.com/LTZY-ACU/AQUA-API#常见问题
+    url: https://github.com/LTZY-ACU/LTZY-API#常见问题
     about: 提问前先看 README 的「常见问题」，多数问题这里已有答案。
 
   - name: 参与开发（Fork + PR 协作说明）
-    url: https://github.com/LTZY-ACU/AQUA-API/blob/main/GOVERNANCE.md
+    url: https://github.com/LTZY-ACU/LTZY-API/blob/main/GOVERNANCE.md
     about: 了解角色权限、分支规则与如何申请成为协作者。

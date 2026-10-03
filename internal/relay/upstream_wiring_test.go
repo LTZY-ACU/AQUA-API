@@ -27,10 +27,62 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LTZY-ACU/aqua-api/internal/channeltype"
-	"github.com/LTZY-ACU/aqua-api/internal/model"
-	"github.com/LTZY-ACU/aqua-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/channeltype"
+	"github.com/LTZY-ACU/ltzy-api/internal/model"
+	"github.com/LTZY-ACU/ltzy-api/internal/oai"
 )
+
+// TestJoinUpstreamURL_重复版本段剪除 钉住"base 尾段是版本段、path 又带 /v1
+// 前缀时去重"的规则，覆盖三类关键场景：该剪的（/v1/v1）、不该剪的（Anthropic
+// 的 /messages、主机名恰为 v1）、以及版本段非 v1 的上游（智谱 /api/paas/v4）。
+//
+// 注：实现已由 dedupeUpstreamVersionSegment（剪 base 尾段）演进为
+// joinUpstreamURL（剪 path 的 /v1 前缀）——后者能覆盖"base 版本段不是 v1"
+// 的上游，因此断言口径改为最终拼接出的 URL。
+func TestJoinUpstreamURL_重复版本段剪除(t *testing.T) {
+	cases := []struct {
+		name string
+		base string
+		path string
+		want string
+	}{
+		{"OpenAI 兼容 base 带 v1 尾段", "https://api.openai.com/v1", "/v1/chat/completions", "https://api.openai.com/v1/chat/completions"},
+		{"多级路径只剪末段", "https://host/api/v1", "/v1/models", "https://host/api/v1/models"},
+		{"智谱 v4 版本段同样去重", "https://open.bigmodel.cn/api/paas/v4", "/v1/chat/completions", "https://open.bigmodel.cn/api/paas/v4/chat/completions"},
+		{"Anthropic 版本段必须保留", "https://api.anthropic.com/v1", "/messages", "https://api.anthropic.com/v1/messages"},
+		{"主机名恰为 v1 不误剪", "https://v1", "/v1/chat/completions", "https://v1/v1/chat/completions"},
+		{"域名以版本字样开头不误剪", "https://v1.example.com", "/v1/chat/completions", "https://v1.example.com/v1/chat/completions"},
+		{"无路径 base 原样", "https://host", "/v1/chat/completions", "https://host/v1/chat/completions"},
+		{"首段不同不剪", "https://host/api", "/v1/chat/completions", "https://host/api/v1/chat/completions"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := joinUpstreamURL(tc.base, tc.path); got != tc.want {
+				t.Fatalf("joinUpstreamURL(%q, %q) = %q，期望 %q", tc.base, tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPrepareChannelUpstream_OpenAI兼容Base带V1 钉住端到端效果：管理员把
+// OpenAI 兼容渠道的地址照官方文档填成 https://host/v1 时，最终请求 URL
+// 不再出现 /v1/v1（该误配曾是"渠道测试通过、对话却 404"的根因）。
+func TestPrepareChannelUpstream_OpenAI兼容Base带V1(t *testing.T) {
+	ch := &model.Channel{
+		TypeKey: "openai",
+		BaseURL: "https://api.example.com/v1",
+	}
+	body := []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`)
+
+	_, _, built, err := prepareChannelUpstream(
+		ch, "sk-test", "gpt-4o", oai.ChatCompletionsPath, body, http.Header{}, false)
+	if err != nil {
+		t.Fatalf("组装请求失败: %v", err)
+	}
+	if want := "https://api.example.com/v1/chat/completions"; built.URL != want {
+		t.Errorf("URL = %q，期望 %q（不应出现 /v1/v1）", built.URL, want)
+	}
+}
 
 // TestPrepareChannelUpstream_Azure 验证 type_key=azure_openai 时：
 // 部署名进路径、api-version 进查询、鉴权走 api-key 头。
