@@ -620,4 +620,21 @@ func TestBilling_结算接入_成功多退_失败退还_未知用量按预留收
 	if fake.reserveCalls != before {
 		t.Fatal("未预留的请求不应触碰预留台账")
 	}
+
+	// 场景五：未做预留 + 请求失败 → 不得计费（2026-10-03 线上事故回归）。
+	//
+	// 事故表现：账号额度充足会命中「信任额度旁路」而不建预留，旧实现在这条路径上
+	// 无条件 Charge，于是上游 4xx/5xx 的失败请求照样扣费（"接口报错还计费"）。
+	// 这里断言失败时返回 0，且不触碰台账（未预留本就不该动台账）。
+	got = r.settleQuota(ctx, usageEntry{
+		Model:      "test-model",
+		StatusCode: 502,
+		ErrorText:  "所有候选渠道均请求失败",
+	})
+	if got != 0 {
+		t.Fatalf("未预留的失败请求计入额度 = %d，期望 0（不得因报错扣费）", got)
+	}
+	if fake.reserveCalls != before {
+		t.Fatal("未预留的失败请求不应触碰预留台账")
+	}
 }

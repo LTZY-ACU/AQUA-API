@@ -615,7 +615,8 @@ func identityFromRequest(ctx context.Context) reqctx.Identity {
 //     成功 → Settle（按实际 usage 多退少补；拿不到 usage 时按预留量收，绝不退成 0）；
 //     失败（HTTP >= 400）→ Release 全额退还。
 //  2. 未做预留（模型不计费 / 信任额度旁路 / 未启用）：
-//     沿用旧的响应后扣费 Charge（未定价模型 Charge 会返回 0）。
+//     成功 → 沿用旧的响应后扣费 Charge（未定价模型 Charge 会返回 0）；
+//     失败（HTTP >= 400）→ 直接返回 0，不扣费（与预留路径的 Release 语义对齐）。
 //
 // 关键约束：本方法绝不向上返回错误——它发生在响应已回传之后，
 // 用户不该因为"记账失败"而收到报错；但失败必须留下【错误级别】日志，
@@ -627,7 +628,17 @@ func (r *Relay) settleQuota(ctx context.Context, entry usageEntry) int64 {
 
 	requestID := identityFromRequest(ctx).RequestID
 	if requestID == "" {
-		// 未预留：退化路径。Charge 内部同样只记录错误不返回错误。
+		// 未预留：退化路径（模型不计费 / 信任额度旁路 / 未启用台账）。
+		//
+		// 关键修复（2026-10-03 线上事故）：本路径【必须一并判断 HTTP 状态码】。
+		// 旧实现无条件 Charge，于是"账号额度充足 → 命中信任额度旁路、不建预留"的
+		// 失败请求（上游 4xx/5xx）照样被扣费；而做过预留的失败请求却走 Release
+		// 全额退还——两条路径语义不一致，表现为"接口报错还计费"。
+		// 现与预留路径对齐：失败（>=400）一律不计费，直接返回 0。
+		if entry.StatusCode >= http.StatusBadRequest {
+			return 0
+		}
+		// Charge 内部同样只记录错误不返回错误。
 		// 计费分组沿用 entry.Group（与选渠道同一分组），空值由 Billing 回退到默认分组。
 		// 同时带上 entry.ChannelID：本次实际命中的渠道可享受"渠道专用价优先"的取值。
 		charged := r.billing.ChargeForChannel(ctx, entry.Group, entry.UserID, entry.TokenID, entry.Model,
