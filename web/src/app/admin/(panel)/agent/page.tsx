@@ -94,15 +94,60 @@ export default function AdminAgentPage() {
     void load()
   }, [load])
 
-  async function handleToggleEnabled(next: boolean) {
+  /**
+   * 是否至少配了一个模型。
+   *
+   * 后端在「开启但一个模型都没填」时会拒绝（这是对的：
+   * 开了却调不通的入口比关着更糟）。但只有后端拦的话，
+   * 站长看到的是一句 HTTP 400 的技术文案——那正是本页最初的 bug：
+   * 停用状态下点「启用助手」，必然失败，而界面看上去完全正常。
+   * 因此前端先判一次，并在按钮上给出可执行的下一步，而不是让请求去撞后端。
+   */
+  const hasModel = useMemo(
+    () =>
+      Boolean(
+        settings?.default_model?.trim() ||
+          settings?.ops_model?.trim() ||
+          settings?.support_model?.trim(),
+      ),
+    [settings],
+  )
+
+  /**
+   * 切换总开关（顶部横幅与配置页共用）。
+   *
+   * 只负责请求与二次验证，【不弹成功提示】——两个调用点的提示文案不同，
+   * 由各自决定。让本函数也弹一次，配置页就会连续看到两条一样的 toast。
+   * 失败时仍然由本函数抛提示：那部分文案两个入口是一样的。
+   */
+  async function persistEnabled(next: boolean) {
+    // 只在"开启"这一侧拦：停用永远该被允许（它不花钱，且是出事时的第一反应）。
+    if (next && settings && !hasModel) {
+      setTab('settings')
+      toastError('请先在「运行配置」里填至少一个模型，再启用助手')
+      return
+    }
     try {
       // 总开关是【花钱的开关】：开着就意味着任何拿到客服密钥的人
       // 都能消耗站长的上游额度。因此要过 reauth。
       const saved = await guard(() => saveAgentSettings({ enabled: next }))
       setSettings(saved)
-      toast(next ? '助手已启用' : '助手已停用，两个入口同时关闭')
     } catch (err) {
       toastError(err instanceof Error ? err.message : '启停失败')
+      throw err
+    }
+  }
+
+  /** 顶部横幅的「启用助手」按钮：成功提示由这里给。 */
+  async function handleToggleEnabled(next: boolean) {
+    try {
+      await persistEnabled(next)
+      // persistEnabled 在"缺模型"时静默返回（已就地提示并跳到配置页），
+      // 这里靠返回值区分：没真正切换就不该再报成功。
+      if (next && !hasModel) return
+      toast(next ? '助手已启用' : '助手已停用，两个入口同时关闭')
+    } catch {
+      // 失败提示已由 persistEnabled 给出，这里不再重复。
     }
   }
 
@@ -182,14 +227,28 @@ export default function AdminAgentPage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="text-[13px] font-semibold text-ink">助手当前是停用状态</div>
-              <p className="mt-1 text-[13px] leading-relaxed text-ink-3">
-                打开后可以在这里直接问它；对外开放前建议先用下方「运行配置」指定一个模型，
-                并先在本站试几轮确认它答得靠谱——客服的话术由你决定，但答错的代价也是你承担。
-              </p>
+              {hasModel ? (
+                <p className="mt-1 text-[13px] leading-relaxed text-ink-3">
+                  打开后可以在这里直接问它；对外开放前建议先在本站试几轮，
+                  确认它答得靠谱——客服的话术由你决定，但答错的代价也是你承担。
+                </p>
+              ) : (
+                // 没配模型时不给"启用"按钮：给一个必然失败的按钮，
+                // 是在让站长自己撞一次 400 才能发现少了一步。
+                <p className="mt-1 text-[13px] leading-relaxed text-ink-3">
+                  启用前需要先指定一个模型（助手靠它回答，每次对话都会产生上游费用）。
+                </p>
+              )}
             </div>
-            <Button variant="primary" onClick={() => void handleToggleEnabled(true)}>
-              启用助手
-            </Button>
+            {hasModel ? (
+              <Button variant="primary" onClick={() => void handleToggleEnabled(true)}>
+                启用助手
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={() => setTab('settings')}>
+                去填模型
+              </Button>
+            )}
           </div>
         </Card>
       )}
@@ -227,7 +286,6 @@ export default function AdminAgentPage() {
             setSettings(next)
             void load()
           }}
-          onToggleEnabled={handleToggleEnabled}
         />
       )}
 
@@ -325,11 +383,9 @@ function DisabledHint() {
 function SettingsForm({
   settings,
   onSaved,
-  onToggleEnabled,
 }: {
   settings: AgentSettings
   onSaved: (next: AgentSettings) => void
-  onToggleEnabled: (next: boolean) => Promise<void>
 }) {
   const { toast, toastError } = useToast()
   const [defaultModel, setDefaultModel] = useState(settings.default_model)
@@ -339,6 +395,16 @@ function SettingsForm({
   const [supportPrompt, setSupportPrompt] = useState(settings.support_system_prompt)
   const [historyEnabled, setHistoryEnabled] = useState(settings.history_enabled)
   const [saving, setSaving] = useState(false)
+
+  /**
+   * 表单里三个模型输入框是否至少有一个非空。
+   *
+   * 注意判断的是【输入框里的当前值】而不是 settings 里的旧值：
+   * 用户可能刚把模型名清掉，此时保存就该被拦下，
+   * 而不能让请求带着"空模型 + 已开启"去撞后端的 400。
+   */
+  const hasAnyModel =
+    Boolean(defaultModel.trim() || opsModel.trim() || supportModel.trim())
 
   async function handleSave() {
     setSaving(true)
@@ -360,6 +426,48 @@ function SettingsForm({
     }
   }
 
+  /**
+   * 总开关在配置页的落点：把本表单连同开关一起落盘。
+   *
+   * 两个刻意的设计：
+   *
+   * 1) 先落盘表单，再切开关——而不是先发一个只带 enabled 的请求。
+   *    只带 enabled 的话，"清空模型名 → 点开关"这种很自然的操作必然 400，
+   *    而用户完全不知道自己漏了哪一步。把表单一起提交，开关与内容
+   *    天然一致，也不会出现"界面显示已开、实际模型还是上一份"的错位状态。
+   *
+   * 2) 不复用顶部横幅的 persistEnabled：那个函数带二次验证且失败时已报过错，
+   *    在这里再包一层 catch 只会让同一次失败弹两条一样的提示。
+   *    配置页自己发请求，由本函数独占错误处理。
+   */
+  async function handleToggleFromForm(next: boolean) {
+    // 开启时先校验本地表单：空着就别去让后端拒绝，那只会得到一句技术文案。
+    if (next && !hasAnyModel) {
+      toastError('请至少填写一个模型（默认模型、运维模型、客服模型任选其一）')
+      return
+    }
+    setSaving(true)
+    try {
+      // 注意 enabled 一并带上：这不是"保存表单 + 另切开关"两个请求，
+      // 而是一次提交，避免中间态被别人读到。
+      const saved = await saveAgentSettings({
+        enabled: next,
+        default_model: defaultModel.trim(),
+        ops_model: opsModel.trim(),
+        support_model: supportModel.trim(),
+        ops_system_prompt: opsPrompt,
+        support_system_prompt: supportPrompt,
+        history_enabled: historyEnabled,
+      })
+      onSaved(saved)
+      toast(next ? '助手已启用' : '助手已停用，两个入口同时关闭')
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : '启停失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
       <Card>
@@ -372,7 +480,7 @@ function SettingsForm({
           </div>
           <Switch
             checked={settings.enabled}
-            onChange={(next) => void onToggleEnabled(next)}
+            onChange={(next) => void handleToggleFromForm(next)}
             label="启用 AI 助手"
           />
         </div>
@@ -410,6 +518,16 @@ function SettingsForm({
             />
           </Field>
         </div>
+
+        {/* 三项全空时立刻说清后果，而不是等用户点开关再被后端 400 打回。
+            这条提示与上面的 help 措辞不同：help 讲"留空会怎样"，
+            这里讲"你现在的状态会导致什么"——前者是规则，后者是当前诊断。 */}
+        {!hasAnyModel && (
+          <p className="mt-3 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-[12px] leading-relaxed text-warn">
+            三个模型都还是空的。至少填一个才能启用助手——它靠模型回答，
+            没有模型时所有对话请求都会失败。
+          </p>
+        )}
       </Card>
 
       <Card>
