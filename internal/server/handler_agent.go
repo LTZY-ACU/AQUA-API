@@ -50,6 +50,7 @@ import (
 	"github.com/LTZY-ACU/ltzy-api/internal/agent"
 	"github.com/LTZY-ACU/ltzy-api/internal/model"
 	"github.com/LTZY-ACU/ltzy-api/internal/oai"
+	"github.com/LTZY-ACU/ltzy-api/internal/reqctx"
 	"github.com/LTZY-ACU/ltzy-api/internal/server/middleware"
 )
 
@@ -136,23 +137,23 @@ type sseToolEvent struct {
 
 // agentAskResultDTO 是结束时回传的结果。
 type agentAskResultDTO struct {
-	Answer           string                    `json:"answer"`
-	ToolCalls        []agentExecutedToolDTO    `json:"tool_calls"`
-	Rounds           int                       `json:"rounds"`
-	Truncated        bool                      `json:"truncated"`
-	PromptTokens     int                       `json:"prompt_tokens"`
-	CompletionTokens int                       `json:"completion_tokens"`
-	Role             string                    `json:"role"`
-	Tools            []agentToolBriefDTO       `json:"tools"`
+	Answer           string                 `json:"answer"`
+	ToolCalls        []agentExecutedToolDTO `json:"tool_calls"`
+	Rounds           int                    `json:"rounds"`
+	Truncated        bool                   `json:"truncated"`
+	PromptTokens     int                    `json:"prompt_tokens"`
+	CompletionTokens int                    `json:"completion_tokens"`
+	Role             string                 `json:"role"`
+	Tools            []agentToolBriefDTO    `json:"tools"`
 }
 
 // agentExecutedToolDTO 是一次工具执行的结果（回传给前端用于展示过程）。
 type agentExecutedToolDTO struct {
-	Name      string `json:"name"`
-	Mutating  bool   `json:"mutating"`
-	OK        bool   `json:"ok"`
-	Error     string `json:"error,omitempty"`
-	Result    string `json:"result,omitempty"`
+	Name     string `json:"name"`
+	Mutating bool   `json:"mutating"`
+	OK       bool   `json:"ok"`
+	Error    string `json:"error,omitempty"`
+	Result   string `json:"result,omitempty"`
 }
 
 // agentToolBriefDTO 是"这次给了模型哪些工具"的清单。
@@ -407,14 +408,17 @@ func (s *Server) handlePublicAgentChat(c *gin.Context) {
 		// 走到这里说明路由装配漏挂了 AgentKeyAuth。
 		// 按未鉴权处理而不是放行：这类"理论上不可能"的分支一旦真的发生，
 		// 放行的代价是一个无需凭据的公网接口。
-		oai.WriteError(c.Writer, http.StatusUnauthorized, "缺少 agent 密钥",
-			oai.TypeAuthentication, oai.CodeMissingAPIKey)
+		//
+		// 走 i18n 键而非中文字面量：本接口面向公网，调用方可能是任意语言的程序。
+		oai.WriteErrorKey(c.Writer, http.StatusUnauthorized,
+			"auth.missing_token", oai.TypeAuthentication, oai.CodeMissingAPIKey,
+			reqctx.Locale(c.Request.Context()))
 		return
 	}
 	if key.Role != model.AgentRoleSupport {
-		oai.WriteError(c.Writer, http.StatusForbidden,
-			"该密钥无权访问在线客服入口",
-			oai.TypePermission, "agent_role_not_allowed")
+		oai.WriteErrorKey(c.Writer, http.StatusForbidden,
+			"agent.role_not_allowed", oai.TypePermission, "agent_role_not_allowed",
+			reqctx.Locale(c.Request.Context()))
 		return
 	}
 	s.handleAgentChat(key.Role)(c)

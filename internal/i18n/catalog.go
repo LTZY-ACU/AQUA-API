@@ -97,6 +97,51 @@ var catalog = Catalog{
 		Es:   "El token de acceso ya no es válido",
 		Ar:   "لم يعد رمز الوصول صالحًا",
 	},
+	// ── AI Agent 密钥（/api/agent 鉴权，面向 agent 调用方）────────────
+	//
+	// 文案刻意说"助手密钥"而不是"令牌"：两类凭据会同时出现在客户端的
+	// 配置里，混称会让用户把模型接口的令牌当成 agent 密钥来填，
+	// 表现为"明明填了却一直提示无效"，而排查方向完全跑偏。
+	"agent.invalid_key": {
+		ZhCN: "助手密钥无效，请检查是否复制完整（应以 ak- 开头）",
+		En:   "Invalid assistant key. Check that it was copied completely (it should start with ak-)",
+		Fr:   "Clé d'assistant invalide. Vérifiez qu'elle a été copiée entièrement (elle doit commencer par ak-)",
+		Ru:   "Недействительный ключ ассистента. Проверьте, что он скопирован полностью (должен начинаться с ak-)",
+		Es:   "Clave de asistente no válida. Compruebe que se copió completa (debe empezar por ak-)",
+		Ar:   "مفتاح المساعد غير صالح. تحقق من نسخه بالكامل (يجب أن يبدأ بـ ak-)",
+	},
+	"agent.key_disabled": {
+		ZhCN: "助手密钥已被停用或已过期，请联系站点管理员",
+		En:   "This assistant key has been disabled or has expired. Please contact the site administrator.",
+		Fr:   "Cette clé d'assistant a été désactivée ou a expiré. Veuillez contacter l'administrateur du site.",
+		Ru:   "Этот ключ ассистента отключён или истёк. Обратитесь к администратору сайта.",
+		Es:   "Esta clave de asistente está deshabilitada o ha caducado. Contacte con el administrador del sitio.",
+		Ar:   "تم تعطيل مفتاح المساعد هذا أو انتهت صلاحيته. يُرجى الاتصال بمدير الموقع.",
+	},
+	"agent.not_enabled": {
+		ZhCN: "本站尚未启用 AI 助手",
+		En:   "The AI assistant is not enabled on this site",
+		Fr:   "L'assistant IA n'est pas activé sur ce site",
+		Ru:   "ИИ-ассистент на этом сайте не включён",
+		Es:   "El asistente de IA no está habilitado en este sitio",
+		Ar:   "المساعد الذكي غير مُفعَّل في هذا الموقع",
+	},
+	"agent.role_not_allowed": {
+		ZhCN: "该密钥无权访问在线客服入口（它属于运维助手，仅在管理后台内可用）",
+		En:   "This key cannot access the public support chat (it is an operations key, usable only inside the admin panel)",
+		Fr:   "Cette clé ne peut pas accéder au chat public du support (c'est une clé d'exploitation, utilisable uniquement dans le panneau d'administration)",
+		Ru:   "Этот ключ не может обратиться к публичному чату поддержки (он является ключом администрирования и доступен только в панели)",
+		Es:   "Esta clave no puede acceder al chat público de soporte (es una clave de operaciones, usable solo en el panel de administración)",
+		Ar:   "لا يمكن لهذا المفتاح الوصول إلى محادثة الدعم العامة (إنه مفتاح تشغيلي، متاح فقط داخل لوحة الإدارة)",
+	},
+	"agent.auth_failed": {
+		ZhCN: "助手密钥校验失败，请稍后重试",
+		En:   "Failed to verify the assistant key. Please try again later.",
+		Fr:   "Échec de la vérification de la clé d'assistant. Veuillez réessayer plus tard.",
+		Ru:   "Не удалось проверить ключ ассистента. Повторите попытку позже.",
+		Es:   "No se pudo verificar la clave de asistente. Inténtelo de nuevo más tarde.",
+		Ar:   "فشل التحقق من مفتاح المساعد. يُرجى المحاولة لاحقًا.",
+	},
 	"auth.account_disabled": {
 		ZhCN: "账号已被禁用",
 		En:   "The account has been disabled",
