@@ -13,6 +13,13 @@ FROM node:20-alpine AS web
 WORKDIR /src/web
 # 先只拷贝依赖清单：依赖不变时可复用缓存层，改代码不会重装依赖
 COPY web/package.json web/package-lock.json ./
+# package.json 的 postinstall 钩子（scripts/ensure-dist.mjs）会写 dist/PLACEHOLDER.txt，
+# 而 go:embed 要求 web/dist 至少存在一个可嵌入文件。
+#
+# 为什么必须在这里就带上 scripts/：钩子在 npm ci 结束时执行，若那一步才出现脚本，
+# 容器内构建会以 "Cannot find module .../ensure-dist.mjs" 失败——且这个失败只在
+# Docker 构建时出现（本地 npm install 时 scripts/ 早已在磁盘上），很容易漏掉。
+COPY web/scripts/ ./scripts/
 RUN npm ci
 COPY web/ ./
 RUN npm run build
