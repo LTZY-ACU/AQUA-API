@@ -7,14 +7,28 @@
  *   视图层只按 status.installed 决定"引导安装"还是"引导登录"。
  *
  * 流转（Flow）：
- *   InstallView.vue → fetchInstallStatus() → GET /api/install/status
- *                   → submitInstall()     → POST /api/install → 成功跳 /admin/login
+ *   app/install/page.tsx → fetchInstallStatus() → GET /api/install/status
+ *                        → submitInstall()     → POST /api/install → 成功跳 /admin/login
  *
  * 扩展（Extend）：
  *   向导增加步骤时，在 InstallStatus 里加字段（如 needs_database=true），
  *   并在视图里按字段决定展示哪一步；不要在前端硬编码"装过了没有"的判断。
  */
 import { api } from './client'
+
+/** OOBE 单个步骤的状态 */
+export interface InstallStep {
+  /** 稳定标识（site/admin/access/channel/announce），前端按它匹配渲染 */
+  key: string
+  /** 步骤标题（服务端下发，避免中英文各写一份） */
+  title: string
+  /** 一句话说明这一步要做什么 */
+  description: string
+  /** 是否已完成 */
+  done: boolean
+  /** 是否可跳过（可跳过时前端把"跳过"做成显式动作） */
+  optional: boolean
+}
 
 /** 安装状态 */
 export interface InstallStatus {
@@ -28,6 +42,10 @@ export interface InstallStatus {
   database_driver?: string
   /** 是否为免配置的 SQLite（仅未安装时返回） */
   sqlite_zero_config?: boolean
+  /** OOBE 步骤清单（仅未安装时返回） */
+  steps?: InstallStep[]
+  /** 建议的管理员用户名（仅未安装时返回） */
+  default_admin_username?: string
 }
 
 /** 安装请求体 */
@@ -38,6 +56,8 @@ export interface InstallPayload {
   confirm_password?: string
   /** 可选：站点名称 */
   site_name?: string
+  /** 可选：站点描述（首页与页脚展示） */
+  site_description?: string
 }
 
 /** 安装结果 */
